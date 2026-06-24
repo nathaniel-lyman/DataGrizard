@@ -14,6 +14,8 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
   width?: number;
   minWidth?: number;
   maxWidth?: number;
+  pinned?: "left" | "right";
+  enablePinning?: boolean;
   enableGrouping?: boolean;
   /** Cell value is typed as the field's own type, e.g. `TData["revenue"]`. */
   formatValue?: (value: TData[K], row: TData) => ReactNode;

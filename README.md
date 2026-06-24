@@ -3,7 +3,7 @@
 A reusable, **domain-neutral** analytical data grid for React, built on
 [TanStack Table v8](https://tanstack.com/table/v8). One component, two layouts
 (**grid** and Excel-style **pivot**), with grouping, saved views, summaries,
-column management, conditional formatting, and a fully controllable state
+column management, column pinning, conditional formatting, and a fully controllable state
 surface.
 
 The product is the `DataGrid` component. The retail "Recommendation Workbench"
@@ -127,9 +127,9 @@ active detail row correct across data updates.
 
 Pivot mode renders an Excel-style table (Row Labels column, value columns from
 `summaryItems`, a Grand Total footer) and **forces grouping on** while disabling
-`rowSelection`, `detailPanel`, and `pagination`. Column visibility still controls
-which value columns appear. You can re-enable disabled features via `features`,
-but it isn't recommended.
+`rowSelection`, `detailPanel`, `pagination`, and `columnPinning`. Column
+visibility still controls which value columns appear. You can re-enable disabled
+features via `features`, but it isn't recommended.
 
 ---
 
@@ -141,6 +141,8 @@ type GridColumnConfig<TData> = {
   header: string;
   dataType: "text" | "number" | "currency" | "percent" | "status";
   width?: number; minWidth?: number; maxWidth?: number;
+  pinned?: "left" | "right";
+  enablePinning?: boolean;
   enableGrouping?: boolean;
   // value is typed as TData[accessorKey] — not `unknown`.
   formatValue?: (value, row) => ReactNode;
@@ -160,6 +162,8 @@ type GridColumnConfig<TData> = {
   (`{ active: "bg-emerald-50 text-emerald-700 border-emerald-200" }`) or
   imperatively with `getStatusClassName`.
 - `conditionalFormats` rules compose — every matching rule contributes its class.
+- `pinned` sets an initial frozen side for a column. Set `enablePinning: false`
+  to keep a column out of the Columns menu pin controls.
 
 ## Filters
 
@@ -195,15 +199,17 @@ const [sorting, setSorting] = useState([]);
 ```
 
 Controllable slices: `sorting`, `globalFilter`, `columnFilters`,
-`columnVisibility`, `columnSizing`, `columnOrder`, `pagination`, `rowSelection`,
-`grouping`, `expanded`, `savedViews`, `activeViewName`. When a slice is
-controlled, the grid never writes it to `localStorage` — persistence is yours.
+`columnVisibility`, `columnSizing`, `columnOrder`, `columnPinning`,
+`pagination`, `rowSelection`, `grouping`, `expanded`, `savedViews`,
+`activeViewName`. When a slice is controlled, the grid never writes it to
+`localStorage` — persistence is yours.
 
 ## Persistence
 
-Pass `storageKey` to persist exactly three slices under scoped keys:
-`${storageKey}.columnSizing`, `${storageKey}.columnOrder`, `${storageKey}.savedViews`.
-Nothing else is persisted, and two grids with different keys never collide.
+Pass `storageKey` to persist exactly four slices under scoped keys:
+`${storageKey}.columnSizing`, `${storageKey}.columnOrder`,
+`${storageKey}.columnPinning`, `${storageKey}.savedViews`. Nothing else is
+persisted, and two grids with different keys never collide.
 
 ## Internationalization
 
@@ -235,6 +241,7 @@ features={{ pagination: false, rowSelection: false /* … */ }}
 | `columnVisibility`| ✅           | ✅            |
 | `columnResizing`  | ✅           | ✅            |
 | `columnOrdering`  | ✅           | ✅            |
+| `columnPinning`   | ✅           | ❌            |
 | `savedViews`      | ✅           | ✅            |
 | `grouping`        | ✅           | ✅ (forced)   |
 | `summaries`       | ✅           | ✅            |

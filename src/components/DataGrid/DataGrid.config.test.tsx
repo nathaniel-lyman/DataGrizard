@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
@@ -53,5 +53,56 @@ describe("DataGrid declarative formatting", () => {
     const highCell = screen.getByText("$1,500").closest("td") as HTMLElement;
     expect(lowCell).toHaveClass("text-rose-600");
     expect(highCell).not.toHaveClass("text-rose-600");
+  });
+});
+
+describe("DataGrid column pinning configuration", () => {
+  it("pins columns from column config", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={[
+          { accessorKey: "name", header: "Name", dataType: "text", pinned: "left" },
+          { accessorKey: "revenue", header: "Revenue", dataType: "currency", pinned: "right" },
+          { accessorKey: "status", header: "Status", dataType: "status" },
+        ]}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: /Name/ })).toHaveStyle({
+      position: "sticky",
+      left: "0px",
+    });
+    expect(screen.getByRole("columnheader", { name: /Revenue/ })).toHaveStyle({
+      position: "sticky",
+      right: "0px",
+    });
+    expect(screen.getByText("Acme").closest("td")).toHaveStyle({
+      position: "sticky",
+      left: "0px",
+    });
+  });
+
+  it("pins and unpins columns from the Columns menu", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /visible/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Pin Revenue left" }));
+
+    expect(screen.getByRole("columnheader", { name: /Revenue/ })).toHaveStyle({
+      position: "sticky",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpin Revenue" }));
+    expect(screen.getByRole("columnheader", { name: /Revenue/ }).style.position).toBe("");
   });
 });

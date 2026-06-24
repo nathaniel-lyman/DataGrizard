@@ -22,9 +22,17 @@ type ToolbarProps = {
   filters: ToolbarFilter[];
   enableColumnVisibility: boolean;
   enableColumnOrdering: boolean;
+  enableColumnPinning: boolean;
   enableSavedViews: boolean;
   enableGrouping: boolean;
-  columns: Array<{ id: string; label: string; visible: boolean; canHide: boolean }>;
+  columns: Array<{
+    id: string;
+    label: string;
+    visible: boolean;
+    canHide: boolean;
+    pinned: false | "left" | "right";
+    canPin: boolean;
+  }>;
   groupableColumns: Array<{ id: string; label: string }>;
   grouping: string[];
   savedViews: string[];
@@ -34,6 +42,7 @@ type ToolbarProps = {
   onColumnVisibilityChange: (columnId: string, visible: boolean) => void;
   onColumnMove: (columnId: string, direction: "up" | "down") => void;
   onColumnDrop: (fromColumnId: string, toColumnId: string) => void;
+  onColumnPin: (columnId: string, position: false | "left" | "right") => void;
   onGroupingAdd: (columnId: string) => void;
   onGroupingRemove: (columnId: string) => void;
   onGroupingMove: (columnId: string, direction: "up" | "down") => void;
@@ -216,6 +225,7 @@ export function Toolbar({
   filters,
   enableColumnVisibility,
   enableColumnOrdering,
+  enableColumnPinning,
   enableSavedViews,
   enableGrouping,
   columns,
@@ -228,6 +238,7 @@ export function Toolbar({
   onColumnVisibilityChange,
   onColumnMove,
   onColumnDrop,
+  onColumnPin,
   onGroupingAdd,
   onGroupingRemove,
   onGroupingMove,
@@ -274,7 +285,7 @@ export function Toolbar({
   const availableGroupColumns = groupableColumns.filter(
     (column) => !grouping.includes(column.id),
   );
-  const showColumnControls = enableColumnVisibility || enableColumnOrdering;
+  const showColumnControls = enableColumnVisibility || enableColumnOrdering || enableColumnPinning;
   const showGroupingControls = enableGrouping && groupableColumns.length > 0;
   const showSecondaryControls = showColumnControls || enableSavedViews || showGroupingControls;
 
@@ -472,6 +483,40 @@ export function Toolbar({
                           />
                         ) : null}
                         <span className="min-w-0 flex-1 truncate">{column.label}</span>
+                        {enableColumnPinning && column.canPin ? (
+                          <span className="flex shrink-0 overflow-hidden rounded border border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => onColumnPin(column.id, "left")}
+                              disabled={column.pinned === "left"}
+                              className="flex h-6 w-6 items-center justify-center text-[10px] font-bold text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:bg-slate-900 disabled:text-white"
+                              aria-label={`Pin ${column.label} left`}
+                              title="Pin left"
+                            >
+                              L
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onColumnPin(column.id, false)}
+                              disabled={!column.pinned}
+                              className="flex h-6 w-6 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-30"
+                              aria-label={`Unpin ${column.label}`}
+                              title="Unpin"
+                            >
+                              <CloseIcon className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onColumnPin(column.id, "right")}
+                              disabled={column.pinned === "right"}
+                              className="flex h-6 w-6 items-center justify-center border-l border-slate-200 text-[10px] font-bold text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:bg-slate-900 disabled:text-white"
+                              aria-label={`Pin ${column.label} right`}
+                              title="Pin right"
+                            >
+                              R
+                            </button>
+                          </span>
+                        ) : null}
                         {enableColumnOrdering ? (
                           <>
                             <button

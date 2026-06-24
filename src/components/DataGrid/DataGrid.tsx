@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   flexRender,
@@ -11,8 +11,10 @@ import {
   useReactTable,
   type ColumnDef,
   type ColumnFiltersState,
+  type Column,
   type FilterFn,
   type ColumnOrderState,
+  type ColumnPinningState,
   type ColumnSizingState,
   type ExpandedState,
   type GroupingState,
@@ -36,6 +38,8 @@ type AnyColumnConfig<TData> = {
   width?: number;
   minWidth?: number;
   maxWidth?: number;
+  pinned?: "left" | "right";
+  enablePinning?: boolean;
   enableGrouping?: boolean;
   formatValue?: (value: unknown, row: TData) => ReactNode;
   formatGroupingValue?: (value: unknown, rows: TData[]) => ReactNode;
@@ -66,6 +70,7 @@ export type DataGridFeatures = {
   columnVisibility: boolean;
   columnResizing: boolean;
   columnOrdering: boolean;
+  columnPinning: boolean;
   savedViews: boolean;
   pagination: boolean;
   rowSelection: boolean;
@@ -81,6 +86,8 @@ export type DataGridSummarySelectionMode = "auto" | Exclude<DataGridSummaryScope
 export type DataGridGroupingState = GroupingState;
 
 export type DataGridExpandedState = ExpandedState;
+
+export type DataGridColumnPinningState = ColumnPinningState;
 
 export type DataGridLayoutMode = "grid" | "pivot";
 
@@ -107,6 +114,7 @@ export type DataGridSavedView = {
   columnVisibility: VisibilityState;
   columnSizing: ColumnSizingState;
   columnOrder?: ColumnOrderState;
+  columnPinning?: ColumnPinningState;
   grouping?: GroupingState;
 };
 
@@ -119,6 +127,7 @@ export type DataGridControlledState = {
   columnVisibility?: VisibilityState;
   columnSizing?: ColumnSizingState;
   columnOrder?: ColumnOrderState;
+  columnPinning?: ColumnPinningState;
   pagination?: PaginationState;
   rowSelection?: RowSelectionState;
   grouping?: GroupingState;
@@ -147,6 +156,7 @@ export type DataGridProps<TData extends object> = {
   onColumnVisibilityChange?: (columnVisibility: VisibilityState) => void;
   onColumnSizingChange?: (columnSizing: ColumnSizingState) => void;
   onColumnOrderChange?: (columnOrder: ColumnOrderState) => void;
+  onColumnPinningChange?: (columnPinning: ColumnPinningState) => void;
   onPaginationChange?: (pagination: PaginationState) => void;
   onRowSelectionChange?: (rowSelection: RowSelectionState) => void;
   onGroupingChange?: (grouping: GroupingState) => void;
@@ -154,6 +164,7 @@ export type DataGridProps<TData extends object> = {
   onSavedViewsChange?: (savedViews: DataGridSavedViews) => void;
   onActiveViewNameChange?: (activeViewName: string) => void;
   defaultGrouping?: GroupingState;
+  defaultColumnPinning?: ColumnPinningState;
   storageKey?: string;
   rowLabel?: string;
   tableLabel?: string;
@@ -178,6 +189,7 @@ const defaultFeatures: DataGridFeatures = {
   columnVisibility: true,
   columnResizing: true,
   columnOrdering: true,
+  columnPinning: true,
   savedViews: true,
   pagination: true,
   rowSelection: true,
@@ -216,6 +228,20 @@ const removeJson = (key: string | undefined) => {
   }
 
   window.localStorage.removeItem(key);
+};
+
+const uniqueIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
+
+const normalizeColumnPinning = (
+  pinning: ColumnPinningState | undefined,
+  lockedLeftIds: string[] = [],
+): ColumnPinningState => {
+  const right = uniqueIds(pinning?.right ?? []).filter((id) => !lockedLeftIds.includes(id));
+  const left = uniqueIds([...(lockedLeftIds ?? []), ...(pinning?.left ?? [])]).filter(
+    (id) => !right.includes(id),
+  );
+
+  return { left, right };
 };
 
 const uniqueColumnValues = <TData extends object>(
@@ -435,6 +461,7 @@ export function DataGrid<TData extends object>({
   onColumnVisibilityChange,
   onColumnSizingChange,
   onColumnOrderChange,
+  onColumnPinningChange,
   onPaginationChange,
   onRowSelectionChange,
   onGroupingChange,
@@ -442,6 +469,7 @@ export function DataGrid<TData extends object>({
   onSavedViewsChange,
   onActiveViewNameChange,
   defaultGrouping = [],
+  defaultColumnPinning,
   storageKey,
   rowLabel = "rows",
   tableLabel,
@@ -466,6 +494,7 @@ export function DataGrid<TData extends object>({
           rowSelection: false,
           detailPanel: false,
           pagination: false,
+          columnPinning: false,
           grouping: true,
         }
       : {};
@@ -481,6 +510,7 @@ export function DataGrid<TData extends object>({
         ? {
             columnSizing: `${storageKey}.columnSizing`,
             columnOrder: `${storageKey}.columnOrder`,
+            columnPinning: `${storageKey}.columnPinning`,
             savedViews: `${storageKey}.savedViews`,
           }
         : undefined,
@@ -493,6 +523,28 @@ export function DataGrid<TData extends object>({
     ],
     [columnList, features.rowSelection],
   );
+  const lockedLeftColumnIds = useMemo(
+    () => (features.columnPinning && features.rowSelection ? ["select"] : []),
+    [features.columnPinning, features.rowSelection],
+  );
+  const defaultPinningState = useMemo<ColumnPinningState>(() => {
+    const configured = {
+      left: [
+        ...(defaultColumnPinning?.left ?? []),
+        ...columnList
+          .filter((column) => column.pinned === "left")
+          .map((column) => column.accessorKey),
+      ],
+      right: [
+        ...(defaultColumnPinning?.right ?? []),
+        ...columnList
+          .filter((column) => column.pinned === "right")
+          .map((column) => column.accessorKey),
+      ],
+    };
+
+    return normalizeColumnPinning(configured, lockedLeftColumnIds);
+  }, [columnList, defaultColumnPinning, lockedLeftColumnIds]);
   const columnsById = useMemo<Map<string, AnyColumnConfig<TData>>>(
     () => new Map(columnList.map((column) => [column.accessorKey, column])),
     [columnList],
@@ -517,6 +569,12 @@ export function DataGrid<TData extends object>({
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() =>
     loadJson<ColumnOrderState>(storageKeys?.columnOrder, defaultColumnOrder),
   );
+  const [columnPinning, setColumnPinning] = useState<ColumnPinningState>(() =>
+    normalizeColumnPinning(
+      loadJson<ColumnPinningState>(storageKeys?.columnPinning, defaultPinningState),
+      lockedLeftColumnIds,
+    ),
+  );
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: pageSizeOptions[1] ?? pageSizeOptions[0] ?? 50,
@@ -536,6 +594,12 @@ export function DataGrid<TData extends object>({
   const currentColumnVisibility = controlledState?.columnVisibility ?? columnVisibility;
   const currentColumnSizing = controlledState?.columnSizing ?? columnSizing;
   const currentColumnOrder = controlledState?.columnOrder ?? columnOrder;
+  const currentColumnPinning = features.columnPinning
+    ? normalizeColumnPinning(
+        controlledState?.columnPinning ?? columnPinning,
+        lockedLeftColumnIds,
+      )
+    : {};
   const currentPagination = controlledState?.pagination ?? pagination;
   const currentRowSelection = controlledState?.rowSelection ?? rowSelection;
   const currentGrouping = controlledState?.grouping ?? grouping;
@@ -585,6 +649,17 @@ export function DataGrid<TData extends object>({
       saveJson(storageKeys?.columnOrder, next);
     }
     onColumnOrderChange?.(next);
+  };
+  const emitColumnPinningChange = (updater: Updater<ColumnPinningState>) => {
+    const next = normalizeColumnPinning(
+      resolveUpdater(updater, currentColumnPinning),
+      lockedLeftColumnIds,
+    );
+    if (controlledState?.columnPinning === undefined) {
+      setColumnPinning(next);
+      saveJson(storageKeys?.columnPinning, next);
+    }
+    onColumnPinningChange?.(next);
   };
   const emitPaginationChange = (updater: Updater<PaginationState>) => {
     const next = resolveUpdater(updater, currentPagination);
@@ -665,6 +740,7 @@ export function DataGrid<TData extends object>({
               enableColumnFilter: false,
               enableHiding: false,
               enableResizing: false,
+              enablePinning: false,
               size: 44,
             } satisfies ColumnDef<TData>,
           ]
@@ -677,6 +753,7 @@ export function DataGrid<TData extends object>({
         maxSize: column.maxWidth ?? 420,
         enableHiding: features.columnVisibility,
         enableResizing: features.columnResizing,
+        enablePinning: features.columnPinning && (column.enablePinning ?? true),
         enableGrouping: features.grouping && Boolean(column.enableGrouping),
         enableGlobalFilter: true,
         filterFn: gridColumnFilterFn as FilterFn<TData>,
@@ -686,6 +763,7 @@ export function DataGrid<TData extends object>({
     ],
     [
       columnList,
+      features.columnPinning,
       features.columnResizing,
       features.columnVisibility,
       features.grouping,
@@ -720,6 +798,7 @@ export function DataGrid<TData extends object>({
       columnVisibility: features.columnVisibility ? currentColumnVisibility : {},
       columnSizing: features.columnResizing ? currentColumnSizing : {},
       columnOrder: features.columnOrdering ? currentColumnOrder : defaultColumnOrder,
+      columnPinning: features.columnPinning ? currentColumnPinning : {},
       pagination: currentPagination,
       rowSelection: currentRowSelection,
       grouping: features.grouping ? currentGrouping : [],
@@ -728,6 +807,7 @@ export function DataGrid<TData extends object>({
     getRowId,
     enableRowSelection: features.rowSelection,
     enableGrouping: features.grouping,
+    enableColumnPinning: features.columnPinning,
     enableExpanding: features.grouping,
     columnResizeMode: "onChange",
     groupedColumnMode: "remove",
@@ -737,6 +817,7 @@ export function DataGrid<TData extends object>({
     onColumnFiltersChange: emitColumnFiltersChange,
     onColumnVisibilityChange: emitColumnVisibilityChange,
     onColumnOrderChange: emitColumnOrderChange,
+    onColumnPinningChange: emitColumnPinningChange,
     onColumnSizingChange: emitColumnSizingChange,
     onPaginationChange: emitPaginationChange,
     onRowSelectionChange: emitRowSelectionChange,
@@ -866,12 +947,20 @@ export function DataGrid<TData extends object>({
     setPersistedColumnOrder([...(features.rowSelection ? ["select"] : []), ...nextIds]);
   };
 
+  const pinColumn = (columnId: string, position: false | "left" | "right") => {
+    table.getColumn(columnId)?.pin(position);
+  };
+
   const resetColumns = () => {
     emitColumnVisibilityChange({});
     emitColumnSizingChange({});
     setPersistedColumnOrder(defaultColumnOrder);
+    emitColumnPinningChange(defaultPinningState);
     if (controlledState?.columnSizing === undefined) {
       removeJson(storageKeys?.columnSizing);
+    }
+    if (controlledState?.columnPinning === undefined) {
+      removeJson(storageKeys?.columnPinning);
     }
   };
 
@@ -904,6 +993,7 @@ export function DataGrid<TData extends object>({
         columnVisibility: currentColumnVisibility,
         columnSizing: currentColumnSizing,
         columnOrder: currentColumnOrder,
+        columnPinning: currentColumnPinning,
         grouping: currentGrouping,
       },
     };
@@ -925,6 +1015,7 @@ export function DataGrid<TData extends object>({
     emitColumnVisibilityChange(view.columnVisibility);
     emitColumnSizingChange(view.columnSizing);
     setPersistedColumnOrder(view.columnOrder ?? defaultColumnOrder);
+    emitColumnPinningChange(view.columnPinning ?? defaultPinningState);
     emitGroupingChange(view.grouping ?? []);
     emitExpandedChange(defaultExpanded);
     resetPageIndex();
@@ -1253,6 +1344,38 @@ export function DataGrid<TData extends object>({
     ? 1 + pivotSummaryItems.length
     : table.getVisibleLeafColumns().length;
 
+  const getPinnedColumnStyle = (
+    column: Column<TData, unknown>,
+    options: { header?: boolean; backgroundColor?: string } = {},
+  ): CSSProperties => {
+    if (!features.columnPinning) {
+      return {};
+    }
+
+    const pinned = column.getIsPinned();
+
+    if (!pinned) {
+      return {};
+    }
+
+    const isLeftEdge = pinned === "left" && column.getIsLastColumn("left");
+    const isRightEdge = pinned === "right" && column.getIsFirstColumn("right");
+
+    return {
+      position: "sticky",
+      left: pinned === "left" ? column.getStart("left") : undefined,
+      right: pinned === "right" ? column.getAfter("right") : undefined,
+      top: options.header ? 0 : undefined,
+      zIndex: options.header ? 30 : 20,
+      backgroundColor: options.backgroundColor,
+      boxShadow: isLeftEdge
+        ? "2px 0 4px -2px rgba(15, 23, 42, 0.28)"
+        : isRightEdge
+          ? "-2px 0 4px -2px rgba(15, 23, 42, 0.28)"
+          : undefined,
+    };
+  };
+
   const renderGridLeafRow = (row: Row<TData>, measureProps?: RowMeasureProps) => (
     <tr
       key={row.id}
@@ -1281,7 +1404,12 @@ export function DataGrid<TData extends object>({
         return (
           <td
             key={cell.id}
-            style={{ width: cell.column.getSize() }}
+            style={{
+              width: cell.column.getSize(),
+              ...getPinnedColumnStyle(cell.column, {
+                backgroundColor: row.getIsSelected() ? "#eff6ff" : "#ffffff",
+              }),
+            }}
             className={`border-b border-r border-slate-100 px-3 py-2 align-middle last:border-r-0 ${
               columnConfig
                 ? getCellClasses(columnConfig, cell.getValue(), row.original)
@@ -1376,6 +1504,7 @@ export function DataGrid<TData extends object>({
           filters={toolbarFilters}
           enableColumnVisibility={features.columnVisibility}
           enableColumnOrdering={features.columnOrdering}
+          enableColumnPinning={features.columnPinning}
           enableSavedViews={features.savedViews}
           enableGrouping={features.grouping}
           columns={table
@@ -1386,6 +1515,8 @@ export function DataGrid<TData extends object>({
               label: String(column.columnDef.header ?? column.id),
               visible: column.getIsVisible(),
               canHide: column.getCanHide(),
+              pinned: column.getIsPinned(),
+              canPin: column.getCanPin(),
             }))}
           groupableColumns={groupableColumns}
           grouping={currentGrouping}
@@ -1398,6 +1529,7 @@ export function DataGrid<TData extends object>({
           }
           onColumnMove={moveColumn}
           onColumnDrop={dropColumn}
+          onColumnPin={pinColumn}
           onGroupingAdd={addGrouping}
           onGroupingRemove={removeGrouping}
           onGroupingMove={moveGrouping}
@@ -1565,7 +1697,13 @@ export function DataGrid<TData extends object>({
                                     : "none"
                                 : undefined
                             }
-                            style={{ width: header.getSize() }}
+                            style={{
+                              width: header.getSize(),
+                              ...getPinnedColumnStyle(header.column, {
+                                header: true,
+                                backgroundColor: "#f1f5f9",
+                              }),
+                            }}
                             className="relative border-r border-slate-200 px-3 py-2 font-semibold last:border-r-0"
                           >
                             {header.isPlaceholder ? null : canSort ? (

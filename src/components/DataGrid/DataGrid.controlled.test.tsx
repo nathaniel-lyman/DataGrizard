@@ -81,6 +81,40 @@ describe("DataGrid controlled/uncontrolled triad", () => {
       "ascending",
     );
   });
+
+  it("controlled column pinning emits but does not mutate internally until props change", () => {
+    const onColumnPinningChange = vi.fn();
+    const { rerender } = render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        state={{ columnPinning: { left: [], right: [] } }}
+        onColumnPinningChange={onColumnPinningChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /visible/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Pin Product left" }));
+
+    expect(onColumnPinningChange).toHaveBeenCalledWith({ left: ["product"], right: [] });
+    expect(screen.getByRole("columnheader", { name: /Product/ }).style.position).toBe("");
+
+    rerender(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        state={{ columnPinning: { left: ["product"], right: [] } }}
+        onColumnPinningChange={onColumnPinningChange}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /Product/ })).toHaveStyle({
+      position: "sticky",
+    });
+  });
 });
 
 describe("DataGrid scoped localStorage persistence", () => {
@@ -92,6 +126,26 @@ describe("DataGrid scoped localStorage persistence", () => {
 
     expect(window.localStorage.getItem("grid-A.savedViews")).toContain("My view");
     expect(window.localStorage.getItem("savedViews")).toBeNull();
+  });
+
+  it("persists column pinning under the scoped key", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        storageKey="grid-A"
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /visible/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Pin Product left" }));
+
+    expect(window.localStorage.getItem("grid-A.columnPinning")).toBe(
+      JSON.stringify({ left: ["product"], right: [] }),
+    );
+    expect(window.localStorage.getItem("columnPinning")).toBeNull();
   });
 
   it("rehydrates saved views on remount from the scoped key", () => {

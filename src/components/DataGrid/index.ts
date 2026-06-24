@@ -1,6 +1,7 @@
 export { DataGrid } from "./DataGrid";
 export type {
   DataGridFeatures,
+  DataGridColumnPinningState,
   DataGridControlledState,
   DataGridExpandedState,
   DataGridGroupingState,
