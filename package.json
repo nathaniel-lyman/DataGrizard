@@ -53,5 +53,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.14.3"
   }
 }

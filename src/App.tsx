@@ -76,6 +76,7 @@ function App() {
           viewNamePlaceholder="Pricing review"
           getRowId={(row) => row.item_id}
           getRowLabel={(row) => row.item_id}
+          virtualizeRows
           renderDetailPanel={(item) => <RetailDetailPanel item={item} />}
         />
       </section>

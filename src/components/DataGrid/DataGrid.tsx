@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   flexRender,
   getCoreRowModel,
@@ -43,6 +44,13 @@ type AnyColumnConfig<TData> = {
   getStatusClassName?: (value: unknown, row: TData) => string;
   statusStyles?: Record<string, string>;
   conditionalFormats?: { when: (value: unknown, row: TData) => boolean; className: string }[];
+};
+
+// Props attached to a row when virtualization is active so @tanstack/react-virtual
+// can measure its real height. Undefined when not virtualizing.
+type RowMeasureProps = {
+  ref: (node: HTMLTableRowElement | null) => void;
+  "data-index": number;
 };
 import {
   formatCurrency,
@@ -154,6 +162,10 @@ export type DataGridProps<TData extends object> = {
   searchPlaceholder?: string;
   viewNamePlaceholder?: string;
   pageSizeOptions?: number[];
+  /** Window the rows for large datasets (opt-in). Best with pagination off. */
+  virtualizeRows?: boolean;
+  /** Estimated row height in px used to seed the virtualizer. */
+  estimatedRowHeight?: number;
   renderDetailPanel?: (row: TData | null, controls: { close: () => void }) => ReactNode;
   getRowId?: (row: TData, index: number, parent?: Row<TData>) => string;
   getRowLabel?: (row: TData) => string;
@@ -438,6 +450,8 @@ export function DataGrid<TData extends object>({
   searchPlaceholder = "Search rows...",
   viewNamePlaceholder = "Analysis view",
   pageSizeOptions = [25, 50, 100, 250],
+  virtualizeRows = false,
+  estimatedRowHeight = 36,
   renderDetailPanel,
   getRowId,
   getRowLabel,
@@ -511,6 +525,7 @@ export function DataGrid<TData extends object>({
   const [grouping, setGrouping] = useState<GroupingState>(defaultGrouping);
   const [expanded, setExpanded] = useState<ExpandedState>(defaultExpanded);
   const [activeRow, setActiveRow] = useState<TData | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [savedViews, setSavedViews] = useState<DataGridSavedViews>(() =>
     loadJson<DataGridSavedViews>(storageKeys?.savedViews, {}),
   );
@@ -1026,7 +1041,7 @@ export function DataGrid<TData extends object>({
     return table.getColumn(item.columnId)?.getIsVisible() ?? true;
   });
 
-  const renderGroupRow = (row: Row<TData>) => {
+  const renderGroupRow = (row: Row<TData>, measureProps?: RowMeasureProps) => {
     const groupContext = getGroupSummaryContext(row);
     const { groupColumnLabel, groupValueLabel, renderedGroupValue } = getGroupLabels(row);
     const leafRows = groupContext.rows;
@@ -1034,7 +1049,12 @@ export function DataGrid<TData extends object>({
     const summaryItemsForGroup = groupSummaryItems ?? summaryItems;
 
     return (
-      <tr key={row.id} className="bg-slate-50">
+      <tr
+        key={row.id}
+        ref={measureProps?.ref}
+        data-index={measureProps?.["data-index"]}
+        className="bg-slate-50"
+      >
         <td
           colSpan={visibleCellCount}
           className="border-b border-slate-200 p-0"
@@ -1086,7 +1106,7 @@ export function DataGrid<TData extends object>({
     );
   };
 
-  const renderPivotRow = (row: Row<TData>) => {
+  const renderPivotRow = (row: Row<TData>, measureProps?: RowMeasureProps) => {
     const isGroupedRow = row.getIsGrouped();
     const canExpandPivotGroup = isGroupedRow && row.depth < currentGrouping.length - 1;
     const rowValues = isGroupedRow
@@ -1108,6 +1128,8 @@ export function DataGrid<TData extends object>({
     return (
       <tr
         key={row.id}
+        ref={measureProps?.ref}
+        data-index={measureProps?.["data-index"]}
         role={isActionablePivotRow ? "button" : undefined}
         tabIndex={isActionablePivotRow ? 0 : undefined}
         onClick={() => {
@@ -1219,6 +1241,100 @@ export function DataGrid<TData extends object>({
         ? table.getRowModel().rows
         : flattenExpandedRows(table.getExpandedRowModel().rows)
     : table.getRowModel().rows;
+
+  const rowVirtualizer = useVirtualizer({
+    count: visibleRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 12,
+    enabled: virtualizeRows,
+  });
+  const bodyColSpan = isPivotLayout
+    ? 1 + pivotSummaryItems.length
+    : table.getVisibleLeafColumns().length;
+
+  const renderGridLeafRow = (row: Row<TData>, measureProps?: RowMeasureProps) => (
+    <tr
+      key={row.id}
+      ref={measureProps?.ref}
+      data-index={measureProps?.["data-index"]}
+      role={hasLeafRowAction ? "button" : undefined}
+      tabIndex={hasLeafRowAction ? 0 : undefined}
+      onClick={() => handleRowClick(row.original)}
+      onKeyDown={(event) => {
+        if (hasLeafRowAction && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          handleRowClick(row.original);
+        }
+      }}
+      className={`${hasLeafRowAction ? "cursor-pointer" : ""} border-b border-slate-100 transition ${
+        row.getIsSelected() ? "bg-blue-50" : "bg-white hover:bg-slate-50"
+      } ${activeRow === row.original ? "ring-2 ring-inset ring-slate-400" : ""} ${
+        hasLeafRowAction
+          ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400"
+          : ""
+      } ${getRowClassName?.(row.original) ?? ""}`}
+    >
+      {row.getVisibleCells().map((cell) => {
+        const columnConfig = columnsById.get(cell.column.id);
+
+        return (
+          <td
+            key={cell.id}
+            style={{ width: cell.column.getSize() }}
+            className={`border-b border-r border-slate-100 px-3 py-2 align-middle last:border-r-0 ${
+              columnConfig
+                ? getCellClasses(columnConfig, cell.getValue(), row.original)
+                : "text-center"
+            }`}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </td>
+        );
+      })}
+    </tr>
+  );
+
+  const renderVisibleRow = (row: Row<TData>, measureProps?: RowMeasureProps) => {
+    if (isPivotLayout) {
+      return renderPivotRow(row, measureProps);
+    }
+    return row.getIsGrouped()
+      ? renderGroupRow(row, measureProps)
+      : renderGridLeafRow(row, measureProps);
+  };
+
+  const renderBodyRows = () => {
+    if (!virtualizeRows) {
+      return visibleRows.map((row) => renderVisibleRow(row));
+    }
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    const totalSize = rowVirtualizer.getTotalSize();
+    const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+    const paddingBottom =
+      virtualItems.length > 0 ? totalSize - virtualItems[virtualItems.length - 1].end : 0;
+
+    return (
+      <>
+        {paddingTop > 0 ? (
+          <tr aria-hidden="true">
+            <td colSpan={bodyColSpan} style={{ height: paddingTop, padding: 0, border: 0 }} />
+          </tr>
+        ) : null}
+        {virtualItems.map((virtualItem) =>
+          renderVisibleRow(visibleRows[virtualItem.index], {
+            ref: rowVirtualizer.measureElement,
+            "data-index": virtualItem.index,
+          }),
+        )}
+        {paddingBottom > 0 ? (
+          <tr aria-hidden="true">
+            <td colSpan={bodyColSpan} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+          </tr>
+        ) : null}
+      </>
+    );
+  };
   const overlay: ReactNode =
     error !== undefined && error !== null ? (
       <div className="flex max-w-sm flex-col items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
@@ -1367,7 +1483,7 @@ export function DataGrid<TData extends object>({
           </div>
         ) : null}
 
-        <div className="relative min-h-0 flex-1 overflow-auto">
+        <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto">
           {overlay ? (
             <div
               role={error ? "alert" : "status"}
@@ -1404,7 +1520,7 @@ export function DataGrid<TData extends object>({
                     ))}
                   </tr>
                 </thead>
-                <tbody>{visibleRows.map((row) => renderPivotRow(row))}</tbody>
+                <tbody>{renderBodyRows()}</tbody>
                 <tfoot className="bg-cyan-100 text-slate-950 shadow-[0_-1px_0_0_#38bdf8]">
                   <tr>
                     <td className="border-r border-cyan-200 px-2 py-1.5 font-bold">
@@ -1516,51 +1632,7 @@ export function DataGrid<TData extends object>({
                     </tr>
                   ))}
                 </thead>
-                <tbody>
-                  {visibleRows.map((row) =>
-                    row.getIsGrouped() ? (
-                      renderGroupRow(row)
-                    ) : (
-                      <tr
-                        key={row.id}
-                        role={hasLeafRowAction ? "button" : undefined}
-                        tabIndex={hasLeafRowAction ? 0 : undefined}
-                        onClick={() => handleRowClick(row.original)}
-                        onKeyDown={(event) => {
-                          if (hasLeafRowAction && (event.key === "Enter" || event.key === " ")) {
-                            event.preventDefault();
-                            handleRowClick(row.original);
-                          }
-                        }}
-                        className={`${hasLeafRowAction ? "cursor-pointer" : ""} border-b border-slate-100 transition ${
-                          row.getIsSelected() ? "bg-blue-50" : "bg-white hover:bg-slate-50"
-                        } ${activeRow === row.original ? "ring-2 ring-inset ring-slate-400" : ""} ${
-                          hasLeafRowAction
-                            ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400"
-                            : ""
-                        } ${getRowClassName?.(row.original) ?? ""}`}
-                      >
-                        {row.getVisibleCells().map((cell) => {
-                          const columnConfig = columnsById.get(cell.column.id);
-
-                          return (
-                            <td
-                              key={cell.id}
-                              style={{ width: cell.column.getSize() }}
-                              className={`border-b border-r border-slate-100 px-3 py-2 align-middle last:border-r-0 ${
-                                columnConfig
-                                  ? getCellClasses(columnConfig, cell.getValue(), row.original)
-                                  : "text-center"
-                              }`}
-                            >
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ),
-                  )}
-                </tbody>
+                <tbody>{renderBodyRows()}</tbody>
               </>
             )}
           </table>
