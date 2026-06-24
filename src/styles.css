@@ -1,0 +1,11 @@
+/*
+ * Precompiled stylesheet for the DataGrid package (built to dist/datagrid.css).
+ *
+ * Includes Tailwind's preflight so the component's `border`, spacing, and form
+ * resets work without any Tailwind setup on the consumer side. If you already
+ * use Tailwind, prefer adding the package to your `content` globs instead of
+ * importing this file, to avoid shipping preflight twice. See README.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

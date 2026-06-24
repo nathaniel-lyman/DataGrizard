@@ -1,0 +1,253 @@
+import type { DataGridSummaryItem } from "../components/DataGrid";
+import type { GridColumnConfig, GridFilterConfig } from "../types/grid";
+import {
+  formatCurrency,
+  formatNumber,
+  formatPercent,
+  formatSignedPercent,
+  formatStatusLabel,
+} from "../utils/formatters";
+
+export type RecommendationStatus =
+  | "approved"
+  | "pending"
+  | "rejected"
+  | "investigate";
+
+export type RetailItem = {
+  item_id: string;
+  item_name: string;
+  department: string;
+  category: string;
+  brand: string;
+  sales: number;
+  units: number;
+  margin_rate: number;
+  price_gap: number;
+  recommendation_status: RecommendationStatus;
+};
+
+const departments = ["Grocery", "Apparel", "Home", "Electronics", "Beauty", "Sporting Goods"] as const;
+
+const categoriesByDepartment: Record<(typeof departments)[number], string[]> = {
+  Grocery: ["Pantry", "Frozen", "Beverage", "Produce"],
+  Apparel: ["Men", "Women", "Kids", "Footwear"],
+  Home: ["Kitchen", "Bedding", "Storage", "Decor"],
+  Electronics: ["Audio", "Mobile", "Computing", "Accessories"],
+  Beauty: ["Skin Care", "Hair Care", "Cosmetics", "Fragrance"],
+  "Sporting Goods": ["Fitness", "Outdoor", "Team Sports", "Cycling"],
+};
+
+const brands = [
+  "Northline",
+  "Crest & Co.",
+  "Market Row",
+  "BrightGoods",
+  "Everyday Supply",
+  "Stonewell",
+  "Urban Peak",
+  "Hearthmark",
+] as const;
+
+const itemNouns = [
+  "Assortment",
+  "Pack",
+  "Kit",
+  "Bundle",
+  "Refill",
+  "Set",
+  "Series",
+  "Collection",
+] as const;
+
+const statuses: RecommendationStatus[] = ["approved", "pending", "rejected", "investigate"];
+
+const seededRandom = (seed: number) => {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+};
+
+const pick = <T,>(values: readonly T[], seed: number) =>
+  values[Math.floor(seededRandom(seed) * values.length)];
+
+const statusStyles: Record<RecommendationStatus, string> = {
+  approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  pending: "border-amber-200 bg-amber-50 text-amber-700",
+  rejected: "border-rose-200 bg-rose-50 text-rose-700",
+  investigate: "border-indigo-200 bg-indigo-50 text-indigo-700",
+};
+
+export const retailColumns: GridColumnConfig<RetailItem>[] = [
+  { accessorKey: "item_id", header: "Item ID", dataType: "text", width: 112 },
+  { accessorKey: "item_name", header: "Item Name", dataType: "text", width: 240 },
+  {
+    accessorKey: "department",
+    header: "Department",
+    dataType: "text",
+    width: 150,
+    enableGrouping: true,
+  },
+  {
+    accessorKey: "category",
+    header: "Category",
+    dataType: "text",
+    width: 142,
+    enableGrouping: true,
+  },
+  {
+    accessorKey: "brand",
+    header: "Brand",
+    dataType: "text",
+    width: 150,
+    enableGrouping: true,
+  },
+  { accessorKey: "sales", header: "Sales", dataType: "currency", width: 128 },
+  { accessorKey: "units", header: "Units", dataType: "number", width: 104 },
+  {
+    accessorKey: "margin_rate",
+    header: "Margin",
+    dataType: "percent",
+    width: 112,
+    getCellClassName: (value) => (Number(value) < 0.2 ? "font-semibold text-amber-700" : ""),
+  },
+  {
+    accessorKey: "price_gap",
+    header: "Price Gap",
+    dataType: "percent",
+    width: 116,
+    formatValue: (value) => formatSignedPercent(Number(value)),
+    getCellClassName: (value) => (Number(value) < 0 ? "font-semibold text-rose-700" : ""),
+  },
+  {
+    accessorKey: "recommendation_status",
+    header: "Status",
+    dataType: "status",
+    width: 150,
+    enableGrouping: true,
+    formatGroupingValue: (value) => formatStatusLabel(String(value)),
+    getStatusClassName: (value) => statusStyles[value as RecommendationStatus],
+  },
+];
+
+export const retailFilters: GridFilterConfig<RetailItem>[] = [
+  { accessorKey: "department", label: "Department", filterType: "multiSelect" },
+  { accessorKey: "category", label: "Category" },
+  { accessorKey: "recommendation_status", label: "Status", filterType: "multiSelect" },
+  { accessorKey: "sales", label: "Sales", filterType: "range", min: 0, step: 1000 },
+];
+
+const sum = (rows: RetailItem[], key: "sales" | "units") =>
+  rows.reduce((total, row) => total + row[key], 0);
+
+const average = (rows: RetailItem[], key: "margin_rate" | "price_gap") =>
+  rows.length === 0 ? 0 : rows.reduce((total, row) => total + row[key], 0) / rows.length;
+
+export const retailSummaryItems: DataGridSummaryItem<RetailItem>[] = [
+  {
+    id: "sales",
+    columnId: "sales",
+    label: "Sales",
+    value: ({ rows }) => formatCurrency(sum(rows, "sales")),
+    description: ({ scope }) => (scope === "selected" ? "Selected items" : "Filtered items"),
+  },
+  {
+    id: "units",
+    columnId: "units",
+    label: "Units",
+    value: ({ rows }) => formatNumber(sum(rows, "units")),
+  },
+  {
+    id: "margin",
+    columnId: "margin_rate",
+    label: "Avg margin",
+    value: ({ rows }) => formatPercent(average(rows, "margin_rate")),
+  },
+  {
+    id: "price_gap",
+    columnId: "price_gap",
+    label: "Avg price gap",
+    value: ({ rows }) => formatSignedPercent(average(rows, "price_gap")),
+  },
+  {
+    id: "status_mix",
+    columnId: "recommendation_status",
+    label: "Top status",
+    value: ({ rows }) => {
+      const counts = rows.reduce<Record<string, number>>((totals, row) => {
+        totals[row.recommendation_status] = (totals[row.recommendation_status] ?? 0) + 1;
+        return totals;
+      }, {});
+      const topStatus = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+      return topStatus ? formatStatusLabel(topStatus[0]) : "None";
+    },
+    description: ({ rows }) => `${rows.length} items in scope`,
+  },
+];
+
+export const retailGroupSummaryItems: DataGridSummaryItem<RetailItem>[] = [
+  {
+    id: "sales",
+    columnId: "sales",
+    label: "Sum of Sales",
+    value: ({ rows }) => formatCurrency(sum(rows, "sales")),
+  },
+  {
+    id: "units",
+    columnId: "units",
+    label: "Sum of Units",
+    value: ({ rows }) => formatNumber(sum(rows, "units")),
+  },
+  {
+    id: "margin",
+    columnId: "margin_rate",
+    label: "Avg Margin",
+    value: ({ rows }) => formatPercent(average(rows, "margin_rate")),
+  },
+  {
+    id: "price_gap",
+    columnId: "price_gap",
+    label: "Avg Price Gap",
+    value: ({ rows }) => formatSignedPercent(average(rows, "price_gap")),
+  },
+  {
+    id: "status_mix",
+    columnId: "recommendation_status",
+    label: "Top Status",
+    value: ({ rows }) => {
+      const counts = rows.reduce<Record<string, number>>((totals, row) => {
+        totals[row.recommendation_status] = (totals[row.recommendation_status] ?? 0) + 1;
+        return totals;
+      }, {});
+      const topStatus = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+      return topStatus ? formatStatusLabel(topStatus[0]) : "None";
+    },
+  },
+];
+
+export const mockRetailData: RetailItem[] = Array.from({ length: 500 }, (_, index) => {
+  const rowNumber = index + 1;
+  const department = pick(departments, rowNumber * 3);
+  const category = pick(categoriesByDepartment[department], rowNumber * 7);
+  const brand = pick(brands, rowNumber * 11);
+  const status = pick(statuses, rowNumber * 17);
+  const sales = Math.round(2400 + seededRandom(rowNumber * 19) * 78000);
+  const units = Math.round(35 + seededRandom(rowNumber * 23) * 4200);
+  const marginRate = Number((0.12 + seededRandom(rowNumber * 29) * 0.38).toFixed(3));
+  const priceGap = Number((-0.18 + seededRandom(rowNumber * 31) * 0.34).toFixed(3));
+  const itemNoun = pick(itemNouns, rowNumber * 37);
+
+  return {
+    item_id: `SKU-${String(100000 + rowNumber).slice(1)}`,
+    item_name: `${brand} ${category} ${itemNoun}`,
+    department,
+    category,
+    brand,
+    sales,
+    units,
+    margin_rate: marginRate,
+    price_gap: priceGap,
+    recommendation_status: status,
+  };
+});

@@ -1,0 +1,57 @@
+{
+  "name": "datagrizard",
+  "version": "0.1.0",
+  "description": "A reusable, domain-neutral analytical DataGrid component for React, built on TanStack Table v8. Grid + pivot layouts, grouping, saved views, summaries, and a controlled/uncontrolled hybrid API.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "main": "./dist/datagrid.cjs",
+  "module": "./dist/datagrid.js",
+  "types": "./dist/types/components/DataGrid/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/components/DataGrid/index.d.ts",
+      "import": "./dist/datagrid.js",
+      "require": "./dist/datagrid.cjs"
+    },
+    "./styles.css": "./dist/datagrid.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "build:lib": "vite build --config vite.lib.config.ts",
+    "build:types": "tsc -p tsconfig.lib.json",
+    "build:css": "tailwindcss -c tailwind.lib.config.js -i src/styles.css -o dist/datagrid.css --minify",
+    "prebuild:package": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:package": "npm run build:lib && npm run build:types && npm run build:css",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.4.49",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^4.1.9"
+  }
+}

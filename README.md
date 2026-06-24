@@ -1,0 +1,256 @@
+# DataGrizard
+
+A reusable, **domain-neutral** analytical data grid for React, built on
+[TanStack Table v8](https://tanstack.com/table/v8). One component, two layouts
+(**grid** and Excel-style **pivot**), with grouping, saved views, summaries,
+column management, conditional formatting, and a fully controllable state
+surface.
+
+The product is the `DataGrid` component. The retail "Recommendation Workbench"
+screen in `src/App.tsx` is only a demo consumer that exercises the public API.
+
+---
+
+## Install
+
+```bash
+npm install datagrizard
+```
+
+`react`, `react-dom`, and `@tanstack/react-table` are **peer dependencies** —
+install them in your app if you haven't already:
+
+```bash
+npm install react react-dom @tanstack/react-table
+```
+
+## Styling
+
+The component is styled with Tailwind utility classes. Pick **one** of:
+
+1. **You already use Tailwind (recommended).** Add the package to your
+   `content` globs so your build emits the classes the grid uses:
+
+   ```js
+   // tailwind.config.js
+   export default {
+     content: [
+       "./src/**/*.{ts,tsx}",
+       "./node_modules/datagrizard/dist/**/*.{js,cjs}",
+     ],
+   };
+   ```
+
+2. **You don't use Tailwind.** Import the precompiled stylesheet once:
+
+   ```ts
+   import "datagrizard/styles.css";
+   ```
+
+   > This file includes Tailwind's preflight (a CSS reset). If you already use
+   > Tailwind, prefer option 1 to avoid shipping preflight twice.
+
+**Consumer-supplied class names** (e.g. `statusStyles`, `conditionalFormats`, or
+`getRowClassName` returning `text-emerald-700`) are **your** classes — they must
+be reachable by your own Tailwind build (option 1) or already present in your
+CSS. The shipped `styles.css` only contains the grid's own classes.
+
+---
+
+## Quick start (grid)
+
+```tsx
+import { DataGrid, type GridColumnConfig } from "datagrizard";
+
+type Product = {
+  id: string;
+  name: string;
+  category: string;
+  revenue: number;
+  margin: number;
+};
+
+const columns: GridColumnConfig<Product>[] = [
+  { accessorKey: "name", header: "Product", dataType: "text" },
+  { accessorKey: "category", header: "Category", dataType: "text", enableGrouping: true },
+  { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+  {
+    accessorKey: "margin",
+    header: "Margin",
+    dataType: "percent",
+    conditionalFormats: [{ when: (value) => value < 0.2, className: "text-amber-700 font-semibold" }],
+  },
+];
+
+export function Demo({ data }: { data: Product[] }) {
+  return (
+    <div className="h-[600px]">
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(row) => row.id}
+        rowLabel="products"
+        tableLabel="Product performance"
+        storageKey="product-grid"
+        renderDetailPanel={(row, { close }) =>
+          row ? (
+            <aside className="w-72 border-l p-4">
+              <button onClick={close}>Close</button>
+              <h2>{row.name}</h2>
+            </aside>
+          ) : null
+        }
+      />
+    </div>
+  );
+}
+```
+
+`getRowId` is strongly recommended — stable IDs keep row selection and the
+active detail row correct across data updates.
+
+## Pivot layout
+
+```tsx
+<DataGrid
+  data={data}
+  columns={columns}
+  layoutMode="pivot"
+  defaultGrouping={["category"]}
+  summaryItems={[
+    { id: "rev", columnId: "revenue", label: "Revenue", value: ({ rows }) =>
+        rows.reduce((t, r) => t + r.revenue, 0) },
+  ]}
+  groupSummaryItems={/* shown inside each pivot row + grand total */ ...}
+/>
+```
+
+Pivot mode renders an Excel-style table (Row Labels column, value columns from
+`summaryItems`, a Grand Total footer) and **forces grouping on** while disabling
+`rowSelection`, `detailPanel`, and `pagination`. Column visibility still controls
+which value columns appear. You can re-enable disabled features via `features`,
+but it isn't recommended.
+
+---
+
+## Column configuration
+
+```ts
+type GridColumnConfig<TData> = {
+  accessorKey: keyof TData & string;
+  header: string;
+  dataType: "text" | "number" | "currency" | "percent" | "status";
+  width?: number; minWidth?: number; maxWidth?: number;
+  enableGrouping?: boolean;
+  // value is typed as TData[accessorKey] — not `unknown`.
+  formatValue?: (value, row) => ReactNode;
+  getCellClassName?: (value, row) => string;
+  getStatusClassName?: (value, row) => string;
+  statusStyles?: Record<string, string>;          // declarative status pills
+  conditionalFormats?: { when: (value, row) => boolean; className: string }[];
+  formatGroupingValue?: (value, rows) => ReactNode;
+  getGroupingValue?: (row) => unknown;
+};
+```
+
+- `dataType` drives default formatting and alignment. `number`/`currency`/`percent`
+  right-align with `tabular-nums`; non-finite / blank values render empty (no
+  `$NaN` or fake `$0`).
+- `status` renders a pill. Style it declaratively with `statusStyles`
+  (`{ active: "bg-emerald-50 text-emerald-700 border-emerald-200" }`) or
+  imperatively with `getStatusClassName`.
+- `conditionalFormats` rules compose — every matching rule contributes its class.
+
+## Filters
+
+```ts
+filters={[
+  { accessorKey: "category", label: "Category" },                       // select (exact match)
+  { accessorKey: "brand",    label: "Brand", filterType: "multiSelect" },
+  { accessorKey: "revenue",  label: "Revenue", filterType: "range" },   // numeric min/max
+]}
+```
+
+Select filters use **exact** matching (no substring leakage). Options default to
+the distinct column values, or pass `options`. Global search matches the
+**formatted** text users see (`$1,200`, `12.0%`, `In Progress`) as well as raw
+values.
+
+## Summaries
+
+`summaryItems` render a summary bar (grid mode). `groupSummaryItems` render inside
+group rows and pivot rows/footer. Each item's `value`/`description` is a callback
+receiving `{ rows, filteredRows, selectedRows, allRows, scope }`. With
+`summarySelectionMode="auto"` (default) the scope flips from filtered to selected
+once any row is selected. Selected scope is intersected with the active filter.
+
+## Controlled / uncontrolled
+
+Every state slice is independently controllable. Omit `state.X` to let the grid
+manage it internally; provide `state.X` + `onXChange` to control it:
+
+```tsx
+const [sorting, setSorting] = useState([]);
+<DataGrid state={{ sorting }} onSortingChange={setSorting} ... />
+```
+
+Controllable slices: `sorting`, `globalFilter`, `columnFilters`,
+`columnVisibility`, `columnSizing`, `columnOrder`, `pagination`, `rowSelection`,
+`grouping`, `expanded`, `savedViews`, `activeViewName`. When a slice is
+controlled, the grid never writes it to `localStorage` — persistence is yours.
+
+## Persistence
+
+Pass `storageKey` to persist exactly three slices under scoped keys:
+`${storageKey}.columnSizing`, `${storageKey}.columnOrder`, `${storageKey}.savedViews`.
+Nothing else is persisted, and two grids with different keys never collide.
+
+## Internationalization
+
+```tsx
+<DataGrid locale="de-DE" currency="EUR" ... />
+```
+
+Defaults to `en-US` / `USD`. Applies to cell formatting and the searchable text.
+
+## Accessibility
+
+- Sortable headers expose `aria-sort`; multi-sort via Shift-click with priority
+  badges and a Clear-sort control.
+- Rows with a click/detail action are keyboard-operable (Enter/Space) and focusable.
+- Column resize handles are keyboard-operable (Arrow keys to resize, Enter/Home to reset).
+- The Columns menu and multi-select filters close on Escape and outside click.
+- `tableLabel` renders a visually-hidden `<caption>` as the table's accessible name.
+
+---
+
+## Feature flags & layout modes
+
+```ts
+features={{ pagination: false, rowSelection: false /* … */ }}
+```
+
+| feature           | grid default | pivot default |
+| ----------------- | ------------ | ------------- |
+| `columnVisibility`| ✅           | ✅            |
+| `columnResizing`  | ✅           | ✅            |
+| `columnOrdering`  | ✅           | ✅            |
+| `savedViews`      | ✅           | ✅            |
+| `grouping`        | ✅           | ✅ (forced)   |
+| `summaries`       | ✅           | ✅            |
+| `pagination`      | ✅           | ❌            |
+| `rowSelection`    | ✅           | ❌            |
+| `detailPanel`     | ✅           | ❌            |
+
+## Building from source
+
+```bash
+npm run dev            # demo app at http://127.0.0.1:5173/
+npm test               # vitest
+npm run build          # type-check + build the demo app
+npm run build:package  # build the distributable library (dist/: ESM, CJS, .d.ts, CSS)
+```
+
+## License
+
+MIT
