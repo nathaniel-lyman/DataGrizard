@@ -64,7 +64,27 @@ import {
   type FormatOptions,
 } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
-import { ChevronDownIcon, MinusIcon, PlusIcon, SortIcon } from "./icons";
+import { MinusIcon, PlusIcon, SortIcon } from "./icons";
+import {
+  PIVOT_ROW_LABEL_COLUMN_ID,
+  materializePivot,
+  type DataGridPivotCellContext,
+  type DataGridPivotColumnAxis,
+  type DataGridPivotConfig,
+  type DataGridPivotMeasure,
+  type DataGridPivotPaginationMode,
+  type DataGridPivotSelectionMode,
+  type DataGridPivotState,
+  type PivotGroupPathSegment,
+  type PivotRow,
+  type PivotRowKind,
+} from "./pivot";
+
+type PivotMeasureColumnMeta = {
+  kind?: "pivotMeasure";
+  columnPath?: Array<{ label?: ReactNode }>;
+  totalLevel?: "subtotal" | "grandTotal";
+};
 
 export type DataGridFeatures = {
   toolbar: boolean;
@@ -119,6 +139,7 @@ export type DataGridSavedView = {
   columnOrder?: ColumnOrderState;
   columnPinning?: ColumnPinningState;
   grouping?: GroupingState;
+  pivot?: DataGridPivotState;
 };
 
 export type DataGridSavedViews = Record<string, DataGridSavedView>;
@@ -135,6 +156,7 @@ export type DataGridControlledState = {
   rowSelection?: RowSelectionState;
   grouping?: GroupingState;
   expanded?: ExpandedState;
+  pivot?: DataGridPivotState;
   savedViews?: DataGridSavedViews;
   activeViewName?: string;
 };
@@ -143,6 +165,7 @@ export type DataGridProps<TData extends object> = {
   data: TData[];
   columns: GridColumnConfig<TData>[];
   layoutMode?: DataGridLayoutMode;
+  pivot?: DataGridPivotConfig<TData>;
   filters?: GridFilterConfig<TData>[];
   summaryItems?: DataGridSummaryItem<TData>[];
   groupSummaryItems?: DataGridSummaryItem<TData>[];
@@ -164,6 +187,7 @@ export type DataGridProps<TData extends object> = {
   onRowSelectionChange?: (rowSelection: RowSelectionState) => void;
   onGroupingChange?: (grouping: GroupingState) => void;
   onExpandedChange?: (expanded: ExpandedState) => void;
+  onPivotChange?: (pivot: DataGridPivotState) => void;
   onSavedViewsChange?: (savedViews: DataGridSavedViews) => void;
   onActiveViewNameChange?: (activeViewName: string) => void;
   defaultGrouping?: GroupingState;
@@ -254,6 +278,41 @@ const uniqueColumnValues = <TData extends object>(
   data: TData[],
   key: Extract<keyof TData, string>,
 ) => Array.from(new Set(data.map((row) => String(row[key] ?? "")))).filter(Boolean).sort();
+
+const isPivotRow = <TData extends object>(row: TData | PivotRow<TData>): row is PivotRow<TData> =>
+  "__pivot" in row && row.__pivot === true;
+
+const isGeneratedPivotColumnId = (columnId: string) =>
+  columnId === PIVOT_ROW_LABEL_COLUMN_ID || columnId.startsWith("measure:");
+
+const reactNodeToText = (value: ReactNode) => {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  return "";
+};
+
+const getColumnControlLabel = <TData extends object>(
+  column: Column<TData | PivotRow<TData>, unknown>,
+) => {
+  const label = String(column.columnDef.header ?? column.id);
+  const meta = column.columnDef.meta as PivotMeasureColumnMeta | undefined;
+  if (meta?.kind !== "pivotMeasure") {
+    return label;
+  }
+
+  const pathLabel = meta.columnPath?.map((segment) => reactNodeToText(segment.label)).filter(Boolean);
+  if (meta.totalLevel === "grandTotal") {
+    return `Grand Total ${label}`;
+  }
+  if (meta.totalLevel === "subtotal") {
+    return `${pathLabel?.join(" / ") || "Subtotal"} ${label}`;
+  }
+  if (pathLabel?.length) {
+    return `${pathLabel.join(" / ")} ${label}`;
+  }
+  return label;
+};
 
 // Unified column filter: exact match for a string filter value (select),
 // membership for an array (multi-select), and numeric bounds for an object
@@ -419,21 +478,6 @@ const flattenExpandedRows = <TData extends object>(rows: Row<TData>[]): Row<TDat
       : [row],
   );
 
-const flattenPivotRows = <TData extends object>(
-  rows: Row<TData>[],
-  groupingDepth: number,
-): Row<TData>[] =>
-  rows.flatMap((row) => {
-    if (!row.getIsGrouped()) {
-      return groupingDepth === 0 ? [row] : [];
-    }
-
-    const shouldRenderChildren = row.getIsExpanded() && row.depth < groupingDepth - 1;
-    return shouldRenderChildren
-      ? [row, ...flattenPivotRows(row.subRows, groupingDepth)]
-      : [row];
-  });
-
 const collectExpandableGroupIds = <TData extends object>(
   rows: Row<TData>[],
   groupingDepth: number,
@@ -451,6 +495,7 @@ export function DataGrid<TData extends object>({
   data,
   columns,
   layoutMode = "grid",
+  pivot: pivotConfig,
   filters = [],
   summaryItems = [],
   groupSummaryItems,
@@ -472,6 +517,7 @@ export function DataGrid<TData extends object>({
   onRowSelectionChange,
   onGroupingChange,
   onExpandedChange,
+  onPivotChange,
   onSavedViewsChange,
   onActiveViewNameChange,
   defaultGrouping = [],
@@ -497,10 +543,6 @@ export function DataGrid<TData extends object>({
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
     isPivotLayout
       ? {
-          rowSelection: false,
-          detailPanel: false,
-          pagination: false,
-          columnPinning: false,
           grouping: true,
         }
       : {};
@@ -509,6 +551,34 @@ export function DataGrid<TData extends object>({
   const defaultExpanded = useMemo<ExpandedState>(
     () => (isPivotLayout ? true : {}),
     [isPivotLayout],
+  );
+  const pivotMeasureIds = useMemo(
+    () =>
+      (pivotConfig?.measures?.length
+        ? pivotConfig.measures
+        : groupSummaryItems ?? summaryItems
+      ).map((item) => item.id),
+    [groupSummaryItems, pivotConfig?.measures, summaryItems],
+  );
+  const defaultPivotState = useMemo<DataGridPivotState>(
+    () => ({
+      rows: pivotConfig?.rows ?? defaultGrouping,
+      columns: pivotConfig?.columns,
+      measures: pivotMeasureIds,
+      expanded: pivotConfig?.defaultState?.expanded ?? defaultExpanded,
+      showGrandTotals: pivotConfig?.defaultState?.showGrandTotals ?? true,
+      showSubtotals: pivotConfig?.defaultState?.showSubtotals ?? true,
+      paginationMode: pivotConfig?.defaultState?.paginationMode ?? "topLevelGroups",
+      ...pivotConfig?.defaultState,
+    }),
+    [
+      defaultExpanded,
+      defaultGrouping,
+      pivotConfig?.columns,
+      pivotConfig?.defaultState,
+      pivotConfig?.rows,
+      pivotMeasureIds,
+    ],
   );
   const storageKeys = useMemo(
     () =>
@@ -525,9 +595,11 @@ export function DataGrid<TData extends object>({
   const defaultColumnOrder = useMemo<ColumnOrderState>(
     () => [
       ...(features.rowSelection ? ["select"] : []),
-      ...columnList.map((column) => column.accessorKey),
+      ...(isPivotLayout
+        ? [PIVOT_ROW_LABEL_COLUMN_ID, ...pivotMeasureIds.map((id) => `measure:${id}`)]
+        : columnList.map((column) => column.accessorKey)),
     ],
-    [columnList, features.rowSelection],
+    [columnList, features.rowSelection, isPivotLayout, pivotMeasureIds],
   );
   const lockedLeftColumnIds = useMemo(
     () => (features.columnPinning && features.rowSelection ? ["select"] : []),
@@ -537,6 +609,7 @@ export function DataGrid<TData extends object>({
     const configured = {
       left: [
         ...(defaultColumnPinning?.left ?? []),
+        ...(isPivotLayout ? [PIVOT_ROW_LABEL_COLUMN_ID] : []),
         ...columnList
           .filter((column) => column.pinned === "left")
           .map((column) => column.accessorKey),
@@ -550,7 +623,7 @@ export function DataGrid<TData extends object>({
     };
 
     return normalizeColumnPinning(configured, lockedLeftColumnIds);
-  }, [columnList, defaultColumnPinning, lockedLeftColumnIds]);
+  }, [columnList, defaultColumnPinning, isPivotLayout, lockedLeftColumnIds]);
   const columnsById = useMemo<Map<string, AnyColumnConfig<TData>>>(
     () => new Map(columnList.map((column) => [column.accessorKey, column])),
     [columnList],
@@ -588,6 +661,7 @@ export function DataGrid<TData extends object>({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [grouping, setGrouping] = useState<GroupingState>(defaultGrouping);
   const [expanded, setExpanded] = useState<ExpandedState>(defaultExpanded);
+  const [pivot, setPivot] = useState<DataGridPivotState>(defaultPivotState);
   const [activeRow, setActiveRow] = useState<TData | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [savedViews, setSavedViews] = useState<DataGridSavedViews>(() =>
@@ -610,6 +684,7 @@ export function DataGrid<TData extends object>({
   const currentRowSelection = controlledState?.rowSelection ?? rowSelection;
   const currentGrouping = controlledState?.grouping ?? grouping;
   const currentExpanded = controlledState?.expanded ?? expanded;
+  const currentPivot = controlledState?.pivot ?? pivot;
   const currentSavedViews = controlledState?.savedViews ?? savedViews;
   const currentActiveViewName = controlledState?.activeViewName ?? activeViewName;
   const emitSortingChange = (updater: Updater<SortingState>) => {
@@ -695,6 +770,13 @@ export function DataGrid<TData extends object>({
     }
     onExpandedChange?.(next);
   };
+  const emitPivotChange = (updater: Updater<DataGridPivotState>) => {
+    const next = resolveUpdater(updater, currentPivot);
+    if (controlledState?.pivot === undefined) {
+      setPivot(next);
+    }
+    onPivotChange?.(next);
+  };
   const emitSavedViewsChange = (next: DataGridSavedViews) => {
     if (controlledState?.savedViews === undefined) {
       setSavedViews(next);
@@ -710,6 +792,48 @@ export function DataGrid<TData extends object>({
   };
 
   const formatOptions = useMemo<FormatOptions>(() => ({ locale, currency }), [locale, currency]);
+  const showDetailPanel = features.detailPanel && Boolean(renderDetailPanel);
+  const hasLeafRowAction = showDetailPanel || Boolean(onRowClick);
+
+  const updateActiveRow = (row: TData | null) => {
+    setActiveRow(row);
+    onActiveRowChange?.(row);
+  };
+  const closeActiveRow = () => updateActiveRow(null);
+
+  const handleRowClick = (row: TData) => {
+    if (!hasLeafRowAction) {
+      return;
+    }
+
+    updateActiveRow(activeRow === row ? null : row);
+    onRowClick?.(row);
+  };
+
+  const adaptedPivotMeasures = useMemo<DataGridPivotMeasure<TData>[]>(
+    () =>
+      (pivotConfig?.measures?.length
+        ? pivotConfig.measures
+        : groupSummaryItems ?? summaryItems
+      ).map((item) =>
+        "aggregation" in item
+          ? item
+          : {
+              id: item.id,
+              label: item.label,
+              columnId: item.columnId,
+              aggregation: (rows) =>
+                item.value({
+                  rows,
+                  filteredRows: rows,
+                  selectedRows: [],
+                  allRows: data,
+                  scope: "group",
+                }),
+            },
+      ),
+    [data, groupSummaryItems, pivotConfig?.measures, summaryItems],
+  );
 
   const columnDefs = useMemo<ColumnDef<TData>[]>(
     () => [
@@ -795,32 +919,354 @@ export function DataGrid<TData extends object>({
     [columnsById, formatOptions],
   );
 
-  const table = useReactTable({
+  const pivotSourceRows = useMemo(() => {
+    if (!isPivotLayout) {
+      return data;
+    }
+
+    const activeFilters = currentColumnFilters.filter(
+      (filter) => filter.value != null && filter.value !== "",
+    );
+    const needle = features.globalSearch
+      ? String(currentGlobalFilter ?? "").trim().toLowerCase()
+      : "";
+
+    return data.filter((row) => {
+      const passesColumnFilters = activeFilters.every((filter) => {
+        const raw = row[filter.id as Extract<keyof TData, string>];
+        const value = filter.value;
+        if (Array.isArray(value)) {
+          return value.length === 0 || value.map(String).includes(String(raw ?? ""));
+        }
+        if (value != null && typeof value === "object") {
+          const { min, max } = value as { min?: number | null; max?: number | null };
+          const numericValue = Number(raw);
+          if (!Number.isFinite(numericValue)) {
+            return false;
+          }
+          if (min != null && numericValue < min) {
+            return false;
+          }
+          if (max != null && numericValue > max) {
+            return false;
+          }
+          return true;
+        }
+        return String(raw ?? "") === String(value);
+      });
+
+      if (!passesColumnFilters || !needle) {
+        return passesColumnFilters;
+      }
+
+      return columnList.some((column) => {
+        const raw = row[column.accessorKey];
+        const text = getColumnSearchText(column, raw, row, formatOptions);
+        return `${raw ?? ""} ${text}`.toLowerCase().includes(needle);
+      });
+    });
+  }, [
+    columnList,
+    currentColumnFilters,
+    currentGlobalFilter,
     data,
-    columns: columnDefs,
-    globalFilterFn,
+    features.globalSearch,
+    formatOptions,
+    isPivotLayout,
+  ]);
+
+  const togglePivotRow = (rowId: string) => {
+    emitPivotChange((current) => {
+      const currentExpanded = current.expanded ?? defaultExpanded;
+      const nextExpanded =
+        currentExpanded === true
+          ? { [rowId]: false }
+          : {
+              ...(typeof currentExpanded === "object" ? currentExpanded : {}),
+              [rowId]: !Boolean(
+                typeof currentExpanded === "object" ? currentExpanded[rowId] : false,
+              ),
+            };
+
+      return { ...current, expanded: nextExpanded };
+    });
+  };
+
+  const resolvedPivotState = useMemo<DataGridPivotState>(
+    () => ({
+      ...currentPivot,
+      expanded: currentPivot.expanded ?? currentExpanded,
+      rows: currentPivot.rows.length ? currentPivot.rows : currentGrouping,
+      measures: currentPivot.measures.length ? currentPivot.measures : pivotMeasureIds,
+      paginationMode: currentPivot.paginationMode ?? "topLevelGroups",
+    }),
+    [currentExpanded, currentGrouping, currentPivot, pivotMeasureIds],
+  );
+  const pivotMaterialization = useMemo(
+    () =>
+      isPivotLayout
+        ? materializePivot({
+            sourceRows: pivotSourceRows,
+            sourceColumns: columnList,
+            pivot: resolvedPivotState,
+            pagination: currentPagination,
+            measures: adaptedPivotMeasures,
+            sorting: currentSorting,
+            getRowId: getRowId
+              ? (row, index) => getRowId(row, index)
+              : undefined,
+            getRowLabel,
+            rowLabelColumn: pivotConfig?.rowLabelColumn,
+            showLeafRows: pivotConfig?.showLeafRows,
+            onToggleRow: togglePivotRow,
+            onLeafClick: handleRowClick,
+            hasLeafRowAction,
+            enableSorting: features.sorting,
+            enableColumnVisibility: features.columnVisibility,
+            enableColumnResizing: features.columnResizing,
+            enableColumnPinning: features.columnPinning,
+          })
+        : undefined,
+    [
+      adaptedPivotMeasures,
+      columnList,
+      currentPagination,
+      currentSorting,
+      features.columnPinning,
+      features.columnResizing,
+      features.columnVisibility,
+      features.sorting,
+      getRowId,
+      getRowLabel,
+      hasLeafRowAction,
+      isPivotLayout,
+      pivotConfig?.rowLabelColumn,
+      pivotConfig?.showLeafRows,
+      pivotSourceRows,
+      resolvedPivotState,
+    ],
+  );
+
+  const getSourceRowId = (row: TData) => {
+    const rowIndex = data.indexOf(row);
+    return getRowId?.(row, rowIndex < 0 ? 0 : rowIndex) ?? String(rowIndex);
+  };
+  const pivotSelectionMode = pivotConfig?.selectionMode ?? "sourceRows";
+  const pivotSelectedSourceIds = useMemo(
+    () => new Set(Object.keys(currentRowSelection).filter((rowId) => currentRowSelection[rowId])),
+    [currentRowSelection],
+  );
+  const setSourceRowsSelected = (rowsToSelect: TData[], selected: boolean) => {
+    emitRowSelectionChange((current) => {
+      const next = { ...current };
+      rowsToSelect.forEach((row) => {
+        const rowId = getSourceRowId(row);
+        if (selected) {
+          next[rowId] = true;
+        } else {
+          delete next[rowId];
+        }
+      });
+      return next;
+    });
+  };
+  const pivotSelectionColumn = useMemo<ColumnDef<PivotRow<TData>, unknown>>(
+    () => ({
+      id: "select",
+      header: ({ table }) => {
+        if (pivotSelectionMode !== "sourceRows") {
+          return (
+            <input
+              type="checkbox"
+              checked={table.getIsAllPageRowsSelected()}
+              ref={(input) => {
+                if (input) {
+                  input.indeterminate = table.getIsSomePageRowsSelected();
+                }
+              }}
+              onChange={table.getToggleAllPageRowsSelectedHandler()}
+              aria-label="Select all visible pivot rows"
+              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+          );
+        }
+
+        const sourceIds = pivotSourceRows.map(getSourceRowId);
+        const selectedCount = sourceIds.filter((rowId) => pivotSelectedSourceIds.has(rowId)).length;
+        return (
+          <input
+            type="checkbox"
+            checked={sourceIds.length > 0 && selectedCount === sourceIds.length}
+            ref={(input) => {
+              if (input) {
+                input.indeterminate = selectedCount > 0 && selectedCount < sourceIds.length;
+              }
+            }}
+            onChange={(event) => setSourceRowsSelected(pivotSourceRows, event.currentTarget.checked)}
+            aria-label="Select all filtered source rows"
+            className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+          />
+        );
+      },
+      cell: ({ row }) => {
+        if (pivotSelectionMode !== "sourceRows") {
+          return (
+            <input
+              type="checkbox"
+              checked={row.getIsSelected()}
+              disabled={!row.getCanSelect()}
+              onClick={(event) => event.stopPropagation()}
+              onChange={row.getToggleSelectedHandler()}
+              aria-label={`Select ${row.original.__labelText} pivot row`}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+          );
+        }
+
+        const sourceIds = row.original.__sourceRows.map(getSourceRowId);
+        const selectedCount = sourceIds.filter((rowId) => pivotSelectedSourceIds.has(rowId)).length;
+        return (
+          <input
+            type="checkbox"
+            checked={sourceIds.length > 0 && selectedCount === sourceIds.length}
+            ref={(input) => {
+              if (input) {
+                input.indeterminate = selectedCount > 0 && selectedCount < sourceIds.length;
+              }
+            }}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) =>
+              setSourceRowsSelected(row.original.__sourceRows, event.currentTarget.checked)
+            }
+            aria-label={`Select source rows for ${row.original.__labelText}`}
+            className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+          />
+        );
+      },
+      enableSorting: false,
+      enableColumnFilter: false,
+      enableHiding: false,
+      enableResizing: false,
+      enablePinning: false,
+      size: 44,
+    }),
+    [
+      pivotConfig?.selectionMode,
+      pivotSelectedSourceIds,
+      pivotSelectionMode,
+      pivotSourceRows,
+    ],
+  );
+  const tableData = (pivotMaterialization?.data ?? data) as (TData | PivotRow<TData>)[];
+  const tableColumns = (pivotMaterialization
+    ? [
+        ...(features.rowSelection ? [pivotSelectionColumn] : []),
+        ...pivotMaterialization.columns,
+      ]
+    : columnDefs) as ColumnDef<TData | PivotRow<TData>, unknown>[];
+  const effectiveDefaultColumnOrder = useMemo<ColumnOrderState>(
+    () =>
+      pivotMaterialization
+        ? [
+            ...(features.rowSelection ? ["select"] : []),
+            ...pivotMaterialization.metadata.generatedColumnIds,
+          ]
+        : defaultColumnOrder,
+    [defaultColumnOrder, features.rowSelection, pivotMaterialization],
+  );
+  const generatedPivotColumnIds = useMemo(
+    () => new Set(pivotMaterialization?.metadata.generatedColumnIds ?? []),
+    [pivotMaterialization],
+  );
+  const effectiveColumnVisibility = useMemo<VisibilityState>(() => {
+    if (!pivotMaterialization) {
+      return currentColumnVisibility;
+    }
+
+    return Object.fromEntries(
+      Object.entries(currentColumnVisibility).filter(
+        ([columnId]) => !isGeneratedPivotColumnId(columnId) || generatedPivotColumnIds.has(columnId),
+      ),
+    );
+  }, [currentColumnVisibility, generatedPivotColumnIds, pivotMaterialization]);
+  const effectiveColumnPinning = useMemo<ColumnPinningState>(() => {
+    if (!pivotMaterialization) {
+      return currentColumnPinning;
+    }
+
+    return normalizeColumnPinning(
+      {
+        left: (currentColumnPinning.left ?? []).filter(
+          (columnId) => !isGeneratedPivotColumnId(columnId) || generatedPivotColumnIds.has(columnId),
+        ),
+        right: (currentColumnPinning.right ?? []).filter(
+          (columnId) => !isGeneratedPivotColumnId(columnId) || generatedPivotColumnIds.has(columnId),
+        ),
+      },
+      lockedLeftColumnIds,
+    );
+  }, [currentColumnPinning, generatedPivotColumnIds, lockedLeftColumnIds, pivotMaterialization]);
+  const effectiveColumnOrder = useMemo<ColumnOrderState>(() => {
+    if (!pivotMaterialization) {
+      return currentColumnOrder;
+    }
+
+    const generatedAxisIds = pivotMaterialization.metadata.generatedColumnIds.filter((columnId) =>
+      columnId.includes("|col:"),
+    );
+    const hasGeneratedPivotOrder = generatedAxisIds.length
+      ? currentColumnOrder.some((columnId) => generatedAxisIds.includes(columnId))
+      : currentColumnOrder.some((columnId) =>
+          pivotMaterialization.metadata.generatedColumnIds.includes(columnId),
+        );
+    if (!hasGeneratedPivotOrder) {
+      return effectiveDefaultColumnOrder;
+    }
+
+    const reconciled = currentColumnOrder.filter(
+      (columnId) => !isGeneratedPivotColumnId(columnId) || generatedPivotColumnIds.has(columnId),
+    );
+    const missingGeneratedIds = effectiveDefaultColumnOrder.filter(
+      (columnId) => !reconciled.includes(columnId),
+    );
+    return [...reconciled, ...missingGeneratedIds];
+  }, [currentColumnOrder, effectiveDefaultColumnOrder, generatedPivotColumnIds, pivotMaterialization]);
+  const isTopLevelPivotPagination =
+    isPivotLayout && resolvedPivotState.paginationMode === "topLevelGroups";
+  const pivotPageCount =
+    pivotMaterialization && isTopLevelPivotPagination
+      ? Math.max(Math.ceil(pivotMaterialization.metadata.topLevelGroupCount / currentPagination.pageSize), 1)
+      : undefined;
+
+  const table = useReactTable<TData | PivotRow<TData>>({
+    data: tableData,
+    columns: tableColumns,
+    globalFilterFn: globalFilterFn as FilterFn<TData | PivotRow<TData>>,
     state: {
       sorting: features.sorting ? currentSorting : [],
-      globalFilter: features.globalSearch ? currentGlobalFilter : "",
-      columnFilters: currentColumnFilters,
-      columnVisibility: features.columnVisibility ? currentColumnVisibility : {},
+      globalFilter: features.globalSearch && !isPivotLayout ? currentGlobalFilter : "",
+      columnFilters: isPivotLayout ? [] : currentColumnFilters,
+      columnVisibility: features.columnVisibility ? effectiveColumnVisibility : {},
       columnSizing: features.columnResizing ? currentColumnSizing : {},
-      columnOrder: features.columnOrdering ? currentColumnOrder : defaultColumnOrder,
-      columnPinning: features.columnPinning ? currentColumnPinning : {},
+      columnOrder: features.columnOrdering ? effectiveColumnOrder : effectiveDefaultColumnOrder,
+      columnPinning: features.columnPinning ? effectiveColumnPinning : {},
       pagination: currentPagination,
       rowSelection: currentRowSelection,
-      grouping: features.grouping ? currentGrouping : [],
-      expanded: features.grouping ? currentExpanded : {},
+      grouping: features.grouping && !isPivotLayout ? currentGrouping : [],
+      expanded: features.grouping && !isPivotLayout ? currentExpanded : {},
     },
-    getRowId,
+    getRowId: (row, index, parent) =>
+      isPivotRow(row) ? row.__id : getRowId?.(row as TData, index, parent as Row<TData>) ?? String(index),
     enableSorting: features.sorting,
     enableRowSelection: features.rowSelection,
-    enableGrouping: features.grouping,
+    enableGrouping: features.grouping && !isPivotLayout,
     enableColumnPinning: features.columnPinning,
-    enableExpanding: features.grouping,
+    enableExpanding: features.grouping && !isPivotLayout,
     columnResizeMode: "onChange",
     groupedColumnMode: "remove",
     paginateExpandedRows: false,
+    manualPagination: isTopLevelPivotPagination,
+    pageCount: pivotPageCount,
     onSortingChange: emitSortingChange,
     onGlobalFilterChange: emitGlobalFilterChange,
     onColumnFiltersChange: emitColumnFiltersChange,
@@ -832,13 +1278,15 @@ export function DataGrid<TData extends object>({
     onRowSelectionChange: emitRowSelectionChange,
     onGroupingChange: emitGroupingChange,
     onExpandedChange: emitExpandedChange,
-    getRowCanExpand: (row) => row.getIsGrouped(),
+    getRowCanExpand: (row) => !isPivotRow(row.original) && row.getIsGrouped(),
     getCoreRowModel: getCoreRowModel(),
-    ...(features.sorting ? { getSortedRowModel: getSortedRowModel() } : {}),
+    ...(features.sorting && !isPivotLayout ? { getSortedRowModel: getSortedRowModel() } : {}),
     getFilteredRowModel: getFilteredRowModel(),
-    ...(features.grouping ? { getGroupedRowModel: getGroupedRowModel() } : {}),
-    ...(features.grouping ? { getExpandedRowModel: getExpandedRowModel() } : {}),
-    ...(features.pagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
+    ...(features.grouping && !isPivotLayout ? { getGroupedRowModel: getGroupedRowModel() } : {}),
+    ...(features.grouping && !isPivotLayout ? { getExpandedRowModel: getExpandedRowModel() } : {}),
+    ...(features.pagination && !isTopLevelPivotPagination
+      ? { getPaginationRowModel: getPaginationRowModel() }
+      : {}),
   });
 
   // Option lists are the only O(rows) work here, so derive them once per
@@ -852,18 +1300,33 @@ export function DataGrid<TData extends object>({
   }, [data, filters]);
 
   const toolbarFilters = filters.map((filter) => {
-    const column = table.getColumn(filter.accessorKey);
+    const column = isPivotLayout ? undefined : table.getColumn(filter.accessorKey);
+    const pivotFilter = currentColumnFilters.find((item) => item.id === filter.accessorKey);
     return {
       id: filter.accessorKey,
       label: filter.label,
       filterType: filter.filterType ?? "select",
-      value: column?.getFilterValue(),
+      value: isPivotLayout ? pivotFilter?.value : column?.getFilterValue(),
       options: filterOptionsById[filter.accessorKey] ?? [],
       formatOption: filter.formatOption,
       min: filter.min,
       max: filter.max,
       step: filter.step,
-      onChange: (value: unknown) => column?.setFilterValue(value),
+      onChange: (value: unknown) => {
+        if (!isPivotLayout) {
+          column?.setFilterValue(value);
+          return;
+        }
+
+        emitColumnFiltersChange((current) => {
+          const next = current.filter((item) => item.id !== filter.accessorKey);
+          if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) {
+            return next;
+          }
+          return [...next, { id: filter.accessorKey, value }];
+        });
+        resetPageIndex();
+      },
     };
   });
 
@@ -874,33 +1337,44 @@ export function DataGrid<TData extends object>({
     emitPaginationChange((current) => ({ ...current, pageIndex: 0 }));
   };
 
+  const currentToolbarGrouping = isPivotLayout ? currentPivot.rows : currentGrouping;
+
   const setGroupingAndReset = (nextGrouping: GroupingState) => {
-    emitGroupingChange(nextGrouping);
-    emitExpandedChange(defaultExpanded);
+    if (isPivotLayout) {
+      emitPivotChange((current) => ({
+        ...current,
+        rows: nextGrouping,
+        expanded: defaultExpanded,
+      }));
+      onGroupingChange?.(nextGrouping);
+    } else {
+      emitGroupingChange(nextGrouping);
+      emitExpandedChange(defaultExpanded);
+    }
     resetPageIndex();
   };
 
   const addGrouping = (columnId: string) => {
-    if (!columnId || currentGrouping.includes(columnId)) {
+    if (!columnId || currentToolbarGrouping.includes(columnId)) {
       return;
     }
 
-    setGroupingAndReset([...currentGrouping, columnId]);
+    setGroupingAndReset([...currentToolbarGrouping, columnId]);
   };
 
   const removeGrouping = (columnId: string) => {
-    setGroupingAndReset(currentGrouping.filter((id) => id !== columnId));
+    setGroupingAndReset(currentToolbarGrouping.filter((id) => id !== columnId));
   };
 
   const moveGrouping = (columnId: string, direction: "up" | "down") => {
-    const fromIndex = currentGrouping.indexOf(columnId);
+    const fromIndex = currentToolbarGrouping.indexOf(columnId);
     const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
 
-    if (fromIndex < 0 || toIndex < 0 || toIndex >= currentGrouping.length) {
+    if (fromIndex < 0 || toIndex < 0 || toIndex >= currentToolbarGrouping.length) {
       return;
     }
 
-    const nextGrouping = [...currentGrouping];
+    const nextGrouping = [...currentToolbarGrouping];
     const [movedId] = nextGrouping.splice(fromIndex, 1);
     nextGrouping.splice(toIndex, 0, movedId);
     setGroupingAndReset(nextGrouping);
@@ -912,7 +1386,11 @@ export function DataGrid<TData extends object>({
 
   const clearFilters = () => {
     emitGlobalFilterChange("");
-    table.resetColumnFilters();
+    if (isPivotLayout) {
+      emitColumnFiltersChange([]);
+    } else {
+      table.resetColumnFilters();
+    }
     resetPageIndex();
   };
 
@@ -963,7 +1441,7 @@ export function DataGrid<TData extends object>({
   const resetColumns = () => {
     emitColumnVisibilityChange({});
     emitColumnSizingChange({});
-    setPersistedColumnOrder(defaultColumnOrder);
+    setPersistedColumnOrder(effectiveDefaultColumnOrder);
     emitColumnPinningChange(defaultPinningState);
     if (controlledState?.columnSizing === undefined) {
       removeJson(storageKeys?.columnSizing);
@@ -980,6 +1458,7 @@ export function DataGrid<TData extends object>({
     emitRowSelectionChange({});
     emitGroupingChange(defaultGrouping);
     emitExpandedChange(defaultExpanded);
+    emitPivotChange(defaultPivotState);
     setActiveRow(null);
     onActiveRowChange?.(null);
     resetPageIndex();
@@ -999,11 +1478,12 @@ export function DataGrid<TData extends object>({
         sorting: currentSorting,
         globalFilter: currentGlobalFilter,
         columnFilters: currentColumnFilters,
-        columnVisibility: currentColumnVisibility,
+        columnVisibility: effectiveColumnVisibility,
         columnSizing: currentColumnSizing,
-        columnOrder: currentColumnOrder,
-        columnPinning: currentColumnPinning,
+        columnOrder: effectiveColumnOrder,
+        columnPinning: effectiveColumnPinning,
         grouping: currentGrouping,
+        pivot: currentPivot,
       },
     };
 
@@ -1023,9 +1503,15 @@ export function DataGrid<TData extends object>({
     emitColumnFiltersChange(view.columnFilters);
     emitColumnVisibilityChange(view.columnVisibility);
     emitColumnSizingChange(view.columnSizing);
-    setPersistedColumnOrder(view.columnOrder ?? defaultColumnOrder);
+    setPersistedColumnOrder(view.columnOrder ?? effectiveDefaultColumnOrder);
     emitColumnPinningChange(view.columnPinning ?? defaultPinningState);
     emitGroupingChange(view.grouping ?? []);
+    emitPivotChange(
+      view.pivot ?? {
+        ...defaultPivotState,
+        rows: view.grouping ?? defaultPivotState.rows,
+      },
+    );
     emitExpandedChange(defaultExpanded);
     resetPageIndex();
   };
@@ -1041,24 +1527,6 @@ export function DataGrid<TData extends object>({
     delete nextViews[trimmedName];
     emitSavedViewsChange(nextViews);
     emitActiveViewNameChange("");
-  };
-
-  const showDetailPanel = features.detailPanel && Boolean(renderDetailPanel);
-  const hasLeafRowAction = showDetailPanel || Boolean(onRowClick);
-
-  const updateActiveRow = (row: TData | null) => {
-    setActiveRow(row);
-    onActiveRowChange?.(row);
-  };
-  const closeActiveRow = () => updateActiveRow(null);
-
-  const handleRowClick = (row: TData) => {
-    if (!hasLeafRowAction) {
-      return;
-    }
-
-    updateActiveRow(activeRow === row ? null : row);
-    onRowClick?.(row);
   };
 
   useEffect(() => {
@@ -1133,14 +1601,6 @@ export function DataGrid<TData extends object>({
     };
   };
 
-  const pivotSummaryItems = (groupSummaryItems ?? summaryItems).filter((item) => {
-    if (!item.columnId) {
-      return true;
-    }
-
-    return table.getColumn(item.columnId)?.getIsVisible() ?? true;
-  });
-
   const renderGroupRow = (row: Row<TData>, measureProps?: RowMeasureProps) => {
     const groupContext = getGroupSummaryContext(row);
     const { groupColumnLabel, groupValueLabel, renderedGroupValue } = getGroupLabels(row);
@@ -1206,107 +1666,20 @@ export function DataGrid<TData extends object>({
     );
   };
 
-  const renderPivotRow = (row: Row<TData>, measureProps?: RowMeasureProps) => {
-    const isGroupedRow = row.getIsGrouped();
-    const canExpandPivotGroup = isGroupedRow && row.depth < currentGrouping.length - 1;
-    const rowValues = isGroupedRow
-      ? getGroupSummaryContext(row)
-      : {
-          rows: [row.original],
-          filteredRows: [row.original],
-          selectedRows: row.getIsSelected() ? [row.original] : [],
-          allRows: data,
-          scope: "group" as const,
-        };
-    const labels = isGroupedRow ? getGroupLabels(row) : undefined;
-    const rowLabelText = isGroupedRow
-      ? labels?.renderedGroupValue
-      : getRowLabel?.(row.original) ?? row.id;
-    const isTopGroup = isGroupedRow && row.depth === 0;
-    const isActionablePivotRow = canExpandPivotGroup || (!isGroupedRow && hasLeafRowAction);
-
-    return (
-      <tr
-        key={row.id}
-        ref={measureProps?.ref}
-        data-index={measureProps?.["data-index"]}
-        role={isActionablePivotRow ? "button" : undefined}
-        tabIndex={isActionablePivotRow ? 0 : undefined}
-        onClick={() => {
-          if (canExpandPivotGroup) {
-            toggleGroupRow(row);
-          } else if (!isGroupedRow) {
-            handleRowClick(row.original);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (!isActionablePivotRow || (event.key !== "Enter" && event.key !== " ")) {
-            return;
-          }
-          event.preventDefault();
-          if (canExpandPivotGroup) {
-            toggleGroupRow(row);
-          } else if (!isGroupedRow) {
-            handleRowClick(row.original);
-          }
-        }}
-        className={`border-b border-slate-200 ${
-          isActionablePivotRow
-            ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400"
-            : ""
-        } ${isTopGroup ? "bg-cyan-50 font-semibold" : "bg-white hover:bg-slate-50"}`}
-      >
-        <td className="border-r border-slate-200 px-2 py-1.5 text-slate-950">
-          <div
-            className="flex min-w-0 items-center gap-1.5"
-            style={{ paddingLeft: isGroupedRow ? row.depth * 20 : 0 }}
-          >
-            {canExpandPivotGroup ? (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleGroupRow(row);
-                }}
-                className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-slate-400 bg-white leading-none text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
-                aria-expanded={row.getIsExpanded()}
-                aria-label={`Toggle ${labels?.groupColumnLabel ?? "group"} ${
-                  labels?.groupValueLabel ?? row.id
-                } group`}
-              >
-                {row.getIsExpanded() ? (
-                  <MinusIcon className="h-2.5 w-2.5" />
-                ) : (
-                  <PlusIcon className="h-2.5 w-2.5" />
-                )}
-              </button>
-            ) : (
-              <span className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            )}
-            <span className="min-w-0 truncate">{rowLabelText}</span>
-          </div>
-        </td>
-        {pivotSummaryItems.map((item) => (
-          <td
-            key={item.id}
-            className={`border-r border-slate-200 px-2 py-1.5 text-right tabular-nums text-slate-950 last:border-r-0 ${
-              isTopGroup ? "font-semibold" : ""
-            }`}
-          >
-            {item.value(rowValues)}
-          </td>
-        ))}
-      </tr>
-    );
-  };
-
-  const filteredSummaryRows = table.getFilteredRowModel().rows.map((row) => row.original);
+  const filteredSummaryRows = isPivotLayout
+    ? pivotSourceRows
+    : table.getFilteredRowModel().rows.map((row) => row.original as TData);
   // Selected scope is intersected with the active filter so summaries/counts
   // never include rows the user has filtered out of view.
-  const selectedSummaryRows = table
-    .getFilteredSelectedRowModel()
-    .rows.map((row) => row.original);
-  const filteredRowCount = table.getFilteredRowModel().rows.length;
+  const selectedSummaryRows = isPivotLayout && pivotSelectionMode === "sourceRows"
+    ? pivotSourceRows.filter((row) => pivotSelectedSourceIds.has(getSourceRowId(row)))
+    : table
+        .getFilteredSelectedRowModel()
+        .rows.map((row) => row.original)
+        .flatMap((row) =>
+          isPivotRow(row) ? row.__sourceRows : [row as TData],
+        );
+  const filteredRowCount = filteredSummaryRows.length;
   const selectedRowCount = selectedSummaryRows.length;
   const showSelectAllBanner =
     features.rowSelection &&
@@ -1326,9 +1699,7 @@ export function DataGrid<TData extends object>({
     allRows: data,
     scope: summaryScope,
   };
-  const minTableWidth = isPivotLayout
-    ? Math.max(320, 220 + pivotSummaryItems.length * 150)
-    : Math.max(table.getTotalSize(), 720);
+  const minTableWidth = Math.max(table.getTotalSize(), isPivotLayout ? 480 : 720);
   const showSummaries = !isPivotLayout && features.summaries && summaryItems.length > 0;
   // getExpandedRowModel() is the nested pre-pagination tree (top-level rows with
   // nested subRows). getRowModel() is the FINAL model, which is already flattened
@@ -1336,7 +1707,7 @@ export function DataGrid<TData extends object>({
   // nested source so leaf rows are never double-emitted (see bugs #1/#3).
   const visibleRows = features.grouping
     ? isPivotLayout
-      ? flattenPivotRows(table.getExpandedRowModel().rows, currentGrouping.length)
+      ? table.getRowModel().rows
       : features.pagination
         ? table.getRowModel().rows
         : flattenExpandedRows(table.getExpandedRowModel().rows)
@@ -1349,12 +1720,10 @@ export function DataGrid<TData extends object>({
     overscan: 12,
     enabled: virtualizeRows,
   });
-  const bodyColSpan = isPivotLayout
-    ? 1 + pivotSummaryItems.length
-    : table.getVisibleLeafColumns().length;
+  const bodyColSpan = table.getVisibleLeafColumns().length;
 
   const getPinnedColumnStyle = (
-    column: Column<TData, unknown>,
+    column: Column<TData | PivotRow<TData>, unknown>,
     options: { header?: boolean; backgroundColor?: string } = {},
   ): CSSProperties => {
     if (!features.columnPinning) {
@@ -1385,59 +1754,98 @@ export function DataGrid<TData extends object>({
     };
   };
 
-  const renderGridLeafRow = (row: Row<TData>, measureProps?: RowMeasureProps) => (
-    <tr
-      key={row.id}
-      ref={measureProps?.ref}
-      data-index={measureProps?.["data-index"]}
-      role={hasLeafRowAction ? "button" : undefined}
-      tabIndex={hasLeafRowAction ? 0 : undefined}
-      onClick={() => handleRowClick(row.original)}
-      onKeyDown={(event) => {
-        if (hasLeafRowAction && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          handleRowClick(row.original);
-        }
-      }}
-      className={`${hasLeafRowAction ? "cursor-pointer" : ""} border-b border-slate-100 transition ${
-        row.getIsSelected() ? "bg-blue-50" : "bg-white hover:bg-slate-50"
-      } ${activeRow === row.original ? "ring-2 ring-inset ring-slate-400" : ""} ${
-        hasLeafRowAction
-          ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400"
-          : ""
-      } ${getRowClassName?.(row.original) ?? ""}`}
-    >
-      {row.getVisibleCells().map((cell) => {
-        const columnConfig = columnsById.get(cell.column.id);
+  const renderGridLeafRow = (
+    row: Row<TData | PivotRow<TData>>,
+    measureProps?: RowMeasureProps,
+  ) => {
+    const pivotRow = isPivotRow(row.original) ? row.original : undefined;
+    const sourceRow = pivotRow ? pivotRow.__leafRow : row.original;
+    const isActionable =
+      !pivotRow && hasLeafRowAction
+        ? true
+        : pivotRow?.__kind === "leaf" && hasLeafRowAction && Boolean(sourceRow);
+    const rowBackground = pivotRow
+      ? pivotRow.__kind === "grandTotal"
+        ? "#cffafe"
+        : pivotRow.__depth === 0
+          ? "#ecfeff"
+          : "#ffffff"
+      : row.getIsSelected()
+        ? "#eff6ff"
+        : "#ffffff";
+    const rowClassName = pivotRow
+      ? `border-b border-slate-200 ${
+          pivotRow.__kind === "grandTotal"
+            ? "bg-cyan-100 font-bold"
+            : pivotRow.__depth === 0
+              ? "bg-cyan-50 font-semibold"
+              : "bg-white hover:bg-slate-50"
+        }`
+      : `${isActionable ? "cursor-pointer" : ""} border-b border-slate-100 transition ${
+          row.getIsSelected() ? "bg-blue-50" : "bg-white hover:bg-slate-50"
+        } ${activeRow === sourceRow ? "ring-2 ring-inset ring-slate-400" : ""} ${
+          isActionable
+            ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400"
+            : ""
+        } ${sourceRow ? getRowClassName?.(sourceRow as TData) ?? "" : ""}`;
 
-        return (
-          <td
-            key={cell.id}
-            style={{
-              width: cell.column.getSize(),
-              ...getPinnedColumnStyle(cell.column, {
-                backgroundColor: row.getIsSelected() ? "#eff6ff" : "#ffffff",
-              }),
-            }}
-            className={`border-b border-r border-slate-100 px-3 py-2 align-middle last:border-r-0 ${
-              columnConfig
-                ? getCellClasses(columnConfig, cell.getValue(), row.original)
-                : "text-center"
-            }`}
-          >
-            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-          </td>
-        );
-      })}
-    </tr>
-  );
+    return (
+      <tr
+        key={row.id}
+        ref={measureProps?.ref}
+        data-index={measureProps?.["data-index"]}
+        role={isActionable ? "button" : undefined}
+        tabIndex={isActionable ? 0 : undefined}
+        onClick={() => {
+          if (sourceRow && isActionable) {
+            handleRowClick(sourceRow as TData);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (isActionable && sourceRow && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            handleRowClick(sourceRow as TData);
+          }
+        }}
+        className={rowClassName}
+      >
+        {row.getVisibleCells().map((cell) => {
+          const columnConfig = !pivotRow ? columnsById.get(cell.column.id) : undefined;
+          const isPivotMeasure = Boolean(pivotRow) && cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID;
 
-  const renderVisibleRow = (row: Row<TData>, measureProps?: RowMeasureProps) => {
+          return (
+            <td
+              key={cell.id}
+              style={{
+                width: cell.column.getSize(),
+                ...getPinnedColumnStyle(cell.column, {
+                  backgroundColor: row.getIsSelected() ? "#eff6ff" : rowBackground,
+                }),
+              }}
+              className={`border-b border-r px-3 py-2 align-middle last:border-r-0 ${
+                pivotRow ? "border-slate-200" : "border-slate-100"
+              } ${
+                isPivotMeasure
+                  ? "text-right tabular-nums text-slate-950"
+                  : columnConfig
+                    ? getCellClasses(columnConfig, cell.getValue(), sourceRow as TData)
+                    : "text-left text-slate-950"
+              }`}
+            >
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
+
+  const renderVisibleRow = (row: Row<TData | PivotRow<TData>>, measureProps?: RowMeasureProps) => {
     if (isPivotLayout) {
-      return renderPivotRow(row, measureProps);
+      return renderGridLeafRow(row, measureProps);
     }
     return row.getIsGrouped()
-      ? renderGroupRow(row, measureProps)
+      ? renderGroupRow(row as Row<TData>, measureProps)
       : renderGridLeafRow(row, measureProps);
   };
 
@@ -1523,14 +1931,14 @@ export function DataGrid<TData extends object>({
               .filter((column) => column.id !== "select")
               .map((column) => ({
                 id: column.id,
-                label: String(column.columnDef.header ?? column.id),
+                label: getColumnControlLabel(column),
                 visible: column.getIsVisible(),
                 canHide: column.getCanHide(),
                 pinned: column.getIsPinned(),
                 canPin: column.getCanPin(),
               }))}
             groupableColumns={groupableColumns}
-            grouping={currentGrouping}
+            grouping={currentToolbarGrouping}
             savedViews={Object.keys(currentSavedViews).sort()}
             activeViewName={currentActiveViewName}
             viewNamePlaceholder={viewNamePlaceholder}
@@ -1639,152 +2047,107 @@ export function DataGrid<TData extends object>({
           ) : null}
           <table className="w-full border-separate border-spacing-0 text-xs" style={{ minWidth: minTableWidth }}>
             {tableLabel ? <caption className="sr-only">{tableLabel}</caption> : null}
-            {isPivotLayout ? (
-              <>
-                <thead className="sticky top-0 z-10 bg-cyan-100 text-left text-xs text-slate-950 shadow-[0_1px_0_0_#38bdf8]">
-                  <tr>
-                    <th className="border-r border-cyan-200 px-2 py-1.5 font-semibold">
-                      <div className="flex items-center gap-1">
-                        <span>Row Labels</span>
-                        <span
-                          aria-hidden="true"
-                          className="flex h-5 w-5 items-center justify-center border border-slate-400 bg-slate-100 text-slate-600"
-                        >
-                          <ChevronDownIcon className="h-3 w-3" />
-                        </span>
-                      </div>
-                    </th>
-                    {pivotSummaryItems.map((item) => (
-                      <th
-                        key={item.id}
-                        className="border-r border-cyan-200 px-2 py-1.5 text-right font-semibold last:border-r-0"
-                      >
-                        {item.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>{renderBodyRows()}</tbody>
-                <tfoot className="bg-cyan-100 text-slate-950 shadow-[0_-1px_0_0_#38bdf8]">
-                  <tr>
-                    <td className="border-r border-cyan-200 px-2 py-1.5 font-bold">
-                      Grand Total
-                    </td>
-                    {pivotSummaryItems.map((item) => (
-                      <td
-                        key={item.id}
-                        className="border-r border-cyan-200 px-2 py-1.5 text-right font-bold tabular-nums last:border-r-0"
-                      >
-                        {item.value({
-                          rows: filteredSummaryRows,
-                          filteredRows: filteredSummaryRows,
-                          selectedRows: selectedSummaryRows,
-                          allRows: data,
-                          scope: "filtered",
-                        })}
-                      </td>
-                    ))}
-                  </tr>
-                </tfoot>
-              </>
-            ) : (
-              <>
-                <thead className="sticky top-0 z-10 bg-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-600 shadow-[0_2px_4px_-1px_rgba(15,23,42,0.12)]">
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => {
-                        const canSort = header.column.getCanSort();
-                        const sortState = header.column.getIsSorted();
+            <thead
+              className={`sticky top-0 z-10 text-left shadow-[0_2px_4px_-1px_rgba(15,23,42,0.12)] ${
+                isPivotLayout
+                  ? "bg-cyan-100 text-xs text-slate-950"
+                  : "bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600"
+              }`}
+            >
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => {
+                    const canSort = header.column.getCanSort();
+                    const sortState = header.column.getIsSorted();
 
-                        return (
-                          <th
-                            key={header.id}
-                            scope="col"
-                            aria-sort={
-                              canSort
-                                ? sortState === "asc"
-                                  ? "ascending"
-                                  : sortState === "desc"
-                                    ? "descending"
-                                    : "none"
-                                : undefined
-                            }
-                            style={{
-                              width: header.getSize(),
-                              ...getPinnedColumnStyle(header.column, {
-                                header: true,
-                                backgroundColor: "#f1f5f9",
-                              }),
-                            }}
-                            className="relative border-r border-slate-200 px-3 py-2 font-semibold last:border-r-0"
+                    return (
+                      <th
+                        key={header.id}
+                        scope="col"
+                        aria-sort={
+                          canSort
+                            ? sortState === "asc"
+                              ? "ascending"
+                              : sortState === "desc"
+                                ? "descending"
+                                : "none"
+                            : undefined
+                        }
+                        style={{
+                          width: header.getSize(),
+                          ...getPinnedColumnStyle(header.column, {
+                            header: true,
+                            backgroundColor: isPivotLayout ? "#cffafe" : "#f1f5f9",
+                          }),
+                        }}
+                        className={`relative border-r px-3 py-2 font-semibold last:border-r-0 ${
+                          isPivotLayout ? "border-cyan-200" : "border-slate-200"
+                        }`}
+                      >
+                        {header.isPlaceholder ? null : canSort ? (
+                          <button
+                            type="button"
+                            onClick={header.column.getToggleSortingHandler()}
+                            title="Click to sort. Shift-click to add to multi-sort."
+                            className="flex w-full cursor-pointer items-center gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                           >
-                            {header.isPlaceholder ? null : canSort ? (
-                              <button
-                                type="button"
-                                onClick={header.column.getToggleSortingHandler()}
-                                title="Click to sort. Shift-click to add to multi-sort."
-                                className="flex w-full cursor-pointer items-center gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
-                              >
-                                <span className="truncate">
-                                  {flexRender(header.column.columnDef.header, header.getContext())}
-                                </span>
-                                <SortIcon state={sortState} />
-                                {currentSorting.length > 1 && header.column.getSortIndex() >= 0 ? (
-                                  <span className="ml-0.5 rounded bg-slate-200 px-1 text-[9px] font-semibold leading-tight text-slate-600">
-                                    {header.column.getSortIndex() + 1}
-                                  </span>
-                                ) : null}
-                              </button>
-                            ) : (
-                              <div className="flex w-full items-center">
-                                {flexRender(header.column.columnDef.header, header.getContext())}
-                              </div>
-                            )}
-                            {features.columnResizing && header.column.getCanResize() ? (
-                              <button
-                                type="button"
-                                aria-label={`Resize ${String(header.column.columnDef.header)}`}
-                                onDoubleClick={() => header.column.resetSize()}
-                                onMouseDown={header.getResizeHandler()}
-                                onTouchStart={header.getResizeHandler()}
-                                onKeyDown={(event) => {
-                                  const step = event.shiftKey ? 40 : 12;
-                                  const columnId = header.column.id;
-                                  const current = header.getSize();
-                                  const min = header.column.columnDef.minSize ?? 0;
-                                  const max =
-                                    header.column.columnDef.maxSize ?? Number.POSITIVE_INFINITY;
-                                  if (event.key === "ArrowRight") {
-                                    event.preventDefault();
-                                    table.setColumnSizing((sizing) => ({
-                                      ...sizing,
-                                      [columnId]: Math.min(max, current + step),
-                                    }));
-                                  } else if (event.key === "ArrowLeft") {
-                                    event.preventDefault();
-                                    table.setColumnSizing((sizing) => ({
-                                      ...sizing,
-                                      [columnId]: Math.max(min, current - step),
-                                    }));
-                                  } else if (event.key === "Enter" || event.key === "Home") {
-                                    event.preventDefault();
-                                    header.column.resetSize();
-                                  }
-                                }}
-                                className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-slate-300 opacity-0 transition hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
-                                  header.column.getIsResizing() ? "bg-slate-500 opacity-100" : ""
-                                }`}
-                              />
+                            <span className="truncate">
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                            </span>
+                            <SortIcon state={sortState} />
+                            {currentSorting.length > 1 && header.column.getSortIndex() >= 0 ? (
+                              <span className="ml-0.5 rounded bg-slate-200 px-1 text-[9px] font-semibold leading-tight text-slate-600">
+                                {header.column.getSortIndex() + 1}
+                              </span>
                             ) : null}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody>{renderBodyRows()}</tbody>
-              </>
-            )}
+                          </button>
+                        ) : (
+                          <div className="flex w-full items-center">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </div>
+                        )}
+                        {features.columnResizing && header.column.getCanResize() ? (
+                          <button
+                            type="button"
+                            aria-label={`Resize ${String(header.column.columnDef.header)}`}
+                            onDoubleClick={() => header.column.resetSize()}
+                            onMouseDown={header.getResizeHandler()}
+                            onTouchStart={header.getResizeHandler()}
+                            onKeyDown={(event) => {
+                              const step = event.shiftKey ? 40 : 12;
+                              const columnId = header.column.id;
+                              const current = header.getSize();
+                              const min = header.column.columnDef.minSize ?? 0;
+                              const max = header.column.columnDef.maxSize ?? Number.POSITIVE_INFINITY;
+                              if (event.key === "ArrowRight") {
+                                event.preventDefault();
+                                table.setColumnSizing((sizing) => ({
+                                  ...sizing,
+                                  [columnId]: Math.min(max, current + step),
+                                }));
+                              } else if (event.key === "ArrowLeft") {
+                                event.preventDefault();
+                                table.setColumnSizing((sizing) => ({
+                                  ...sizing,
+                                  [columnId]: Math.max(min, current - step),
+                                }));
+                              } else if (event.key === "Enter" || event.key === "Home") {
+                                event.preventDefault();
+                                header.column.resetSize();
+                              }
+                            }}
+                            className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-slate-300 opacity-0 transition hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
+                              header.column.getIsResizing() ? "bg-slate-500 opacity-100" : ""
+                            }`}
+                          />
+                        ) : null}
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
+            </thead>
+            <tbody>{renderBodyRows()}</tbody>
           </table>
         </div>
 

@@ -129,8 +129,8 @@ describe("DataGrid persistence respects controlled slices (bug #2)", () => {
   });
 });
 
-describe("DataGrid pivot does not emit pagination events (bug #7)", () => {
-  it("does not call onPaginationChange when grouping changes in pivot mode", () => {
+describe("DataGrid pivot pagination", () => {
+  it("resets pagination when pivot grouping changes", () => {
     const onPaginationChange = vi.fn();
     const summary: DataGridSummaryItem<Row>[] = [
       { id: "rev", columnId: "revenue", label: "Revenue", value: ({ rows }) => rows.length },
@@ -149,7 +149,7 @@ describe("DataGrid pivot does not emit pagination events (bug #7)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Dept grouping" }));
 
-    expect(onPaginationChange).not.toHaveBeenCalled();
+    expect(onPaginationChange).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 50 });
   });
 });
 

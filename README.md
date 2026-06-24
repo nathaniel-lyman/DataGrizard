@@ -116,20 +116,41 @@ active detail row correct across data updates.
   data={data}
   columns={columns}
   layoutMode="pivot"
-  defaultGrouping={["category"]}
-  summaryItems={[
-    { id: "rev", columnId: "revenue", label: "Revenue", value: ({ rows }) =>
-        rows.reduce((t, r) => t + r.revenue, 0) },
-  ]}
-  groupSummaryItems={/* shown inside each pivot row + grand total */ ...}
+  pivot={{
+    rows: ["category"],
+    columns: [{ columnId: "week", order: "asc" }],
+    measures: [
+      { id: "rev", columnId: "revenue", label: "Revenue", aggregation: "sum" },
+      { id: "units", columnId: "units", label: "Units", aggregation: "sum" },
+    ],
+    defaultState: { paginationMode: "topLevelGroups" },
+  }}
 />
 ```
 
-Pivot mode renders an Excel-style table (Row Labels column, value columns from
-`summaryItems`, a Grand Total footer) and **forces grouping on** while disabling
-`rowSelection`, `detailPanel`, `pagination`, and `columnPinning`. Column
-visibility still controls which value columns appear. You can re-enable disabled
-features via `features`, but it isn't recommended.
+Pivot mode materializes grouped pivot rows and generated measure columns, then
+renders them through the same TanStack Table path as grid mode:
+`table.getHeaderGroups()`, `row.getVisibleCells()`, and `flexRender(...)`.
+Generated pivot columns participate in sorting, resizing, visibility, ordering,
+pinning, saved views, pagination, and virtualization.
+
+`pivot.rows` defines the row axis. `pivot.columns` optionally defines a column
+axis and produces nested TanStack header groups such as Week → Revenue / Units,
+plus a generated Grand Total column group. Without a column axis, measures render
+as simple columns beside `Row Labels`.
+
+Pivot row selection defaults to source-row semantics: selecting a group row
+selects all filtered source rows beneath that group, and the selected count
+reports source rows. `pivot.defaultState.paginationMode` supports
+`"topLevelGroups"` (default, keeps expanded children with their parent) and
+`"visibleRows"` (flat row-window pagination).
+
+Column-axis pivots generate subtotal columns for nested axis groups and a Grand
+Total column group. Measures can choose `totalBehavior: "aggregate"`,
+`"sumVisibleChildren"`, or `"blank"` for those total cells.
+
+`summaryItems` / `groupSummaryItems` are still accepted in pivot mode as a
+compatibility adapter, but new consumers should use `pivot.measures`.
 
 ---
 
@@ -182,9 +203,11 @@ values.
 
 ## Summaries
 
-`summaryItems` render a summary bar (grid mode). `groupSummaryItems` render inside
-group rows and pivot rows/footer. Each item's `value`/`description` is a callback
-receiving `{ rows, filteredRows, selectedRows, allRows, scope }`. With
+`summaryItems` render a summary bar in grid mode and remain a pivot compatibility
+adapter. New pivot callers should use `pivot.measures` with built-in aggregations
+(`count`, `sum`, `avg`, `min`, `max`) or a custom aggregation function. Each
+summary item's `value`/`description` is a callback receiving
+`{ rows, filteredRows, selectedRows, allRows, scope }`. With
 `summarySelectionMode="auto"` (default) the scope flips from filtered to selected
 once any row is selected. Selected scope is intersected with the active filter.
 
@@ -200,7 +223,7 @@ const [sorting, setSorting] = useState([]);
 
 Controllable slices: `sorting`, `globalFilter`, `columnFilters`,
 `columnVisibility`, `columnSizing`, `columnOrder`, `columnPinning`,
-`pagination`, `rowSelection`, `grouping`, `expanded`, `savedViews`,
+`pagination`, `rowSelection`, `grouping`, `expanded`, `pivot`, `savedViews`,
 `activeViewName`. When a slice is controlled, the grid never writes it to
 `localStorage` — persistence is yours.
 
@@ -269,13 +292,13 @@ For a bare table with only sortable, resizable columns:
 | `columnVisibility`| ✅           | ✅            |
 | `columnResizing`  | ✅           | ✅            |
 | `columnOrdering`  | ✅           | ✅            |
-| `columnPinning`   | ✅           | ❌            |
+| `columnPinning`   | ✅           | ✅            |
 | `savedViews`      | ✅           | ✅            |
 | `grouping`        | ✅           | ✅ (forced)   |
 | `summaries`       | ✅           | ✅            |
-| `pagination`      | ✅           | ❌            |
-| `rowSelection`    | ✅           | ❌            |
-| `detailPanel`     | ✅           | ❌            |
+| `pagination`      | ✅           | ✅            |
+| `rowSelection`    | ✅           | ✅            |
+| `detailPanel`     | ✅           | ✅            |
 
 ## Building from source
 

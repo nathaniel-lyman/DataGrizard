@@ -15,6 +15,21 @@ export type {
   DataGridSummarySelectionMode,
 } from "./DataGrid";
 export type {
+  DataGridPivotAggregation,
+  DataGridPivotAggregationContext,
+  DataGridPivotCellContext,
+  DataGridPivotColumnAxis,
+  DataGridPivotConfig,
+  DataGridPivotMeasure,
+  DataGridPivotPaginationMode,
+  DataGridPivotRowLabelColumnConfig,
+  DataGridPivotSelectionMode,
+  DataGridPivotState,
+  PivotGroupPathSegment,
+  PivotRow,
+  PivotRowKind,
+} from "./pivot";
+export type {
   GridColumnConfig,
   GridConditionalFormat,
   GridDataType,

@@ -4,15 +4,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
 
-type Row = { id: string; name: string; revenue: number };
+type Row = { id: string; name: string; revenue: number; segment?: string };
 
 const columns: GridColumnConfig<Row>[] = [
   { accessorKey: "name", header: "Name", dataType: "text" },
+  { accessorKey: "segment", header: "Segment", dataType: "text", enableGrouping: true },
   { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
 ];
 
 const makeRows = (n: number): Row[] =>
-  Array.from({ length: n }, (_, i) => ({ id: String(i), name: `Item ${i}`, revenue: i }));
+  Array.from({ length: n }, (_, i) => ({
+    id: String(i),
+    name: `Item ${i}`,
+    revenue: i,
+    segment: `Segment ${i % 20}`,
+  }));
 
 afterEach(() => {
   cleanup();
@@ -49,5 +55,28 @@ describe("DataGrid row virtualization", () => {
 
     expect(screen.getByText("Item 0")).toBeInTheDocument();
     expect(screen.getByText("Item 79")).toBeInTheDocument();
+  });
+
+  it("virtualizes materialized pivot rows with generated-column spacer colSpan", () => {
+    render(
+      <DataGrid
+        data={makeRows(500)}
+        columns={columns}
+        layoutMode="pivot"
+        getRowId={(r) => r.id}
+        virtualizeRows
+        features={{ pagination: false, rowSelection: false }}
+        pivot={{
+          rows: ["segment"],
+          measures: [
+            { id: "revenue", label: "Revenue", columnId: "revenue", aggregation: "sum" },
+          ],
+        }}
+      />,
+    );
+
+    const bodyRows = document.querySelectorAll("tbody tr");
+    expect(bodyRows.length).toBeLessThan(80);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(2);
   });
 });

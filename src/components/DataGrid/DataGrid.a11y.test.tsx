@@ -93,4 +93,32 @@ describe("DataGrid accessibility", () => {
     );
     expect(screen.getByRole("table", { name: "Product analytics" })).toBeInTheDocument();
   });
+
+  it("preserves pivot table accessibility through generated headers and controls", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        layoutMode="pivot"
+        defaultGrouping={["dept", "product"]}
+        getRowId={(r) => r.id}
+        tableLabel="Pivot analytics"
+        summaryItems={[
+          { id: "revenue", label: "Revenue", columnId: "revenue", value: ({ rows }) => rows.length },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("table", { name: "Pivot analytics" })).toBeInTheDocument();
+    const rowLabelHeader = screen.getByRole("columnheader", { name: "Row Labels" });
+    expect(rowLabelHeader).toHaveAttribute("aria-sort", "none");
+    fireEvent.click(screen.getByRole("button", { name: "Row Labels" }));
+    expect(rowLabelHeader).toHaveAttribute("aria-sort");
+    expect(screen.getByRole("button", { name: "Toggle Grocery group" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByLabelText("Select source rows for Grocery")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "2" })).not.toBeInTheDocument();
+  });
 });
