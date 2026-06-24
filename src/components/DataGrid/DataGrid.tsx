@@ -72,12 +72,8 @@ import {
   type DataGridPivotColumnAxis,
   type DataGridPivotConfig,
   type DataGridPivotMeasure,
-  type DataGridPivotPaginationMode,
-  type DataGridPivotSelectionMode,
   type DataGridPivotState,
-  type PivotGroupPathSegment,
   type PivotRow,
-  type PivotRowKind,
 } from "./pivot";
 
 type PivotMeasureColumnMeta = {
@@ -292,6 +288,27 @@ const reactNodeToText = (value: ReactNode) => {
   return "";
 };
 
+const isNumericDataType = (dataType: GridDataType) =>
+  dataType === "currency" || dataType === "number" || dataType === "percent";
+
+const formatNumericValue = (
+  dataType: GridDataType,
+  value: unknown,
+  formatOptions: FormatOptions,
+) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return "";
+  }
+  if (dataType === "currency") {
+    return formatCurrency(numericValue, formatOptions);
+  }
+  if (dataType === "number") {
+    return formatNumber(numericValue, formatOptions);
+  }
+  return formatPercent(numericValue, formatOptions);
+};
+
 const getColumnControlLabel = <TData extends object>(
   column: Column<TData | PivotRow<TData>, unknown>,
 ) => {
@@ -314,21 +331,15 @@ const getColumnControlLabel = <TData extends object>(
   return label;
 };
 
-// Unified column filter: exact match for a string filter value (select),
-// membership for an array (multi-select), and numeric bounds for an object
-// { min, max } (range). Exact match avoids the substring leakage of the
-// default includesString filter (e.g. "Men" matching "Women").
-const gridColumnFilterFn: FilterFn<unknown> = (row, columnId, filterValue) => {
+const matchesFilterValue = (raw: unknown, filterValue: unknown) => {
   if (filterValue == null || filterValue === "") {
     return true;
   }
-  const raw = row.getValue(columnId);
+
   if (Array.isArray(filterValue)) {
-    if (filterValue.length === 0) {
-      return true;
-    }
-    return filterValue.map(String).includes(String(raw ?? ""));
+    return filterValue.length === 0 || filterValue.map(String).includes(String(raw ?? ""));
   }
+
   if (typeof filterValue === "object") {
     const { min, max } = filterValue as { min?: number | null; max?: number | null };
     const numericValue = Number(raw);
@@ -343,7 +354,16 @@ const gridColumnFilterFn: FilterFn<unknown> = (row, columnId, filterValue) => {
     }
     return true;
   }
+
   return String(raw ?? "") === String(filterValue);
+};
+
+// Unified column filter: exact match for a string filter value (select),
+// membership for an array (multi-select), and numeric bounds for an object
+// { min, max } (range). Exact match avoids the substring leakage of the
+// default includesString filter (e.g. "Men" matching "Women").
+const gridColumnFilterFn: FilterFn<unknown> = (row, columnId, filterValue) => {
+  return matchesFilterValue(row.getValue(columnId), filterValue);
 };
 
 const renderCellValue = <TData extends object>(
@@ -360,22 +380,8 @@ const renderCellValue = <TData extends object>(
     return "";
   }
 
-  if (
-    column.dataType === "currency" ||
-    column.dataType === "number" ||
-    column.dataType === "percent"
-  ) {
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) {
-      return "";
-    }
-    if (column.dataType === "currency") {
-      return formatCurrency(numericValue, formatOptions);
-    }
-    if (column.dataType === "number") {
-      return formatNumber(numericValue, formatOptions);
-    }
-    return formatPercent(numericValue, formatOptions);
+  if (isNumericDataType(column.dataType)) {
+    return formatNumericValue(column.dataType, value, formatOptions);
   }
 
   if (column.dataType === "status") {
@@ -433,22 +439,8 @@ const getColumnSearchText = <TData extends object>(
   if (column.dataType === "status") {
     return formatStatusLabel(String(value));
   }
-  if (
-    column.dataType === "currency" ||
-    column.dataType === "number" ||
-    column.dataType === "percent"
-  ) {
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) {
-      return "";
-    }
-    if (column.dataType === "currency") {
-      return formatCurrency(numericValue, formatOptions);
-    }
-    if (column.dataType === "number") {
-      return formatNumber(numericValue, formatOptions);
-    }
-    return formatPercent(numericValue, formatOptions);
+  if (isNumericDataType(column.dataType)) {
+    return formatNumericValue(column.dataType, value, formatOptions);
   }
   return String(value);
 };
@@ -459,7 +451,7 @@ const getCellClasses = <TData extends object>(
   row: TData,
 ) => {
   const alignment =
-    column.dataType === "number" || column.dataType === "currency" || column.dataType === "percent"
+    isNumericDataType(column.dataType)
       ? "text-right tabular-nums"
       : "text-left";
 
@@ -490,6 +482,15 @@ const collectExpandableGroupIds = <TData extends object>(
     const childIds = collectExpandableGroupIds(row.subRows, groupingDepth);
     return row.depth < groupingDepth - 1 ? [row.id, ...childIds] : childIds;
   });
+
+const getSelectionStatus = (rowIds: string[], selectedIds: Set<string>) => {
+  const selectedCount = rowIds.filter((rowId) => selectedIds.has(rowId)).length;
+
+  return {
+    allSelected: rowIds.length > 0 && selectedCount === rowIds.length,
+    someSelected: selectedCount > 0 && selectedCount < rowIds.length,
+  };
+};
 
 export function DataGrid<TData extends object>({
   data,
@@ -934,25 +935,7 @@ export function DataGrid<TData extends object>({
     return data.filter((row) => {
       const passesColumnFilters = activeFilters.every((filter) => {
         const raw = row[filter.id as Extract<keyof TData, string>];
-        const value = filter.value;
-        if (Array.isArray(value)) {
-          return value.length === 0 || value.map(String).includes(String(raw ?? ""));
-        }
-        if (value != null && typeof value === "object") {
-          const { min, max } = value as { min?: number | null; max?: number | null };
-          const numericValue = Number(raw);
-          if (!Number.isFinite(numericValue)) {
-            return false;
-          }
-          if (min != null && numericValue < min) {
-            return false;
-          }
-          if (max != null && numericValue > max) {
-            return false;
-          }
-          return true;
-        }
-        return String(raw ?? "") === String(value);
+        return matchesFilterValue(raw, filter.value);
       });
 
       if (!passesColumnFilters || !needle) {
@@ -1092,14 +1075,14 @@ export function DataGrid<TData extends object>({
         }
 
         const sourceIds = pivotSourceRows.map(getSourceRowId);
-        const selectedCount = sourceIds.filter((rowId) => pivotSelectedSourceIds.has(rowId)).length;
+        const selection = getSelectionStatus(sourceIds, pivotSelectedSourceIds);
         return (
           <input
             type="checkbox"
-            checked={sourceIds.length > 0 && selectedCount === sourceIds.length}
+            checked={selection.allSelected}
             ref={(input) => {
               if (input) {
-                input.indeterminate = selectedCount > 0 && selectedCount < sourceIds.length;
+                input.indeterminate = selection.someSelected;
               }
             }}
             onChange={(event) => setSourceRowsSelected(pivotSourceRows, event.currentTarget.checked)}
@@ -1124,14 +1107,14 @@ export function DataGrid<TData extends object>({
         }
 
         const sourceIds = row.original.__sourceRows.map(getSourceRowId);
-        const selectedCount = sourceIds.filter((rowId) => pivotSelectedSourceIds.has(rowId)).length;
+        const selection = getSelectionStatus(sourceIds, pivotSelectedSourceIds);
         return (
           <input
             type="checkbox"
-            checked={sourceIds.length > 0 && selectedCount === sourceIds.length}
+            checked={selection.allSelected}
             ref={(input) => {
               if (input) {
-                input.indeterminate = selectedCount > 0 && selectedCount < sourceIds.length;
+                input.indeterminate = selection.someSelected;
               }
             }}
             onClick={(event) => event.stopPropagation()}

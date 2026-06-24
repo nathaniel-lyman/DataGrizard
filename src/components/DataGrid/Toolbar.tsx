@@ -63,23 +63,97 @@ const formatOptionLabel = (option: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-const SelectFilter = ({ filter }: { filter: ToolbarFilter }) => (
-  <label className="flex min-w-36 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-    {filter.label}
-    <select
-      value={typeof filter.value === "string" ? filter.value : ""}
-      onChange={(event) => filter.onChange(event.target.value)}
-      className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium normal-case tracking-normal text-slate-800 outline-none transition focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300"
+const SelectFilter = ({ filter }: { filter: ToolbarFilter }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const selected = typeof filter.value === "string" ? filter.value : "";
+  const format = filter.formatOption ?? formatOptionLabel;
+  const selectedLabel = selected ? format(selected) : "All";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const choose = (value: string) => {
+    filter.onChange(value);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="relative flex min-w-36 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500"
     >
-      <option value="">All</option>
-      {filter.options.map((option) => (
-        <option key={option} value={option}>
-          {(filter.formatOption ?? formatOptionLabel)(option)}
-        </option>
-      ))}
-    </select>
-  </label>
-);
+      {filter.label}
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={`${filter.label} filter`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((isOpen) => !isOpen)}
+        className="flex h-8 items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium normal-case tracking-normal text-slate-800 outline-none transition hover:bg-slate-50 focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300"
+      >
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          aria-label={`${filter.label} options`}
+          className="absolute left-0 top-full z-20 mt-1 max-h-64 w-56 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg"
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={selected === ""}
+            onClick={() => choose("")}
+            className={`flex h-8 w-full items-center rounded px-2 text-left text-xs font-medium normal-case tracking-normal ${
+              selected === "" ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-50"
+            }`}
+          >
+            All
+          </button>
+          {filter.options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={selected === option}
+              onClick={() => choose(option)}
+              className={`flex h-8 w-full items-center rounded px-2 text-left text-xs font-medium normal-case tracking-normal ${
+                selected === option ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-50"
+              }`}
+            >
+              <span className="truncate">{format(option)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const MultiSelectFilter = ({ filter }: { filter: ToolbarFilter }) => {
   const [open, setOpen] = useState(false);

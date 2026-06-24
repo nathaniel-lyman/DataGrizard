@@ -525,7 +525,8 @@ describe("DataGrid pivot layout mode", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "Grocery" } });
+    fireEvent.click(screen.getByRole("button", { name: /Department filter/i }));
+    fireEvent.click(screen.getByRole("option", { name: "Grocery" }));
 
     expect(screen.getByRole("columnheader", { name: "Grocery" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Home" })).not.toBeInTheDocument();

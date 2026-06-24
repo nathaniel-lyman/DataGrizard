@@ -69,6 +69,7 @@ function App() {
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}
           defaultGrouping={["department", "category"]}
+          pivot={{ showLeafRows: true }}
           storageKey="retail-recommendation-workbench"
           rowLabel="items"
           tableLabel="Retail recommendation analytics"

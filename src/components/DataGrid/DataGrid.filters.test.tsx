@@ -27,7 +27,8 @@ describe("DataGrid column filters", () => {
     const filters: GridFilterConfig<Row>[] = [{ accessorKey: "dept", label: "Dept" }];
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
 
-    fireEvent.change(screen.getByLabelText("Dept"), { target: { value: "Men" } });
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    fireEvent.click(screen.getByRole("option", { name: "Men" }));
 
     expect(screen.getByText("$500")).toBeInTheDocument();
     // "women" contains "men" — a substring filter would wrongly keep this row.

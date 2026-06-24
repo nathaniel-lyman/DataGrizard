@@ -1,0 +1,74 @@
+- main [ref=e3] [box=0,0,1440,960]:
+  - generic [ref=e5] [box=20,12,1400,42]:
+    - generic [ref=e6] [box=20,12,379,42]:
+      - heading "Retail Recommendation Workbench" [level=1] [ref=e7] [box=20,12,379,24]
+      - paragraph [ref=e8] [box=20,38,379,16]: Pivot view — grouped subtotals. Switch to Grid to drill to item level.
+    - generic [ref=e9] [box=1231,16,189,34]:
+      - group "Layout mode" [ref=e10] [box=1231,16,109,34]:
+        - button "Pivot" [pressed] [ref=e11] [cursor=pointer] [box=1234,19,54,28]
+        - button "Grid" [ref=e12] [cursor=pointer] [box=1288,19,49,28]
+      - generic [ref=e13] [box=1348,20,72,26]: 500 rows
+  - generic [ref=e15] [box=16,83,1408,861]:
+    - generic [ref=e16] [box=17,84,1086,859]:
+      - generic [ref=e17] [box=17,84,1086,233]:
+        - generic [ref=e18] [box=33,96,1054,53]:
+          - generic [ref=e19] [box=33,96,292,53]
+          - generic [ref=e22] [box=337,96,144,53]
+          - generic [ref=e27] [box=493,96,144,53]
+          - generic [ref=e29] [box=649,96,144,53]
+          - generic [ref=e34] [box=805,96,175,53]
+          - button "Clear filters" [ref=e39] [cursor=pointer] [box=992,117,95,32]
+        - button "Reset view" [ref=e41] [cursor=pointer] [box=33,161,90,32]
+        - generic [ref=e42] [box=33,205,1054,100]:
+          - generic [ref=e43] [box=33,218,352,87]
+          - generic [ref=e67] [box=401,252,192,53]
+          - generic [ref=e73] [box=609,252,478,53]
+      - generic [ref=e79] [box=17,317,1086,33]:
+        - generic [ref=e80] [box=33,325,97,16]: 500 of 500 items
+        - generic [ref=e82] [box=1028,325,59,16]: 0 selected
+      - table "Retail recommendation analytics" [ref=e84] [box=17,350,1086,1106]:
+        - caption [ref=e85] [box=16,381,1,1]: Retail recommendation analytics
+        - rowgroup [ref=e86] [box=17,350,1086,32]:
+          - row "Select all filtered source rows Row Labels Resize Row Labels Sum of Sales Resize Sum of Sales Sum of Units Resize Sum of Units Avg Margin Resize Avg Margin Avg Price Gap Resize Avg Price Gap Top Status Resize Top Status" [ref=e87] [box=17,350,1086,32]
+        - rowgroup [ref=e133] [box=17,382,1086,1074]:
+          - row "Select source rows for Apparel Toggle Apparel group Apparel $4,288,349 199,700 30.9% -0.7% Rejected" [ref=e134] [box=17,382,1086,35]
+          - row "Select source rows for Footwear Footwear $752,112 32,117 33.1% +0.2% Approved" [ref=e147] [box=17,417,1086,35]
+          - row "Select source rows for Kids Kids $1,297,217 51,790 29.4% 0.0% Pending" [ref=e159] [box=17,451,1086,35]
+          - row "Select source rows for Men Men $1,047,177 59,258 33.3% -1.1% Rejected" [ref=e171] [box=17,486,1086,35]
+          - row "Select source rows for Women Women $1,191,843 56,535 28.8% -1.6% Approved" [ref=e183] [box=17,520,1086,35]
+          - row "Select source rows for Sporting Goods Toggle Sporting Goods group Sporting Goods $3,039,739 166,179 31.4% +0.5% Pending" [ref=e195] [box=17,555,1086,35]
+          - row "Select source rows for Fitness Fitness $840,001 50,110 30.0% -1.3% Approved" [ref=e208] [box=17,589,1086,35]
+          - row "Select source rows for Cycling Cycling $830,373 46,808 31.4% +2.9% Pending" [ref=e220] [box=17,624,1086,35]
+          - row "Select source rows for Outdoor Outdoor $750,680 27,952 36.5% +3.3% Pending" [ref=e232] [box=17,658,1086,35]
+          - row "Select source rows for Team Sports Team Sports $618,685 41,309 28.4% -2.5% Rejected" [ref=e244] [box=17,693,1086,35]
+          - row "Select source rows for Grocery Toggle Grocery group Grocery $3,245,494 207,239 31.1% -1.7% Investigate" [ref=e256] [box=17,727,1086,35]
+          - row "Select source rows for Produce Produce $892,693 56,710 30.6% -2.7% Pending" [ref=e269] [box=17,762,1086,35]
+          - row "Select source rows for Pantry Pantry $821,722 60,699 32.3% -1.0% Approved" [ref=e281] [box=17,796,1086,35]
+          - row "Select source rows for Beverage Beverage $677,802 36,915 30.8% -2.2% Rejected" [ref=e293] [box=17,831,1086,35]
+          - row "Select source rows for Frozen Frozen $853,277 52,915 30.7% -1.3% Investigate" [ref=e305] [box=17,865,1086,35]
+          - row "Select source rows for Electronics Toggle Electronics group Electronics $4,059,618 183,456 30.6% -2.4% Approved" [ref=e317] [box=17,900,1086,35]
+          - row "Select source rows for Mobile Mobile $1,198,359 53,137 29.1% +1.8% Pending" [ref=e330] [box=17,934,1086,35]
+          - row "Select source rows for Computing Computing $745,448 37,525 29.8% -0.2% Approved" [ref=e342] [box=17,969,1086,35]
+          - row "Select source rows for Accessories Accessories $1,175,151 43,356 31.3% -6.2% Investigate" [ref=e354] [box=17,1003,1086,35]
+          - row "Select source rows for Audio Audio $940,660 49,438 32.1% -4.3% Rejected" [ref=e366] [box=17,1038,1086,35]
+          - row "Select source rows for Beauty Toggle Beauty group Beauty $2,864,683 162,399 31.0% +0.2% Approved" [ref=e378] [box=17,1072,1086,35]
+          - row "Select source rows for Cosmetics Cosmetics $513,997 42,782 33.0% +4.0% Investigate" [ref=e391] [box=17,1107,1086,35]
+          - row "Select source rows for Fragrance Fragrance $580,552 27,677 30.9% +6.2% Approved" [ref=e417] [box=17,1141,1086,35]
+          - row "Select source rows for Skin Care Skin Care $982,982 52,063 30.9% -3.1% Approved" [ref=e429] [box=17,1176,1086,35]
+          - row "Select source rows for Hair Care Hair Care $787,152 39,877 29.7% -2.6% Approved" [ref=e441] [box=17,1210,1086,35]
+          - row "Select source rows for Home Toggle Home group Home $3,098,002 166,539 30.1% -1.3% Approved" [ref=e453] [box=17,1245,1086,35]
+          - row "Select source rows for Kitchen Kitchen $891,626 44,559 29.6% -0.5% Investigate" [ref=e466] [box=17,1279,1086,35]
+          - row "Select source rows for Decor Decor $1,051,638 61,210 27.9% -2.7% Investigate" [ref=e478] [box=17,1314,1086,35]
+          - row [ref=e403] [box=17,1348,1086,108]
+      - generic [ref=e405] [box=17,894,1086,49]:
+        - generic [ref=e406] [box=33,903,165,32]:
+          - generic [ref=e407] [box=33,911,61,16]: Page 1 of 1
+          - combobox "items per page" [ref=e408] [box=102,903,96,32]
+        - generic [ref=e409] [box=948,903,139,32]:
+          - button "Previous" [disabled] [ref=e410] [box=948,903,77,32]
+          - button "Next" [disabled] [ref=e411] [box=1034,903,53,32]
+    - complementary [ref=e412] [box=1103,84,320,859]:
+      - generic [ref=e413] [box=1104,84,319,66]:
+        - paragraph [ref=e414] [box=1120,96,287,17]: Item detail
+        - heading "Select a row" [level=2] [ref=e415] [box=1120,117,287,20]
+      - generic [ref=e416] [box=1104,150,319,88]: Click a grid row to inspect recommendation context and take action.
