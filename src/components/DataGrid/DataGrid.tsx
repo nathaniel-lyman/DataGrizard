@@ -67,6 +67,9 @@ import { Toolbar } from "./Toolbar";
 import { ChevronDownIcon, MinusIcon, PlusIcon, SortIcon } from "./icons";
 
 export type DataGridFeatures = {
+  toolbar: boolean;
+  globalSearch: boolean;
+  sorting: boolean;
   columnVisibility: boolean;
   columnResizing: boolean;
   columnOrdering: boolean;
@@ -186,6 +189,9 @@ export type DataGridProps<TData extends object> = {
 };
 
 const defaultFeatures: DataGridFeatures = {
+  toolbar: true,
+  globalSearch: true,
+  sorting: true,
   columnVisibility: true,
   columnResizing: true,
   columnOrdering: true,
@@ -751,6 +757,7 @@ export function DataGrid<TData extends object>({
         size: column.width,
         minSize: column.minWidth ?? 88,
         maxSize: column.maxWidth ?? 420,
+        enableSorting: features.sorting,
         enableHiding: features.columnVisibility,
         enableResizing: features.columnResizing,
         enablePinning: features.columnPinning && (column.enablePinning ?? true),
@@ -765,6 +772,7 @@ export function DataGrid<TData extends object>({
       columnList,
       features.columnPinning,
       features.columnResizing,
+      features.sorting,
       features.columnVisibility,
       features.grouping,
       features.rowSelection,
@@ -792,8 +800,8 @@ export function DataGrid<TData extends object>({
     columns: columnDefs,
     globalFilterFn,
     state: {
-      sorting: currentSorting,
-      globalFilter: currentGlobalFilter,
+      sorting: features.sorting ? currentSorting : [],
+      globalFilter: features.globalSearch ? currentGlobalFilter : "",
       columnFilters: currentColumnFilters,
       columnVisibility: features.columnVisibility ? currentColumnVisibility : {},
       columnSizing: features.columnResizing ? currentColumnSizing : {},
@@ -805,6 +813,7 @@ export function DataGrid<TData extends object>({
       expanded: features.grouping ? currentExpanded : {},
     },
     getRowId,
+    enableSorting: features.sorting,
     enableRowSelection: features.rowSelection,
     enableGrouping: features.grouping,
     enableColumnPinning: features.columnPinning,
@@ -825,7 +834,7 @@ export function DataGrid<TData extends object>({
     onExpandedChange: emitExpandedChange,
     getRowCanExpand: (row) => row.getIsGrouped(),
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    ...(features.sorting ? { getSortedRowModel: getSortedRowModel() } : {}),
     getFilteredRowModel: getFilteredRowModel(),
     ...(features.grouping ? { getGroupedRowModel: getGroupedRowModel() } : {}),
     ...(features.grouping ? { getExpandedRowModel: getExpandedRowModel() } : {}),
@@ -1498,57 +1507,60 @@ export function DataGrid<TData extends object>({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <Toolbar
-          search={currentGlobalFilter}
-          searchPlaceholder={searchPlaceholder}
-          filters={toolbarFilters}
-          enableColumnVisibility={features.columnVisibility}
-          enableColumnOrdering={features.columnOrdering}
-          enableColumnPinning={features.columnPinning}
-          enableSavedViews={features.savedViews}
-          enableGrouping={features.grouping}
-          columns={table
-            .getAllLeafColumns()
-            .filter((column) => column.id !== "select")
-            .map((column) => ({
-              id: column.id,
-              label: String(column.columnDef.header ?? column.id),
-              visible: column.getIsVisible(),
-              canHide: column.getCanHide(),
-              pinned: column.getIsPinned(),
-              canPin: column.getCanPin(),
-            }))}
-          groupableColumns={groupableColumns}
-          grouping={currentGrouping}
-          savedViews={Object.keys(currentSavedViews).sort()}
-          activeViewName={currentActiveViewName}
-          viewNamePlaceholder={viewNamePlaceholder}
-          onSearchChange={emitGlobalFilterChange}
-          onColumnVisibilityChange={(columnId, visible) =>
-            table.getColumn(columnId)?.toggleVisibility(visible)
-          }
-          onColumnMove={moveColumn}
-          onColumnDrop={dropColumn}
-          onColumnPin={pinColumn}
-          onGroupingAdd={addGrouping}
-          onGroupingRemove={removeGrouping}
-          onGroupingMove={moveGrouping}
-          onClearGrouping={clearGrouping}
-          onClearFilters={clearFilters}
-          onResetColumns={resetColumns}
-          onResetView={resetView}
-          onSaveView={saveView}
-          onApplyView={applyView}
-          onDeleteView={deleteView}
-          onActiveViewNameChange={emitActiveViewNameChange}
-        />
+        {features.toolbar ? (
+          <Toolbar
+            search={currentGlobalFilter}
+            searchPlaceholder={searchPlaceholder}
+            filters={toolbarFilters}
+            enableGlobalSearch={features.globalSearch}
+            enableColumnVisibility={features.columnVisibility}
+            enableColumnOrdering={features.columnOrdering}
+            enableColumnPinning={features.columnPinning}
+            enableSavedViews={features.savedViews}
+            enableGrouping={features.grouping}
+            columns={table
+              .getAllLeafColumns()
+              .filter((column) => column.id !== "select")
+              .map((column) => ({
+                id: column.id,
+                label: String(column.columnDef.header ?? column.id),
+                visible: column.getIsVisible(),
+                canHide: column.getCanHide(),
+                pinned: column.getIsPinned(),
+                canPin: column.getCanPin(),
+              }))}
+            groupableColumns={groupableColumns}
+            grouping={currentGrouping}
+            savedViews={Object.keys(currentSavedViews).sort()}
+            activeViewName={currentActiveViewName}
+            viewNamePlaceholder={viewNamePlaceholder}
+            onSearchChange={emitGlobalFilterChange}
+            onColumnVisibilityChange={(columnId, visible) =>
+              table.getColumn(columnId)?.toggleVisibility(visible)
+            }
+            onColumnMove={moveColumn}
+            onColumnDrop={dropColumn}
+            onColumnPin={pinColumn}
+            onGroupingAdd={addGrouping}
+            onGroupingRemove={removeGrouping}
+            onGroupingMove={moveGrouping}
+            onClearGrouping={clearGrouping}
+            onClearFilters={clearFilters}
+            onResetColumns={resetColumns}
+            onResetView={resetView}
+            onSaveView={saveView}
+            onApplyView={applyView}
+            onDeleteView={deleteView}
+            onActiveViewNameChange={emitActiveViewNameChange}
+          />
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
           <span>
             {filteredRowCount} of {data.length} {rowLabel}
           </span>
           <div className="flex items-center gap-3">
-            {currentSorting.length > 0 ? (
+            {features.sorting && currentSorting.length > 0 ? (
               <button
                 type="button"
                 onClick={() => emitSortingChange([])}

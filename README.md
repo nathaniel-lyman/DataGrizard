@@ -236,8 +236,36 @@ Defaults to `en-US` / `USD`. Applies to cell formatting and the searchable text.
 features={{ pagination: false, rowSelection: false /* … */ }}
 ```
 
+For a bare table with only sortable, resizable columns:
+
+```tsx
+<DataGrid
+  data={rows}
+  columns={columns}
+  getRowId={(row) => row.id}
+  features={{
+    toolbar: false,
+    globalSearch: false,
+    sorting: true,
+    columnResizing: true,
+    columnVisibility: false,
+    columnOrdering: false,
+    columnPinning: false,
+    savedViews: false,
+    grouping: false,
+    summaries: false,
+    pagination: false,
+    rowSelection: false,
+    detailPanel: false,
+  }}
+/>
+```
+
 | feature           | grid default | pivot default |
 | ----------------- | ------------ | ------------- |
+| `toolbar`         | ✅           | ✅            |
+| `globalSearch`    | ✅           | ✅            |
+| `sorting`         | ✅           | ✅            |
 | `columnVisibility`| ✅           | ✅            |
 | `columnResizing`  | ✅           | ✅            |
 | `columnOrdering`  | ✅           | ✅            |

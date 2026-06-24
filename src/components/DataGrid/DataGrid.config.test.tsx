@@ -56,6 +56,78 @@ describe("DataGrid declarative formatting", () => {
   });
 });
 
+describe("DataGrid feature flags", () => {
+  it("can render a bare table with sorting and resizing but no analytical chrome", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{
+          toolbar: false,
+          globalSearch: false,
+          sorting: true,
+          columnResizing: true,
+          columnVisibility: false,
+          columnOrdering: false,
+          columnPinning: false,
+          savedViews: false,
+          pagination: false,
+          rowSelection: false,
+          detailPanel: false,
+          summaries: false,
+          grouping: false,
+        }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Search")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reset view")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Select all visible rows")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Page 1 of/)).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Name/ })).toHaveAttribute(
+      "aria-sort",
+      "none",
+    );
+    expect(screen.getByRole("button", { name: "Resize Name" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(screen.getByRole("columnheader", { name: /Name/ })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  it("can disable header sorting independently from column resizing", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{
+          toolbar: false,
+          globalSearch: false,
+          sorting: false,
+          columnResizing: true,
+          columnVisibility: false,
+          columnOrdering: false,
+          columnPinning: false,
+          savedViews: false,
+          pagination: false,
+          rowSelection: false,
+          detailPanel: false,
+          summaries: false,
+          grouping: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
+    expect(screen.queryByRole("button", { name: "Name" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resize Name" })).toBeInTheDocument();
+  });
+});
+
 describe("DataGrid column pinning configuration", () => {
   it("pins columns from column config", () => {
     render(

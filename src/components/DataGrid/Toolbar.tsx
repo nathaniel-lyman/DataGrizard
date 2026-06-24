@@ -20,6 +20,7 @@ type ToolbarProps = {
   search: string;
   searchPlaceholder: string;
   filters: ToolbarFilter[];
+  enableGlobalSearch: boolean;
   enableColumnVisibility: boolean;
   enableColumnOrdering: boolean;
   enableColumnPinning: boolean;
@@ -223,6 +224,7 @@ export function Toolbar({
   search,
   searchPlaceholder,
   filters,
+  enableGlobalSearch,
   enableColumnVisibility,
   enableColumnOrdering,
   enableColumnPinning,
@@ -288,57 +290,72 @@ export function Toolbar({
   const showColumnControls = enableColumnVisibility || enableColumnOrdering || enableColumnPinning;
   const showGroupingControls = enableGrouping && groupableColumns.length > 0;
   const showSecondaryControls = showColumnControls || enableSavedViews || showGroupingControls;
+  const showFilterControls = enableGlobalSearch || filters.length > 0;
+  const showPrimaryControls = showFilterControls || showSecondaryControls;
+
+  if (!showPrimaryControls) {
+    return null;
+  }
 
   return (
     <div className="border-b border-slate-200 bg-white px-4 py-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-72 flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-          Search
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-            >
-              <SearchIcon className="h-3.5 w-3.5" />
-            </span>
-            <input
-              value={search}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder={searchPlaceholder}
-              className="h-8 w-full rounded-md border border-slate-300 bg-white pl-8 pr-8 text-xs font-medium normal-case tracking-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300"
-            />
-            {search ? (
-              <button
-                type="button"
-                onClick={() => onSearchChange("")}
-                aria-label="Clear search"
-                className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-              >
-                <CloseIcon className="h-3 w-3" />
-              </button>
-            ) : null}
-          </div>
-        </label>
+      {showFilterControls ? (
+        <div className="flex flex-wrap items-end gap-3">
+          {enableGlobalSearch ? (
+            <label className="flex min-w-72 flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              Search
+              <div className="relative">
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                >
+                  <SearchIcon className="h-3.5 w-3.5" />
+                </span>
+                <input
+                  value={search}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="h-8 w-full rounded-md border border-slate-300 bg-white pl-8 pr-8 text-xs font-medium normal-case tracking-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    onClick={() => onSearchChange("")}
+                    aria-label="Clear search"
+                    className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                  >
+                    <CloseIcon className="h-3 w-3" />
+                  </button>
+                ) : null}
+              </div>
+            </label>
+          ) : null}
 
-        {filters.map((filter) => (
-          <FilterControl key={filter.id} filter={filter} />
-        ))}
+          {filters.map((filter) => (
+            <FilterControl key={filter.id} filter={filter} />
+          ))}
 
-        <button
-          type="button"
-          onClick={onClearFilters}
-          className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
-        >
-          Clear filters
-        </button>
-        <button
-          type="button"
-          onClick={onResetView}
-          className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
-        >
-          Reset view
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          >
+            Clear filters
+          </button>
+        </div>
+      ) : null}
+
+      {showSecondaryControls ? (
+        <div className={`${showFilterControls ? "mt-3 " : ""}flex flex-wrap items-end gap-3`}>
+          <button
+            type="button"
+            onClick={onResetView}
+            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          >
+            Reset view
+          </button>
+        </div>
+      ) : null}
 
       {showSecondaryControls ? (
         <div className="mt-3 flex flex-wrap items-end gap-4 border-t border-slate-100 pt-3">
