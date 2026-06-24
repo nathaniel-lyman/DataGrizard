@@ -18,6 +18,7 @@ A Vite + React 19 + TypeScript project whose **product is a single reusable comp
   - Single file: `npx vitest run src/components/DataGrid/DataGrid.test.tsx`
   - Single test by name: `npx vitest run -t "uses column visibility"`
   - Watch mode: `npx vitest`
+  - Tests are split by concern next to the engine: `DataGrid.test.tsx` (pivot) plus `DataGrid.{grid,a11y,usability,controlled,config,filters,virtual}.test.tsx`, and `src/utils/formatters.test.ts`. Behavioral work here is test-first.
 
 There is **no ESLint/Prettier setup** — don't invent a `lint` script. Type safety is enforced only by `tsc -b`.
 
@@ -27,7 +28,7 @@ There is **no ESLint/Prettier setup** — don't invent a `lint` script. Type saf
 
 ## Architecture (it almost all lives in `DataGrid.tsx`)
 
-`DataGrid.tsx` (~1300 lines) is the entire engine. `Toolbar.tsx` is a dumb, fully prop-driven child (search / filters / column menu / group-by builder / saved views). `index.ts` is the public boundary — **export any new public type there**. Subsystems to understand before editing:
+`DataGrid.tsx` (~1700 lines) is the entire engine — state, both layout renderers, the filter engine, and optional row virtualization. `Toolbar.tsx` is a dumb, fully prop-driven child (search / filters / column menu / group-by builder / saved views); `icons.tsx` holds its inline SVGs. `index.ts` is the public boundary — **export any new public type there**. Subsystems to understand before editing:
 
 - **Controlled / uncontrolled hybrid state.** Every state slice (sorting, globalFilter, columnFilters, columnVisibility, columnSizing, columnOrder, pagination, rowSelection, grouping, expanded, savedViews, activeViewName) follows one pattern: a `current*` value resolves as `controlledState?.X ?? internalUseState`, and an `emit*Change` helper resolves the updater, writes internal state **only when that slice is uncontrolled** (`controlledState?.X === undefined`), persists if needed, then fires the optional `on*Change` callback. Each slice is independently controllable. When adding state, replicate this triad (`current*`, `emit*Change`, optional `on*Change` prop) — do not call `setState` directly in handlers.
 
@@ -39,8 +40,10 @@ There is **no ESLint/Prettier setup** — don't invent a `lint` script. Type saf
 
 - **Summaries.** `summaryItems` render a summary bar in grid mode; `groupSummaryItems` render inside group rows and pivot rows/footer. Each item's `value`/`description` are callbacks receiving a `DataGridSummaryContext` (`rows`, `filteredRows`, `selectedRows`, `allRows`, `scope`). `scope` is `"filtered"` | `"selected"` | `"group"`; `summarySelectionMode="auto"` flips filtered→selected once any row is selected. Group/pivot contexts are built from a group's *leaf* rows.
 
-- **Grouping & expansion.** Multi-level grouping via TanStack's grouped/expanded row models. Rendering flattens differently per layout: `flattenExpandedRows` (grid) vs `flattenPivotRows` (pivot). Gotcha: `expanded` may be the literal boolean `true` (pivot's default = everything expanded) *or* a `Record<id, boolean>` — toggle/flatten logic must handle both forms.
+- **Grouping, expansion & row windowing.** Multi-level grouping via TanStack's grouped/expanded row models. `visibleRows` is the single source of what renders, and **how it's derived is correctness-critical**: flatten over the *nested* `getExpandedRowModel()` (`flattenExpandedRows` for grid, `flattenPivotRows` for pivot) — NOT the final `getRowModel()`, which is already flattened once the pagination model is registered and would double-emit leaves. Exception: grid + pagination renders `getRowModel().rows` directly (already flat + paginated). Gotcha: `expanded` may be the literal boolean `true` (pivot's default = all expanded) *or* a `Record<id, boolean>` — toggle/flatten logic must handle both. When `virtualizeRows` is set, `renderBodyRows` windows `visibleRows` via `@tanstack/react-virtual` using top/bottom spacer `<tr>`s + `measureElement` (works for leaf, group, and pivot rows); off by default.
+
+- **Detail panel & active row.** `activeRow` is internal state (not a controlled slice) surfaced via the `onActiveRowChange` callback. `renderDetailPanel(row, { close })` is handed a close control; clicking the active row again toggles it shut and Escape closes it. Grid leaf rows and actionable pivot rows get `role="button"` + `tabIndex` and Enter/Space handlers **only** when a row action exists (`renderDetailPanel` or `onRowClick`).
 
 ## Demo / consumer layer
 
-`src/App.tsx` wires it together in pivot mode. `src/data/mockRetailData.ts` defines the `RetailItem` type, the retail column/filter/summary configs, status pill styles, and 500 deterministic synthetic rows (`seededRandom` via `Math.sin` — stable across reloads). `src/demo/RetailDetailPanel.tsx` is the `renderDetailPanel` consumer. `src/utils/formatters.ts` holds the shared currency/number/percent/signed-percent/status-label formatters used by both the grid and the demo.
+`src/App.tsx` wires it together with a Grid/Pivot layout toggle (pivot = summary subtotals; grid = item-level rows + the detail panel) and opts into `virtualizeRows`. `src/data/mockRetailData.ts` defines the `RetailItem` type, the retail column/filter/summary configs (filters use `select` / `multiSelect` / `range` types), status pill styles, and 500 deterministic synthetic rows (`seededRandom` via `Math.sin` — stable across reloads). `src/demo/RetailDetailPanel.tsx` is the `renderDetailPanel` consumer. `src/utils/formatters.ts` holds the shared, locale-aware currency/number/percent/signed-percent/status-label formatters used by both the grid and the demo.
