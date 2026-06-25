@@ -223,3 +223,77 @@ describe("DataGrid server mode — a11y", () => {
     expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
   });
 });
+
+describe("DataGrid server mode — contract", () => {
+  it("ignores dataMode in pivot layout (pivot stays client-side)", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        layoutMode="pivot"
+        dataMode="server"
+        rowCount={3}
+        pivot={{ rows: ["name"], measures: [] }}
+        summaryItems={[
+          { id: "rev", columnId: "revenue", label: "Revenue", value: ({ rows }) => rows.length },
+        ]}
+      />,
+    );
+    // Pivot still materializes client-side: the row-label header is present.
+    // Exact name to target the sort-header button, not the "Resize Row Labels" handle.
+    expect(screen.getByRole("button", { name: "Row Labels" })).toBeInTheDocument();
+  });
+
+  it("defaults to client mode when dataMode is omitted (backward compat)", () => {
+    // rowSelection off so bodyNames() reads the Name cell, not the checkbox cell.
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+      />,
+    );
+    // Client mode DOES sort locally: clicking Name reorders to Alice/Bob/Charlie.
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+    expect(bodyNames()).toEqual(["Alice", "Bob", "Charlie"]);
+  });
+
+  it("allows re-enabling summaries via features override", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        dataMode="server"
+        rowCount={3}
+        features={{ summaries: true }}
+        summaryItems={[{ id: "count", label: "Count", value: ({ rows }) => rows.length }]}
+      />,
+    );
+    expect(screen.getByText("Count")).toBeInTheDocument();
+  });
+
+  it("supports controlling the pagination slice in server mode", () => {
+    const onPaginationChange = vi.fn();
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        dataMode="server"
+        rowCount={1000}
+        pageSizeOptions={[25, 50]}
+        state={{ pagination: { pageIndex: 0, pageSize: 25 } }}
+        onPaginationChange={onPaginationChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Controlled: emits but the grid stays on the prop-provided page 1.
+    expect(onPaginationChange).toHaveBeenCalledWith(
+      expect.objectContaining({ pageIndex: 1 }),
+    );
+    expect(screen.getByText(/Page 1 of 40/)).toBeInTheDocument();
+  });
+});
