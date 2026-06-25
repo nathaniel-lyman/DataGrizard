@@ -120,3 +120,50 @@ describe("DataGrid server mode — manual sorting/filtering", () => {
     expect(screen.queryByText("Group by")).not.toBeInTheDocument();
   });
 });
+
+describe("DataGrid server mode — pagination", () => {
+  it("derives page count and total from rowCount, not data.length", () => {
+    const onPaginationChange = vi.fn();
+    render(
+      <DataGrid
+        data={data} // one page of 3 rows
+        columns={columns}
+        getRowId={(r) => r.id}
+        dataMode="server"
+        rowCount={1000}
+        // Single option ⇒ the grid's default page size resolves to 25
+        // (pageSizeOptions[1] ?? pageSizeOptions[0]), so 1000/25 = 40 pages.
+        pageSizeOptions={[25]}
+        onPaginationChange={onPaginationChange}
+      />,
+    );
+
+    // Footer total reflects the server total.
+    expect(screen.getByText(/3 of 1000 rows/)).toBeInTheDocument();
+    // 1000 / 25 = 40 pages.
+    expect(screen.getByText(/Page 1 of 40/)).toBeInTheDocument();
+
+    const next = screen.getByRole("button", { name: "Next" });
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    expect(onPaginationChange).toHaveBeenCalledWith(
+      expect.objectContaining({ pageIndex: 1 }),
+    );
+  });
+
+  it("hides the 'of N' total when rowCount is omitted", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        dataMode="server"
+      />,
+    );
+    expect(screen.getByText(/3 rows/)).toBeInTheDocument();
+    // Neither the row-total nor the page indicator shows an "of N".
+    expect(screen.queryByText(/3 of/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Page 1 of/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Page 1/)).toBeInTheDocument();
+  });
+});

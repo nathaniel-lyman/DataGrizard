@@ -1438,6 +1438,9 @@ export function DataGrid<TData extends object>({
         );
   const filteredRowCount = filteredSummaryRows.length;
   const selectedRowCount = selectedSummaryRows.length;
+  // Server mode: the page total comes from the server (rowCount), not from the
+  // in-memory page (data.length). Undefined when an unknown-total server page.
+  const displayedTotalRowCount = isServerMode ? rowCount : data.length;
   const showSelectAllBanner =
     features.rowSelection &&
     !isPivotLayout &&
@@ -1957,7 +1960,9 @@ export function DataGrid<TData extends object>({
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
           <span>
-            {filteredRowCount} of {data.length} {rowLabel}
+            {displayedTotalRowCount != null
+              ? `${filteredRowCount} of ${displayedTotalRowCount} ${rowLabel}`
+              : `${filteredRowCount} ${rowLabel}`}
           </span>
           <div className="flex items-center gap-3">
             {features.sorting && currentSorting.length > 0 ? (
@@ -2196,8 +2201,10 @@ export function DataGrid<TData extends object>({
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-2 text-xs text-slate-600">
             <div className="flex items-center gap-2">
               <span>
-                Page {table.getState().pagination.pageIndex + 1} of{" "}
-                {Math.max(table.getPageCount(), 1)}
+                Page {table.getState().pagination.pageIndex + 1}
+                {isServerMode && rowCount == null
+                  ? ""
+                  : ` of ${Math.max(table.getPageCount(), 1)}`}
               </span>
               <select
                 value={table.getState().pagination.pageSize}
