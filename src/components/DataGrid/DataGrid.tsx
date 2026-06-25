@@ -952,7 +952,10 @@ export function DataGrid<TData extends object>({
       const value = row.getValue(columnId);
       const column = columnsById.get(columnId);
       const text = column ? getColumnSearchText(column, value, row.original, formatOptions) : "";
-      return `${value ?? ""} ${text}`.toLowerCase().includes(needle);
+      // Date columns match the formatted text only; the raw value (which may be a
+      // Date object) would otherwise pollute the haystack with toString() noise.
+      const haystack = column?.dataType === "date" ? text : `${value ?? ""} ${text}`;
+      return haystack.toLowerCase().includes(needle);
     },
     [columnsById, formatOptions],
   );
@@ -982,7 +985,8 @@ export function DataGrid<TData extends object>({
       return columnList.some((column) => {
         const raw = row[column.accessorKey];
         const text = getColumnSearchText(column, raw, row, formatOptions);
-        return `${raw ?? ""} ${text}`.toLowerCase().includes(needle);
+        const haystack = column.dataType === "date" ? text : `${raw ?? ""} ${text}`;
+        return haystack.toLowerCase().includes(needle);
       });
     });
   }, [

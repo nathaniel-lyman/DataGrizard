@@ -65,8 +65,22 @@ export const toDate = (value: unknown): Date | null => {
   if (typeof value === "string") {
     const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
     if (dateOnly) {
-      const [, year, month, day] = dateOnly;
-      return new Date(Number(year), Number(month) - 1, Number(day));
+      const year = Number(dateOnly[1]);
+      const month = Number(dateOnly[2]) - 1;
+      const day = Number(dateOnly[3]);
+      const date = new Date(year, month, day);
+      // Reject overflowed components: "2026-13-45" would silently roll over to
+      // a real Date otherwise. A valid date round-trips its own parts.
+      if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+        return null;
+      }
+      return date;
+    }
+    // Otherwise only accept a full ISO-8601 timestamp. Delegating loose strings
+    // ("2026", "June", "1 2 3") to new Date() would accept far too much for a
+    // generic date column.
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return null;
     }
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;

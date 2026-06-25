@@ -63,6 +63,17 @@ describe("formatters", () => {
       expect(toDate("not-a-date")).toBeNull();
     });
 
+    it("rejects overflowed date-only components and loose date-ish strings", () => {
+      expect(toDate("2026-13-45")).toBeNull(); // month/day out of range
+      expect(toDate("2026-02-30")).toBeNull(); // Feb 30 does not exist
+      expect(toDate("2026")).toBeNull(); // year-only, not a full date
+      expect(toDate("June")).toBeNull();
+    });
+
+    it("accepts a full ISO-8601 timestamp string", () => {
+      expect(toDate("2026-06-24T10:00:00Z")?.getUTCFullYear()).toBe(2026);
+    });
+
     it("parses a date-only ISO string as local midnight (no day shift)", () => {
       const d = toDate("2026-06-24")!;
       expect(d.getFullYear()).toBe(2026);
@@ -74,7 +85,8 @@ describe("formatters", () => {
 
   describe("formatDate", () => {
     it("formats with the default medium style", () => {
-      expect(formatDate("2026-06-24", { locale: "en-US" })).toBe("Jun 24, 2026");
+      // Tolerate ICU punctuation/whitespace variance across Node builds.
+      expect(formatDate("2026-06-24", { locale: "en-US" })).toMatch(/^Jun\.?\s24,\s2026$/);
     });
 
     it("honors a per-call dateFormat", () => {
