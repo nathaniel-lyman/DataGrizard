@@ -88,6 +88,9 @@ function App() {
               ),
             )
           }
+          getExportFileName={({ selectedCount }) =>
+            selectedCount > 0 ? `retail-selection-${selectedCount}.csv` : "retail-recommendations.csv"
+          }
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}
           defaultGrouping={["department", "category"]}

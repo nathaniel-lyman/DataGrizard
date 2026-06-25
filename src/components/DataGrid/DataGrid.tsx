@@ -89,6 +89,7 @@ import {
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, type GridFilter } from "./filters";
 import { CellEditor, type EditCellColumn } from "./cellEditor";
+import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
   PIVOT_ROW_LABEL_COLUMN_ID,
@@ -125,6 +126,10 @@ export type DataGridFeatures = {
   floatingFilters: boolean;
   /** Enable inline cell editing (inert until a column sets `editable`). */
   editing: boolean;
+  /** Show the toolbar Export CSV button. */
+  export: boolean;
+  /** Enable Ctrl/Cmd-C copy of the selection / focused cell as TSV. */
+  clipboard: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -261,6 +266,7 @@ export type DataGridProps<TData extends object> = {
   onActiveRowChange?: (row: TData | null) => void;
   onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
   onCellEdit?: (edit: DataGridCellEdit<TData>) => void;
+  getExportFileName?: (context: { rowCount: number; selectedCount: number }) => string;
 };
 
 const defaultFeatures: DataGridFeatures = {
@@ -279,6 +285,8 @@ const defaultFeatures: DataGridFeatures = {
   grouping: true,
   floatingFilters: false,
   editing: true,
+  export: true,
+  clipboard: true,
 };
 
 const resolveUpdater = <TValue,>(updater: Updater<TValue>, current: TValue): TValue =>
@@ -743,6 +751,7 @@ export function DataGrid<TData extends object>({
   onActiveRowChange,
   onFocusedCellChange,
   onCellEdit,
+  getExportFileName,
 }: DataGridProps<TData>) {
   const isPivotLayout = layoutMode === "pivot";
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
@@ -2039,6 +2048,16 @@ export function DataGrid<TData extends object>({
     const lastCol = navColumnIds.length - 1;
     const ctrl = event.ctrlKey || event.metaKey;
     const page = 10;
+    // Ctrl/Cmd-C copies the selection (or this focused cell) as TSV. Only fires
+    // with a cell focused, so editors / filter inputs (which never bubble here)
+    // keep the native copy — the suppression gate is structural.
+    if (ctrl && (event.key === "c" || event.key === "C")) {
+      if (features.clipboard) {
+        copyFromCell(row, columnId);
+        event.preventDefault();
+      }
+      return;
+    }
     let handled = true;
     switch (event.key) {
       case "ArrowDown":
@@ -2157,6 +2176,58 @@ export function DataGrid<TData extends object>({
     const column = columnsById.get(columnId);
     const styleKeys = column?.statusStyles ? Object.keys(column.statusStyles) : [];
     return styleKeys.length > 0 ? styleKeys : uniqueColumnValues(data, columnId as Extract<keyof TData, string>);
+  };
+
+  // ----- Export + clipboard -----
+  const exportLeafColumns = () =>
+    table.getVisibleLeafColumns().filter((column) => column.id !== "select");
+  const getExportText = (
+    row: Row<TData | PivotRow<TData>>,
+    column: Column<TData | PivotRow<TData>, unknown>,
+  ) => {
+    const value = row.getValue(column.id);
+    if (isPivotRow(row.original)) {
+      return value == null ? "" : String(value);
+    }
+    const columnConfig = columnsById.get(column.id);
+    return columnConfig
+      ? getColumnSearchText(columnConfig, value, row.original as TData, formatOptions)
+      : value == null
+        ? ""
+        : String(value);
+  };
+  const leafExportRows = (source: Row<TData | PivotRow<TData>>[]) =>
+    source.filter((row) => !row.getIsGrouped());
+  const selectedExportRows = () =>
+    isPivotLayout ? [] : leafExportRows(table.getSelectedRowModel().flatRows);
+  const handleExportCsv = () => {
+    const columns = exportLeafColumns();
+    const selected = selectedExportRows();
+    // No selection → all filtered rows across pages (not just the current page).
+    const exportRows = selected.length
+      ? selected
+      : isPivotLayout
+        ? table.getPrePaginationRowModel().rows
+        : leafExportRows(table.getFilteredRowModel().flatRows);
+    const header = columns.map((column) => getColumnControlLabel(column));
+    const body = exportRows.map((row) => columns.map((column) => getExportText(row, column)));
+    const fileName =
+      getExportFileName?.({ rowCount: exportRows.length, selectedCount: selected.length }) ??
+      `${tableLabel ?? "data"}.csv`;
+    downloadTextFile(fileName, "text/csv;charset=utf-8", toCsv([header, ...body]));
+  };
+  const copyFromCell = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
+    const columns = exportLeafColumns();
+    const selected = selectedExportRows();
+    const focusedColumn = table.getColumn(columnId);
+    const matrix = selected.length
+      ? selected.map((selectedRow) => columns.map((column) => getExportText(selectedRow, column)))
+      : focusedColumn
+        ? [[getExportText(row, focusedColumn)]]
+        : [];
+    if (matrix.length) {
+      writeClipboardText(toTsv(matrix));
+    }
   };
 
   const getPinnedColumnStyle = (
@@ -2396,6 +2467,8 @@ export function DataGrid<TData extends object>({
             searchPlaceholder={searchPlaceholder}
             filters={toolbarFilters}
             showFiltersPopover={isPivotLayout}
+            enableExport={features.export}
+            onExportCsv={handleExportCsv}
             enableGlobalSearch={features.globalSearch}
             enableColumnVisibility={features.columnVisibility}
             enableColumnOrdering={features.columnOrdering}

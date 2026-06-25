@@ -8,6 +8,8 @@ type ToolbarProps = {
   filters: GridFilter[];
   /** Pivot mode: render a consolidated Filters popover (grid mode filters live in headers). */
   showFiltersPopover: boolean;
+  enableExport: boolean;
+  onExportCsv: () => void;
   enableGlobalSearch: boolean;
   enableColumnVisibility: boolean;
   enableColumnOrdering: boolean;
@@ -50,6 +52,8 @@ export function Toolbar({
   searchPlaceholder,
   filters,
   showFiltersPopover,
+  enableExport,
+  onExportCsv,
   enableGlobalSearch,
   enableColumnVisibility,
   enableColumnOrdering,
@@ -116,7 +120,7 @@ export function Toolbar({
   const showColumnControls = enableColumnVisibility || enableColumnOrdering || enableColumnPinning;
   const showGroupingControls = enableGrouping && groupableColumns.length > 0;
   const showSecondaryControls = showColumnControls || enableSavedViews || showGroupingControls;
-  const showFilterControls = enableGlobalSearch || filters.length > 0;
+  const showFilterControls = enableGlobalSearch || filters.length > 0 || enableExport;
   const showPrimaryControls = showFilterControls || showSecondaryControls;
 
   if (!showPrimaryControls) {
@@ -166,6 +170,16 @@ export function Toolbar({
               className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
             >
               Clear filters
+            </button>
+          ) : null}
+
+          {enableExport ? (
+            <button
+              type="button"
+              onClick={onExportCsv}
+              className="ml-auto h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              Export CSV
             </button>
           ) : null}
         </div>
