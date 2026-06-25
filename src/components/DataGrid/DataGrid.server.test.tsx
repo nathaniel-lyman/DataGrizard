@@ -266,6 +266,20 @@ describe("DataGrid server mode — a11y", () => {
     // 1 header row (no column groups) + 1000 server rows.
     expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
   });
+
+  it("leaves client-mode aria-rowcount as the rendered page, not the full dataset", () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: String(i),
+      name: `R${i}`,
+      revenue: i,
+    }));
+    render(
+      <DataGrid data={many} columns={columns} getRowId={(r) => r.id} pageSizeOptions={[25]} />,
+    );
+    // Client mode + pagination: 1 header + the 25 rendered page rows (NOT 60).
+    // Guards against the server-total logic leaking into the client path.
+    expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "26");
+  });
 });
 
 describe("DataGrid server mode — contract", () => {

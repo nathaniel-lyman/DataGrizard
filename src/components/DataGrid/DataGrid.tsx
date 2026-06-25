@@ -2057,7 +2057,9 @@ export function DataGrid<TData extends object>({
             style={{ minWidth: minTableWidth }}
             aria-rowcount={
               headerRowCount +
-              Math.max(displayedTotalRowCount ?? visibleRows.length, 0)
+              (isServerMode
+                ? Math.max(rowCount ?? visibleRows.length, 0)
+                : visibleRows.length)
             }
             aria-colcount={visibleLeafColumns.length}
           >
