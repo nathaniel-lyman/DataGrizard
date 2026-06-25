@@ -365,6 +365,17 @@ const matchesFilterValue = (raw: unknown, filterValue: unknown, options?: MatchO
     return true;
   }
 
+  // An empty object ({}) carries no constraint — treat as "no filter" so a
+  // stale/programmatic controlled value never routes into the numeric range
+  // branch and excludes every row.
+  if (
+    typeof filterValue === "object" &&
+    !Array.isArray(filterValue) &&
+    Object.keys(filterValue).length === 0
+  ) {
+    return true;
+  }
+
   if (typeof filterValue === "object" && !Array.isArray(filterValue) && hasDateBounds(filterValue)) {
     const { from, to } = filterValue;
     const cell = toDate(raw)?.getTime();
@@ -2263,9 +2274,8 @@ export function DataGrid<TData extends object>({
                   {table.getVisibleLeafColumns().map((column) => {
                     const filter = headerFilterById.get(column.id);
                     return (
-                      <th
+                      <td
                         key={column.id}
-                        scope="col"
                         style={{
                           width: column.getSize(),
                           ...getPinnedColumnStyle(column, {
@@ -2276,7 +2286,7 @@ export function DataGrid<TData extends object>({
                         className="border-r border-slate-200 px-2 py-1 align-top last:border-r-0"
                       >
                         {filter ? <FilterPopover filter={filter} variant="inline" /> : null}
-                      </th>
+                      </td>
                     );
                   })}
                 </tr>
