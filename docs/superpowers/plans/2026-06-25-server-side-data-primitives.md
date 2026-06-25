@@ -574,7 +574,15 @@ describe("DataGrid server mode — contract", () => {
   });
 
   it("defaults to client mode when dataMode is omitted (backward compat)", () => {
-    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} />);
+    // rowSelection off so bodyNames() reads the Name cell, not the checkbox cell.
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+      />,
+    );
     // Client mode DOES sort locally: clicking Name reorders to Alice/Bob/Charlie.
     fireEvent.click(screen.getByRole("button", { name: "Name" }));
     expect(bodyNames()).toEqual(["Alice", "Bob", "Charlie"]);
