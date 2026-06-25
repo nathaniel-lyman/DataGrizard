@@ -117,6 +117,17 @@ export type DataGridColumnPinningState = ColumnPinningState;
 
 export type DataGridLayoutMode = "grid" | "pivot";
 
+/**
+ * A grid-mode column-group band. `children` are leaf column `accessorKey`s or
+ * nested groups. Groups render as header bands over their (visible) leaf
+ * columns through the standard `getHeaderGroups()` path. Ignored in pivot mode.
+ */
+export type DataGridColumnGroup = {
+  groupId: string;
+  header: string;
+  children: Array<string | DataGridColumnGroup>;
+};
+
 export type DataGridSummaryContext<TData extends object> = {
   rows: TData[];
   filteredRows: TData[];
@@ -168,6 +179,8 @@ export type DataGridProps<TData extends object> = {
   data: TData[];
   columns: GridColumnConfig<TData>[];
   layoutMode?: DataGridLayoutMode;
+  /** Grid-mode header bands. Ignored in pivot mode. */
+  columnGroups?: DataGridColumnGroup[];
   pivot?: DataGridPivotConfig<TData>;
   filters?: GridFilterConfig<TData>[];
   summaryItems?: DataGridSummaryItem<TData>[];
@@ -283,6 +296,77 @@ const uniqueColumnValues = <TData extends object>(
   data: TData[],
   key: Extract<keyof TData, string>,
 ) => Array.from(new Set(data.map((row) => String(row[key] ?? "")))).filter(Boolean).sort();
+
+// Assemble flat leaf ColumnDefs into nested grouped ColumnDefs per columnGroups.
+// A group is emitted at the position of its first-encountered member and pulls
+// all its (declared-order) leaves into the band; columns named in no group stay
+// standalone. Bands span their visible leaves automatically via getHeaderGroups.
+const buildGroupedColumnDefs = <TData,>(
+  dataDefs: ColumnDef<TData>[],
+  columnGroups: DataGridColumnGroup[],
+): ColumnDef<TData>[] => {
+  const defByKey = new Map<string, ColumnDef<TData>>();
+  dataDefs.forEach((def) => {
+    const key = (def as { accessorKey?: string }).accessorKey;
+    if (key) {
+      defByKey.set(key, def);
+    }
+  });
+
+  const topGroupByKey = new Map<string, DataGridColumnGroup>();
+  const collectLeaves = (group: DataGridColumnGroup, top: DataGridColumnGroup) => {
+    group.children.forEach((child) => {
+      if (typeof child === "string") {
+        topGroupByKey.set(child, top);
+      } else {
+        collectLeaves(child, top);
+      }
+    });
+  };
+  columnGroups.forEach((group) => collectLeaves(group, group));
+
+  const consumed = new Set<string>();
+  const buildGroup = (group: DataGridColumnGroup): ColumnDef<TData> | null => {
+    const columns = group.children
+      .map((child) => {
+        if (typeof child === "string") {
+          const def = defByKey.get(child);
+          if (!def) {
+            return null;
+          }
+          consumed.add(child);
+          return def;
+        }
+        return buildGroup(child);
+      })
+      .filter((def): def is ColumnDef<TData> => Boolean(def));
+    if (!columns.length) {
+      return null;
+    }
+    return { id: group.groupId, header: group.header, columns };
+  };
+
+  const result: ColumnDef<TData>[] = [];
+  dataDefs.forEach((def) => {
+    const key = (def as { accessorKey?: string }).accessorKey;
+    if (key && consumed.has(key)) {
+      return;
+    }
+    const top = key ? topGroupByKey.get(key) : undefined;
+    if (!top) {
+      result.push(def);
+      if (key) {
+        consumed.add(key);
+      }
+      return;
+    }
+    const groupDef = buildGroup(top);
+    if (groupDef) {
+      result.push(groupDef);
+    }
+  });
+  return result;
+};
 
 const isPivotRow = <TData extends object>(row: TData | PivotRow<TData>): row is PivotRow<TData> =>
   "__pivot" in row && row.__pivot === true;
@@ -577,6 +661,7 @@ export function DataGrid<TData extends object>({
   data,
   columns,
   layoutMode = "grid",
+  columnGroups,
   pivot: pivotConfig,
   filters = [],
   summaryItems = [],
@@ -1260,12 +1345,24 @@ export function DataGrid<TData extends object>({
     ],
   );
   const tableData = (pivotMaterialization?.data ?? data) as (TData | PivotRow<TData>)[];
+  // Grid-mode column groups: wrap the data column defs in nested group defs that
+  // render as header bands through the standard getHeaderGroups() path. The
+  // select column stays at the top level; pivot ignores columnGroups entirely.
+  const groupedColumnDefs = useMemo(() => {
+    if (isPivotLayout || !columnGroups || columnGroups.length === 0) {
+      return columnDefs;
+    }
+    const selectDef = features.rowSelection ? columnDefs[0] : undefined;
+    const dataDefs = features.rowSelection ? columnDefs.slice(1) : columnDefs;
+    const grouped = buildGroupedColumnDefs(dataDefs, columnGroups);
+    return selectDef ? [selectDef, ...grouped] : grouped;
+  }, [columnDefs, columnGroups, features.rowSelection, isPivotLayout]);
   const tableColumns = (pivotMaterialization
     ? [
         ...(features.rowSelection ? [pivotSelectionColumn] : []),
         ...pivotMaterialization.columns,
       ]
-    : columnDefs) as ColumnDef<TData | PivotRow<TData>, unknown>[];
+    : groupedColumnDefs) as ColumnDef<TData | PivotRow<TData>, unknown>[];
   const effectiveDefaultColumnOrder = useMemo<ColumnOrderState>(
     () =>
       pivotMaterialization
@@ -2178,6 +2275,7 @@ export function DataGrid<TData extends object>({
                       <th
                         key={header.id}
                         scope="col"
+                        colSpan={header.colSpan}
                         aria-sort={
                           canSort
                             ? sortState === "asc"

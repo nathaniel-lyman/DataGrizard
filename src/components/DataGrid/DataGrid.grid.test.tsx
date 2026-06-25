@@ -25,6 +25,69 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+describe("DataGrid column header groups", () => {
+  const columnGroups = [
+    { groupId: "catalog", header: "Catalog", children: ["dept", "product"] },
+    { groupId: "perf", header: "Performance", children: ["revenue", "units"] },
+  ];
+
+  it("renders header bands spanning their visible leaf columns", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        columnGroups={columnGroups}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Catalog" })).toHaveAttribute("colspan", "2");
+    expect(screen.getByRole("columnheader", { name: "Performance" })).toHaveAttribute("colspan", "2");
+    // Leaf headers still render under the bands.
+    expect(screen.getByRole("button", { name: "Dept" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revenue" })).toBeInTheDocument();
+  });
+
+  it("narrows a band when one of its columns is hidden", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        columnGroups={columnGroups}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /visible/ }));
+    fireEvent.click(screen.getByLabelText("Toggle Product column"));
+
+    expect(screen.getByRole("columnheader", { name: "Catalog" })).toHaveAttribute("colspan", "1");
+    expect(screen.getByRole("columnheader", { name: "Performance" })).toHaveAttribute("colspan", "2");
+  });
+
+  it("still sorts at the leaf level with groups present", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        columnGroups={columnGroups}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    // Revenue is numeric → TanStack sorts descending on first click. The point
+    // is that leaf-level sorting still works with header bands present.
+    fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
+    expect(screen.getByRole("columnheader", { name: /Revenue/ })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+  });
+});
+
 describe("DataGrid grid layout — grouping + pagination (bug #1)", () => {
   it("renders each leaf row exactly once when a group is expanded", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

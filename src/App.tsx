@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DataGrid, type DataGridLayoutMode } from "./components/DataGrid";
+import { DataGrid, type DataGridColumnGroup, type DataGridLayoutMode } from "./components/DataGrid";
 import {
   mockRetailData,
   retailColumns,
@@ -12,6 +12,17 @@ import { RetailDetailPanel } from "./demo/RetailDetailPanel";
 const layouts: { id: DataGridLayoutMode; label: string }[] = [
   { id: "pivot", label: "Pivot" },
   { id: "grid", label: "Grid" },
+];
+
+// Grid-mode header bands (ignored in pivot mode).
+const retailColumnGroups: DataGridColumnGroup[] = [
+  { groupId: "item", header: "Item", children: ["item_id", "item_name"] },
+  { groupId: "merch", header: "Merchandising", children: ["department", "category", "brand"] },
+  {
+    groupId: "performance",
+    header: "Performance",
+    children: ["sales", "units", "margin_rate", "price_gap"],
+  },
 ];
 
 function App() {
@@ -65,6 +76,7 @@ function App() {
           data={mockRetailData}
           columns={retailColumns}
           layoutMode={layoutMode}
+          columnGroups={retailColumnGroups}
           filters={retailFilters}
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}

@@ -187,7 +187,7 @@ Merge order is `{ ...defaultFeatures, ...layoutFeatureDefaults, ...featureOverri
 
 - New prop `columnGroups?: DataGridColumnGroup[]` — MUI-style grouping tree: `{ groupId, header, children: Array<string | DataGridColumnGroup> }`. Leaf `string`s are column `accessorKey`s; nested groups allowed.
 - In grid mode, when provided, flat leaf `ColumnDef`s are assembled into nested grouped `ColumnDef`s before `useReactTable`. Rendering uses the existing `table.getHeaderGroups()` path (the nested-header chrome pivot already produces); resizing/sorting/visibility/pinning continue to operate on the **leaf** columns.
-- v1 semantics (MUI): a group is a **header band over the leaf columns that currently sit contiguously**. If a reorder splits a group's members, the band splits into multiple bands (no forced contiguity, no group-level drag). Columns named in no group render with an empty spanning header cell.
+- v1 semantics (nested-ColumnDef path): a group is emitted at the position of its **first-encountered member** and pulls all its declared-order leaves into one contiguous band. Columns named in no group render standalone with an empty spanning header cell. *Refined during implementation:* MUI-style "reorder splits the band" is **deferred** — it conflicts with the nested-`ColumnDef` render path the spec mandates (band structure comes from the column-group tree, not live `columnOrder`).
 - **Filter affordance attaches to the leaf header cell only** (never a band row). The floating filter row, if enabled, sits under the leaf header row, below all band rows.
 - `columnGroups` is config, not state — not persisted, not controlled. Pivot mode ignores it.
 
@@ -200,7 +200,7 @@ Merge order is `{ ...defaultFeatures, ...layoutFeatureDefaults, ...featureOverri
 ### Tests (`DataGrid.grid.test.tsx`)
 
 - A two-group config renders two bands with correct `colSpan`.
-- Hiding a column under a group narrows its band; reordering a column out splits the band.
+- Hiding a column under a group narrows its band (band `colSpan` follows visible leaves).
 - Leaf-level sorting/resizing still works with groups present.
 - With groups + a filterable column, the filter affordance renders on the leaf header (not the band) and `aria-rowindex`/`aria-colindex` are correct (see Feature 4).
 
