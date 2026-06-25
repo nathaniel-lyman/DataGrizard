@@ -37,23 +37,20 @@ describe("DataGrid accessibility", () => {
     expect(header).toHaveAttribute("aria-sort", "descending");
   });
 
-  it("makes an actionable row keyboard-operable", () => {
+  it("triggers the row action via Enter on a focused cell", () => {
     const onRowClick = vi.fn();
     render(
       <DataGrid data={rows} columns={columns} getRowId={(r) => r.id} onRowClick={onRowClick} />,
     );
-    const row = screen.getByText("Almond Butter").closest("tr") as HTMLElement;
-
-    expect(row).toHaveAttribute("role", "button");
-    expect(row).toHaveAttribute("tabindex", "0");
-    fireEvent.keyDown(row, { key: "Enter" });
+    // Keyboard focus lives on cells (roving tabindex), not the row.
+    const cell = screen.getByText("Almond Butter").closest("td") as HTMLElement;
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "Enter" });
     expect(onRowClick).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(row, { key: " " });
-    expect(onRowClick).toHaveBeenCalledTimes(2);
   });
 
-  it("does not make rows focusable when there is no row action", () => {
-    render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} />);
+  it("does not make rows focusable (cells own the tab stop)", () => {
+    render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} onRowClick={() => {}} />);
     const row = screen.getByText("Almond Butter").closest("tr") as HTMLElement;
     expect(row).not.toHaveAttribute("tabindex");
   });

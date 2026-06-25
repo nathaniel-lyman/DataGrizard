@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   flexRender,
@@ -117,6 +125,8 @@ export type DataGridColumnPinningState = ColumnPinningState;
 
 export type DataGridLayoutMode = "grid" | "pivot";
 
+export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
+
 /**
  * A grid-mode column-group band. `children` are leaf column `accessorKey`s or
  * nested groups. Groups render as header bands over their (visible) leaf
@@ -227,6 +237,7 @@ export type DataGridProps<TData extends object> = {
   getRowClassName?: (row: TData) => string;
   onRowClick?: (row: TData) => void;
   onActiveRowChange?: (row: TData | null) => void;
+  onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
 };
 
 const defaultFeatures: DataGridFeatures = {
@@ -706,6 +717,7 @@ export function DataGrid<TData extends object>({
   getRowClassName,
   onRowClick,
   onActiveRowChange,
+  onFocusedCellChange,
 }: DataGridProps<TData>) {
   const isPivotLayout = layoutMode === "pivot";
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
@@ -835,6 +847,8 @@ export function DataGrid<TData extends object>({
   const [expanded, setExpanded] = useState<ExpandedState>(defaultExpanded);
   const [pivot, setPivot] = useState<DataGridPivotState>(defaultPivotState);
   const [activeRow, setActiveRow] = useState<TData | null>(null);
+  const [focusedCell, setFocusedCell] = useState<DataGridFocusedCell>(null);
+  const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [savedViews, setSavedViews] = useState<DataGridSavedViews>(() =>
     loadJson<DataGridSavedViews>(storageKeys?.savedViews, {}),
@@ -1926,6 +1940,117 @@ export function DataGrid<TData extends object>({
   });
   const bodyColSpan = table.getVisibleLeafColumns().length;
 
+  // ----- Keyboard cell navigation (roving tabindex over a rectangular grid) -----
+  // Group rows render a single spanning toggle button (already Tab-focusable) and
+  // the select column hosts its own checkbox, so neither participates in the cell
+  // grid. The grid is therefore leaf data rows × non-select visible leaf columns.
+  const visibleLeafColumns = table.getVisibleLeafColumns();
+  const navColumnIds = visibleLeafColumns.map((column) => column.id).filter((id) => id !== "select");
+  const navRowIds = visibleRows
+    .filter((row) => isPivotLayout || !row.getIsGrouped())
+    .map((row) => row.id);
+  const rowVisibleIndexById = useMemo(
+    () => new Map(visibleRows.map((row, index) => [row.id, index])),
+    [visibleRows],
+  );
+  const headerRowCount =
+    table.getHeaderGroups().length + (features.floatingFilters && !isPivotLayout ? 1 : 0);
+  const cellKey = (rowId: string, columnId: string) => `${rowId} ${columnId}`;
+  const focusInGrid =
+    focusedCell != null &&
+    navRowIds.includes(focusedCell.rowId) &&
+    navColumnIds.includes(focusedCell.columnId);
+  const fallbackTabCell: DataGridFocusedCell =
+    navRowIds.length > 0 && navColumnIds.length > 0
+      ? { rowId: navRowIds[0], columnId: navColumnIds[0] }
+      : null;
+  const activeTabCell = focusInGrid ? focusedCell : fallbackTabCell;
+
+  const updateFocusedCell = (cell: DataGridFocusedCell) => {
+    setFocusedCell(cell);
+    onFocusedCellChange?.(cell);
+  };
+  const focusCell = (rowId: string, columnId: string) => {
+    updateFocusedCell({ rowId, columnId });
+    const focusNode = () => cellRefs.current.get(cellKey(rowId, columnId))?.focus();
+    if (virtualizeRows) {
+      const index = rowVisibleIndexById.get(rowId);
+      if (index != null) {
+        rowVirtualizer.scrollToIndex(index, { align: "auto" });
+      }
+      requestAnimationFrame(focusNode);
+    } else {
+      focusNode();
+    }
+  };
+  const onCellKeyDown = (
+    event: ReactKeyboardEvent<HTMLTableCellElement>,
+    row: Row<TData | PivotRow<TData>>,
+    columnId: string,
+  ) => {
+    const rowIdx = navRowIds.indexOf(row.id);
+    const colIdx = navColumnIds.indexOf(columnId);
+    if (rowIdx < 0 || colIdx < 0) {
+      return;
+    }
+    const lastRow = navRowIds.length - 1;
+    const lastCol = navColumnIds.length - 1;
+    const ctrl = event.ctrlKey || event.metaKey;
+    const page = 10;
+    let handled = true;
+    switch (event.key) {
+      case "ArrowDown":
+        focusCell(navRowIds[Math.min(lastRow, rowIdx + 1)], columnId);
+        break;
+      case "ArrowUp":
+        focusCell(navRowIds[Math.max(0, rowIdx - 1)], columnId);
+        break;
+      case "ArrowRight":
+        focusCell(row.id, navColumnIds[Math.min(lastCol, colIdx + 1)]);
+        break;
+      case "ArrowLeft":
+        focusCell(row.id, navColumnIds[Math.max(0, colIdx - 1)]);
+        break;
+      case "Home":
+        ctrl ? focusCell(navRowIds[0], navColumnIds[0]) : focusCell(row.id, navColumnIds[0]);
+        break;
+      case "End":
+        ctrl
+          ? focusCell(navRowIds[lastRow], navColumnIds[lastCol])
+          : focusCell(row.id, navColumnIds[lastCol]);
+        break;
+      case "PageDown":
+        focusCell(navRowIds[Math.min(lastRow, rowIdx + page)], columnId);
+        break;
+      case "PageUp":
+        focusCell(navRowIds[Math.max(0, rowIdx - page)], columnId);
+        break;
+      case "Enter":
+      case "F2": {
+        // Precedence: edit (Feature 5, not yet) → row action → no-op.
+        const source = !isPivotRow(row.original) ? (row.original as TData) : undefined;
+        if (source && hasLeafRowAction) {
+          handleRowClick(source);
+        } else {
+          handled = false;
+        }
+        break;
+      }
+      case " ":
+        if (features.rowSelection && !isPivotLayout && row.getCanSelect()) {
+          row.toggleSelected();
+        } else {
+          handled = false;
+        }
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) {
+      event.preventDefault();
+    }
+  };
+
   const getPinnedColumnStyle = (
     column: Column<TData | PivotRow<TData>, unknown>,
     options: { header?: boolean; backgroundColor?: string } = {},
@@ -1998,16 +2123,13 @@ export function DataGrid<TData extends object>({
         key={row.id}
         ref={measureProps?.ref}
         data-index={measureProps?.["data-index"]}
-        role={isActionable ? "button" : undefined}
-        tabIndex={isActionable ? 0 : undefined}
+        aria-rowindex={
+          rowVisibleIndexById.has(row.id)
+            ? headerRowCount + (rowVisibleIndexById.get(row.id) ?? 0) + 1
+            : undefined
+        }
         onClick={() => {
           if (sourceRow && isActionable) {
-            handleRowClick(sourceRow as TData);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (isActionable && sourceRow && (event.key === "Enter" || event.key === " ")) {
-            event.preventDefault();
             handleRowClick(sourceRow as TData);
           }
         }}
@@ -2016,17 +2138,41 @@ export function DataGrid<TData extends object>({
         {row.getVisibleCells().map((cell) => {
           const columnConfig = !pivotRow ? columnsById.get(cell.column.id) : undefined;
           const isPivotMeasure = Boolean(pivotRow) && cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID;
+          const isNavCell = navColumnIds.includes(cell.column.id);
+          const isTabStop =
+            activeTabCell?.rowId === row.id && activeTabCell?.columnId === cell.column.id;
+          const colIndex = visibleLeafColumns.findIndex((column) => column.id === cell.column.id);
 
           return (
             <td
               key={cell.id}
+              ref={
+                isNavCell
+                  ? (node) => {
+                      const key = cellKey(row.id, cell.column.id);
+                      if (node) {
+                        cellRefs.current.set(key, node);
+                      } else {
+                        cellRefs.current.delete(key);
+                      }
+                    }
+                  : undefined
+              }
+              aria-colindex={colIndex >= 0 ? colIndex + 1 : undefined}
+              tabIndex={isNavCell ? (isTabStop ? 0 : -1) : undefined}
+              onKeyDown={isNavCell ? (event) => onCellKeyDown(event, row, cell.column.id) : undefined}
+              onFocus={
+                isNavCell
+                  ? () => updateFocusedCell({ rowId: row.id, columnId: cell.column.id })
+                  : undefined
+              }
               style={{
                 width: cell.column.getSize(),
                 ...getPinnedColumnStyle(cell.column, {
                   backgroundColor: row.getIsSelected() ? "#eff6ff" : rowBackground,
                 }),
               }}
-              className={`border-b border-r px-3 py-2 align-middle last:border-r-0 ${
+              className={`border-b border-r px-3 py-2 align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
                 pivotRow ? "border-slate-200" : "border-slate-100"
               } ${
                 isPivotMeasure
@@ -2250,7 +2396,12 @@ export function DataGrid<TData extends object>({
               {overlay}
             </div>
           ) : null}
-          <table className="w-full border-separate border-spacing-0 text-xs" style={{ minWidth: minTableWidth }}>
+          <table
+            className="w-full border-separate border-spacing-0 text-xs"
+            style={{ minWidth: minTableWidth }}
+            aria-rowcount={headerRowCount + navRowIds.length}
+            aria-colcount={visibleLeafColumns.length}
+          >
             {tableLabel ? <caption className="sr-only">{tableLabel}</caption> : null}
             <thead
               className={`sticky top-0 z-10 text-left shadow-[0_2px_4px_-1px_rgba(15,23,42,0.12)] ${
@@ -2259,8 +2410,8 @@ export function DataGrid<TData extends object>({
                   : "bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600"
               }`}
             >
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
+              {table.getHeaderGroups().map((headerGroup, headerRowIndex) => (
+                <tr key={headerGroup.id} aria-rowindex={headerRowIndex + 1}>
                   {headerGroup.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sortState = header.column.getIsSorted();
