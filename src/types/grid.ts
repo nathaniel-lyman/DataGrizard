@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type GridDataType = "text" | "number" | "currency" | "percent" | "status";
+export type GridDataType = "text" | "number" | "currency" | "percent" | "status" | "date";
 
 export type GridConditionalFormat<TValue = unknown, TData = unknown> = {
   when: (value: TValue, row: TData) => boolean;
@@ -17,6 +17,8 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
   pinned?: "left" | "right";
   enablePinning?: boolean;
   enableGrouping?: boolean;
+  /** Date columns: Intl options for this column's display, overriding the grid-level `dateFormat`. */
+  dateFormat?: Intl.DateTimeFormatOptions;
   /** Cell value is typed as the field's own type, e.g. `TData["revenue"]`. */
   formatValue?: (value: TData[K], row: TData) => ReactNode;
   formatGroupingValue?: (value: TData[K], rows: TData[]) => ReactNode;

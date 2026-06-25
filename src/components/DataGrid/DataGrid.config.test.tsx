@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
@@ -125,6 +125,87 @@ describe("DataGrid feature flags", () => {
     expect(screen.getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
     expect(screen.queryByRole("button", { name: "Name" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resize Name" })).toBeInTheDocument();
+  });
+});
+
+type DateRow = { id: string; name: string; when: string | number | Date };
+
+const dateColumns: GridColumnConfig<DateRow>[] = [
+  { accessorKey: "name", header: "Name", dataType: "text" },
+  { accessorKey: "when", header: "Restocked", dataType: "date" },
+];
+
+const dateData: DateRow[] = [
+  { id: "1", name: "Alpha", when: "2026-06-24" }, // ISO string -> Jun
+  { id: "2", name: "Bravo", when: new Date(2026, 0, 10).getTime() }, // epoch ms -> Jan
+  { id: "3", name: "Charlie", when: new Date(2026, 11, 31) }, // Date -> Dec
+  { id: "4", name: "Delta", when: "" }, // blank
+];
+
+const bodyRowNames = () => {
+  const table = screen.getByRole("table");
+  const rows = within(table).getAllByRole("row");
+  // Skip the header row; read each body row's first data cell (Name).
+  return rows
+    .slice(1)
+    .map((row) => within(row).getAllByRole("cell")[0]?.textContent ?? "")
+    .filter((name) => name.length > 0);
+};
+
+describe("DataGrid date data type", () => {
+  it("renders Intl-formatted dates across mixed representations and empty for blanks", () => {
+    render(
+      <DataGrid
+        data={dateData}
+        columns={dateColumns}
+        getRowId={(r) => r.id}
+        locale="en-US"
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    expect(screen.getByText("Jun 24, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Jan 10, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Dec 31, 2026")).toBeInTheDocument();
+
+    // The blank row renders an empty date cell (no stray text).
+    const deltaRow = screen.getByText("Delta").closest("tr") as HTMLElement;
+    const deltaCells = within(deltaRow).getAllByRole("cell");
+    expect(deltaCells[1].textContent).toBe("");
+  });
+
+  it("sorts chronologically with blank dates last (ascending)", () => {
+    render(
+      <DataGrid
+        data={dateData}
+        columns={dateColumns}
+        getRowId={(r) => r.id}
+        locale="en-US"
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restocked" }));
+
+    expect(bodyRowNames()).toEqual(["Bravo", "Alpha", "Charlie", "Delta"]);
+  });
+
+  it("matches formatted date text in global search", () => {
+    render(
+      <DataGrid
+        data={dateData}
+        columns={dateColumns}
+        getRowId={(r) => r.id}
+        locale="en-US"
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "Jun 24" } });
+
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.queryByText("Bravo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
   });
 });
 

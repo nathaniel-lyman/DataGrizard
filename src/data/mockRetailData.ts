@@ -25,6 +25,7 @@ export type RetailItem = {
   margin_rate: number;
   price_gap: number;
   recommendation_status: RecommendationStatus;
+  last_restocked_at: string;
 };
 
 const departments = ["Grocery", "Apparel", "Home", "Electronics", "Beauty", "Sporting Goods"] as const;
@@ -127,6 +128,7 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     formatGroupingValue: (value) => formatStatusLabel(String(value)),
     getStatusClassName: (value) => statusStyles[value as RecommendationStatus],
   },
+  { accessorKey: "last_restocked_at", header: "Last Restocked", dataType: "date", width: 140 },
 ];
 
 export const retailFilters: GridFilterConfig<RetailItem>[] = [
@@ -237,6 +239,12 @@ export const mockRetailData: RetailItem[] = Array.from({ length: 500 }, (_, inde
   const marginRate = Number((0.12 + seededRandom(rowNumber * 29) * 0.38).toFixed(3));
   const priceGap = Number((-0.18 + seededRandom(rowNumber * 31) * 0.34).toFixed(3));
   const itemNoun = pick(itemNouns, rowNumber * 37);
+  // Deterministic restock date in the first ~6 months of 2026 (stable across reloads).
+  const restockBase = new Date(2026, 0, 1).getTime();
+  const restockOffsetDays = Math.floor(seededRandom(rowNumber * 41) * 180);
+  const lastRestockedAt = new Date(restockBase + restockOffsetDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
   return {
     item_id: `SKU-${String(100000 + rowNumber).slice(1)}`,
@@ -249,5 +257,6 @@ export const mockRetailData: RetailItem[] = Array.from({ length: 500 }, (_, inde
     margin_rate: marginRate,
     price_gap: priceGap,
     recommendation_status: status,
+    last_restocked_at: lastRestockedAt,
   };
 });

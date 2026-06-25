@@ -21,6 +21,7 @@ import {
   type PaginationState,
   type Row,
   type RowSelectionState,
+  type SortingFn,
   type SortingState,
   type Updater,
   type VisibilityState,
@@ -41,6 +42,7 @@ type AnyColumnConfig<TData> = {
   pinned?: "left" | "right";
   enablePinning?: boolean;
   enableGrouping?: boolean;
+  dateFormat?: Intl.DateTimeFormatOptions;
   formatValue?: (value: unknown, row: TData) => ReactNode;
   formatGroupingValue?: (value: unknown, rows: TData[]) => ReactNode;
   getGroupingValue?: (row: TData) => unknown;
@@ -58,9 +60,11 @@ type RowMeasureProps = {
 };
 import {
   formatCurrency,
+  formatDate,
   formatNumber,
   formatPercent,
   formatStatusLabel,
+  toDate,
   type FormatOptions,
 } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
@@ -193,6 +197,7 @@ export type DataGridProps<TData extends object> = {
   tableLabel?: string;
   locale?: string;
   currency?: string;
+  dateFormat?: Intl.DateTimeFormatOptions;
   searchPlaceholder?: string;
   viewNamePlaceholder?: string;
   pageSizeOptions?: number[];
@@ -366,6 +371,20 @@ const gridColumnFilterFn: FilterFn<unknown> = (row, columnId, filterValue) => {
   return matchesFilterValue(row.getValue(columnId), filterValue);
 };
 
+// Sorts date columns chronologically across mixed representations (Date / ISO
+// string / epoch ms). Blank/unparseable dates sort to the END under ascending
+// order (and therefore to the top under descending) — a single comparator that
+// keeps date columns on `accessorKey`, so the typed per-key callbacks still
+// receive the raw value rather than a normalized Date.
+const dateSortingFn: SortingFn<unknown> = (rowA, rowB, columnId) => {
+  const a = toDate(rowA.getValue(columnId))?.getTime() ?? null;
+  const b = toDate(rowB.getValue(columnId))?.getTime() ?? null;
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a - b;
+};
+
 const renderCellValue = <TData extends object>(
   column: AnyColumnConfig<TData>,
   value: unknown,
@@ -397,6 +416,13 @@ const renderCellValue = <TData extends object>(
         {formatStatusLabel(String(value))}
       </span>
     );
+  }
+
+  if (column.dataType === "date") {
+    return formatDate(value, {
+      ...formatOptions,
+      dateFormat: column.dateFormat ?? formatOptions.dateFormat,
+    });
   }
 
   return String(value);
@@ -441,6 +467,12 @@ const getColumnSearchText = <TData extends object>(
   }
   if (isNumericDataType(column.dataType)) {
     return formatNumericValue(column.dataType, value, formatOptions);
+  }
+  if (column.dataType === "date") {
+    return formatDate(value, {
+      ...formatOptions,
+      dateFormat: column.dateFormat ?? formatOptions.dateFormat,
+    });
   }
   return String(value);
 };
@@ -528,6 +560,7 @@ export function DataGrid<TData extends object>({
   tableLabel,
   locale,
   currency,
+  dateFormat,
   searchPlaceholder = "Search rows...",
   viewNamePlaceholder = "Analysis view",
   pageSizeOptions = [25, 50, 100, 250],
@@ -792,7 +825,10 @@ export function DataGrid<TData extends object>({
     onActiveViewNameChange?.(next);
   };
 
-  const formatOptions = useMemo<FormatOptions>(() => ({ locale, currency }), [locale, currency]);
+  const formatOptions = useMemo<FormatOptions>(
+    () => ({ locale, currency, dateFormat }),
+    [locale, currency, dateFormat],
+  );
   const showDetailPanel = features.detailPanel && Boolean(renderDetailPanel);
   const hasLeafRowAction = showDetailPanel || Boolean(onRowClick);
 
@@ -889,6 +925,7 @@ export function DataGrid<TData extends object>({
         enableGrouping: features.grouping && Boolean(column.enableGrouping),
         enableGlobalFilter: true,
         filterFn: gridColumnFilterFn as FilterFn<TData>,
+        ...(column.dataType === "date" ? { sortingFn: dateSortingFn as SortingFn<TData> } : {}),
         getGroupingValue: column.getGroupingValue,
         cell: ({ getValue, row }) => renderCellValue(column, getValue(), row.original, formatOptions),
       })),

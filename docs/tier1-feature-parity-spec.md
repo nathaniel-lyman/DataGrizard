@@ -1,7 +1,7 @@
 # Tier 1 Feature Parity Spec
 
 Date: 2026-06-24
-Status: Draft (rev. 3 — incorporates two multi-lens spec-review rounds)
+Status: Draft (rev. 4 — sort rule refined during Feature 1 implementation design)
 Owner: DataGrid component surface
 
 ## Objective
@@ -98,7 +98,7 @@ floatingFilters: boolean;  // default false; opt-in always-visible grid-mode fil
 | Editing × Date (write-back) | Canonical committed date representation + round-trip rule + invalid-date validation defined once. See Feature 5 §"Date editing". |
 | Export/Clipboard × Selection scope | Export (no selection) = all filtered rows across pages; "selection" = `getSelectedRowModel()` (cross-page). See Feature 6. |
 | Editing × Filter (self-filtering edit) | Post-commit, if the committed row leaves the filtered/sorted view, focus reseeds to the nearest valid cell (same path as row-removal). See Feature 5 §"Post-commit focus". |
-| Date filter × null/invalid rows | Under the date range filter, rows whose value is null/unparseable are **excluded** (filtered out). This is distinct from sort, where invalid dates are **kept and ordered last**. See Features 1 & 2. |
+| Date filter × null/invalid rows | Under the date range filter, rows whose value is null/unparseable are **excluded** (filtered out). This is distinct from sort, where invalid dates are **kept and ordered to the end under ascending sort**. See Features 1 & 2. |
 
 ## Feature flags × layout (`layoutFeatureDefaults`)
 
@@ -121,7 +121,7 @@ Merge order is `{ ...defaultFeatures, ...layoutFeatureDefaults, ...featureOverri
 - `renderCellValue` dispatches `date` → `formatDate`; null/unparseable → empty string.
 - `getColumnSearchText` returns the formatted date string (global search matches the displayed value).
 - Alignment: **left-aligned** (text-like), not `tabular-nums`.
-- **Sorting:** a `dateSortingFn` normalizes both cells via `toDate` and compares timestamps. **Invalid/blank dates sort LAST in both ascending and descending directions** (matching the existing numeric-blank convention). Date columns wire this `sortingFn` into their generated `ColumnDef`.
+- **Sorting:** a `dateSortingFn` normalizes both cells via `toDate` and compares timestamps. **Invalid/blank dates sort to the END under ascending sort** (and therefore to the top under descending) via a single comparator. *Rationale (contract over symmetry):* the alternative — normalizing at the accessor (`accessorFn → Date | undefined`) so `sortUndefined: "last"` could place blanks last in both directions — would change the value passed to the typed per-key callbacks (`formatValue`, `getCellClassName`, `conditionalFormats`) from the raw `TData[K]` to a `Date`, breaking the distributive-union contract. So date columns keep `accessorKey` and accept the natural single-comparator placement. Date columns wire this `sortingFn` into their generated `ColumnDef`.
 - Per-column `dateFormat` overrides the grid-level `dateFormat` prop, which overrides the built-in default.
 
 ### Edge cases
@@ -134,7 +134,7 @@ Merge order is `{ ...defaultFeatures, ...layoutFeatureDefaults, ...featureOverri
 - `toDate` parses Date/ISO/epoch; returns `null` for `""`/`null`/`"not-a-date"`.
 - A date-only ISO string formats to the same calendar day under a forced negative UTC offset (local-midnight construction asserted).
 - `formatDate` honors locale + `dateFormat`; empty for unparseable.
-- A `date` column renders formatted text, sorts chronologically across mixed representations, sorts blanks last in both directions, and search matches the formatted string.
+- A `date` column renders formatted text, sorts chronologically across mixed representations, sorts blanks to the end under ascending sort, and search matches the formatted string.
 
 ---
 
