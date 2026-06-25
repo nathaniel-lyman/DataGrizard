@@ -570,7 +570,8 @@ describe("DataGrid server mode — contract", () => {
       />,
     );
     // Pivot still materializes client-side: the row-label header is present.
-    expect(screen.getByRole("button", { name: /Row Labels/i })).toBeInTheDocument();
+    // Exact name (not /i regex) — the regex also matches "Resize Row Labels".
+    expect(screen.getByRole("button", { name: "Row Labels" })).toBeInTheDocument();
   });
 
   it("defaults to client mode when dataMode is omitted (backward compat)", () => {
