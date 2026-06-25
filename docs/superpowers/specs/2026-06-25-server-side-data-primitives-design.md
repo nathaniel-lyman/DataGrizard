@@ -30,8 +30,9 @@ dataMode?: "client" | "server";
 
 /** Total row count on the server. Required for correct pagination in server
  *  mode. If omitted, the grid renders the current page with an unknown total:
- *  the pagination footer hides the "of N" total and the jump-to-last-page
- *  control is disabled (next/prev still work). */
+ *  the "of N" page/row totals are hidden and Previous/Next page blindly
+ *  (Next stays enabled — pageCount is set to TanStack's -1 sentinel — so the
+ *  consumer can advance until the server returns a short/empty page). */
 rowCount?: number;
 ```
 

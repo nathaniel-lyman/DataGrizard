@@ -55,14 +55,26 @@ describe("queryRetail", () => {
     expect(result.rows.every((row) => row.department === "Grocery")).toBe(true);
   });
 
-  it("applies global search across string fields", async () => {
+  it("applies global search scoped to the searched string fields", async () => {
     const all = await resolveQuery({ ...baseQuery });
     const needle = all.rows[0].item_name.slice(0, 4).toLowerCase();
     const result = await resolveQuery({ ...baseQuery, globalFilter: needle });
     expect(result.rowCount).toBeGreaterThan(0);
+    // Search narrows the set (not a no-op pass-through).
+    expect(result.rowCount).toBeLessThan(500);
+    // Every match is in a SEARCHED field — not merely "somewhere in the JSON"
+    // (which would pass even if field-scoping were wrong).
+    const searched = [
+      "item_id",
+      "item_name",
+      "department",
+      "category",
+      "brand",
+      "recommendation_status",
+    ] as const;
     expect(
       result.rows.every((row) =>
-        JSON.stringify(row).toLowerCase().includes(needle),
+        searched.some((field) => String(row[field]).toLowerCase().includes(needle)),
       ),
     ).toBe(true);
   });

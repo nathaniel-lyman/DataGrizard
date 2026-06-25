@@ -82,6 +82,27 @@ describe("DataGrid server mode — manual sorting/filtering", () => {
     expect(bodyNames()).toEqual(["Charlie", "Alice", "Bob"]);
   });
 
+  it("does not globally search locally and emits onGlobalFilterChange", () => {
+    const onGlobalFilterChange = vi.fn();
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        dataMode="server"
+        rowCount={3}
+        onGlobalFilterChange={onGlobalFilterChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Search/i), { target: { value: "alice" } });
+
+    expect(onGlobalFilterChange).toHaveBeenCalledWith("alice");
+    // All rows still render — search is the server's job under manualFiltering.
+    expect(bodyNames()).toEqual(["Charlie", "Alice", "Bob"]);
+  });
+
   it("turns summaries and grid grouping off by default in server mode", () => {
     // One column must be groupable for the "Group by" control to appear at all.
     const groupableColumns: GridColumnConfig<Row>[] = [
@@ -165,6 +186,29 @@ describe("DataGrid server mode — pagination", () => {
     expect(screen.queryByText(/3 of/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Page 1 of/)).not.toBeInTheDocument();
     expect(screen.getByText(/Page 1/)).toBeInTheDocument();
+  });
+
+  it("keeps Next operable on an unknown-total server page (paginate forward blindly)", () => {
+    const onPaginationChange = vi.fn();
+    render(
+      <DataGrid
+        data={data} // a FULL page (3 rows == pageSize)
+        columns={columns}
+        getRowId={(r) => r.id}
+        dataMode="server"
+        // rowCount omitted ⇒ unknown total; pageSize 3 ⇒ data.length fills the page.
+        pageSizeOptions={[3]}
+        onPaginationChange={onPaginationChange}
+      />,
+    );
+    // Without the pageCount: -1 sentinel, TanStack would derive pageCount=1 from
+    // the loaded page and disable Next, stranding the consumer on page 1.
+    const next = screen.getByRole("button", { name: "Next" });
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    expect(onPaginationChange).toHaveBeenCalledWith(
+      expect.objectContaining({ pageIndex: 1 }),
+    );
   });
 });
 

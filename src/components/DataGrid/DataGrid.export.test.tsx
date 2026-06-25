@@ -78,6 +78,28 @@ describe("DataGrid CSV export", () => {
     expect(csv).toContain("Cara");
   });
 
+  it("exports only the loaded page in server mode (documented degradation)", async () => {
+    // data is the current page (3 rows); rowCount says the server has 1000.
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        dataMode="server"
+        rowCount={1000}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    const csv = await lastCsv();
+
+    // Header + the 3 loaded rows only — NOT an attempt at all 1000 server rows.
+    expect(csv.split("\r\n")).toHaveLength(4);
+    expect(csv).toContain("Alpha");
+    expect(csv).toContain("Cara");
+  });
+
   it("exports only selected rows when a selection exists", async () => {
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} />);
 

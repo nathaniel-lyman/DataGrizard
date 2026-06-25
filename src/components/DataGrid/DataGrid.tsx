@@ -196,7 +196,9 @@ export type DataGridProps<TData extends object> = {
   /**
    * Total server row count (server mode). Required for correct pagination; if
    * omitted, the grid renders the current page with an unknown total (the
-   * "of N" page/row totals are hidden).
+   * "of N" page/row totals are hidden, and Previous/Next page blindly — Next
+   * stays enabled so the consumer can advance until the server returns an
+   * empty/short page).
    */
   rowCount?: number;
   /** Grid-mode header bands. Ignored in pivot mode. */
@@ -1026,7 +1028,11 @@ export function DataGrid<TData extends object>({
     manualSorting: isServerMode,
     manualFiltering: isServerMode,
     manualPagination: isServerMode || isTopLevelPivotPagination,
-    pageCount: pivotPageCount,
+    // Unknown-total server page: -1 is TanStack's sentinel that keeps next/prev
+    // operable (getCanNextPage stays true) so the consumer can page forward
+    // blindly until the server returns a short/empty page. With a known rowCount,
+    // TanStack derives the page count from it; pivot keeps its own pageCount.
+    pageCount: isServerMode && rowCount == null ? -1 : pivotPageCount,
     rowCount: isServerMode ? rowCount : undefined,
     onSortingChange: emitSortingChange,
     onGlobalFilterChange: emitGlobalFilterChange,
@@ -1651,7 +1657,9 @@ export function DataGrid<TData extends object>({
   const handleExportCsv = () => {
     const columns = exportLeafColumns();
     const selected = selectedExportRows();
-    // No selection → all filtered rows across pages (not just the current page).
+    // No selection → all filtered rows across pages (client mode). In server
+    // mode getFilteredRowModel() holds only the loaded page, so export is
+    // scoped to that page (documented degradation).
     const exportRows = selected.length
       ? selected
       : isPivotLayout
@@ -2049,7 +2057,7 @@ export function DataGrid<TData extends object>({
             style={{ minWidth: minTableWidth }}
             aria-rowcount={
               headerRowCount +
-              (isServerMode ? rowCount ?? visibleRows.length : visibleRows.length)
+              Math.max(displayedTotalRowCount ?? visibleRows.length, 0)
             }
             aria-colcount={visibleLeafColumns.length}
           >
