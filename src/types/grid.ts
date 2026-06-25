@@ -46,7 +46,7 @@ export type GridColumnConfig<TData> = {
   [K in Extract<keyof TData, string>]: GridColumnConfigForKey<TData, K>;
 }[Extract<keyof TData, string>];
 
-export type GridFilterType = "select" | "multiSelect" | "range";
+export type GridFilterType = "select" | "multiSelect" | "range" | "text" | "date";
 
 export type GridFilterConfig<TData> = {
   accessorKey: Extract<keyof TData, string>;
@@ -59,4 +59,10 @@ export type GridFilterConfig<TData> = {
   min?: number;
   max?: number;
   step?: number;
+  /** Placeholder for the text filter input (filterType: "text"). */
+  placeholder?: string;
+  /** Display options for date-filter bounds (filterType: "date"). */
+  dateFormat?: Intl.DateTimeFormatOptions;
+  /** Show quick date presets (filterType: "date"). Defaults to true. */
+  presets?: boolean;
 };

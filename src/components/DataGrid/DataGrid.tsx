@@ -26,7 +26,7 @@ import {
   type Updater,
   type VisibilityState,
 } from "@tanstack/react-table";
-import type { GridColumnConfig, GridDataType, GridFilterConfig } from "../../types/grid";
+import type { GridColumnConfig, GridDataType, GridFilterConfig, GridFilterType } from "../../types/grid";
 
 // Widened, value-erased view of a column config used internally by the engine.
 // The public GridColumnConfig is a per-key union (value: TData[K]); the engine
@@ -336,8 +336,45 @@ const getColumnControlLabel = <TData extends object>(
   return label;
 };
 
-const matchesFilterValue = (raw: unknown, filterValue: unknown) => {
+const hasDateBounds = (value: object): value is { from?: unknown; to?: unknown } =>
+  "from" in value || "to" in value;
+
+type MatchOptions = {
+  filterType?: GridFilterType;
+  /** Precomputed formatted text, used by the "text" (contains) filter. */
+  searchText?: string;
+};
+
+// Unified column-filter predicate, shared by the grid filterFn and the pivot
+// source-row loop so both paths stay in lockstep. Dispatches by filter-value
+// shape, with `filterType` disambiguating the two string cases (text contains
+// vs select exact):
+//   - date {from,to}: normalized via toDate (checked BEFORE the {min,max}
+//     range branch); null/unparseable cell is excluded.
+//   - array: multi-select membership.
+//   - object {min,max}: numeric range.
+//   - string + filterType "text": case-insensitive contains against the
+//     formatted text (searchText), avoiding leakage into the raw value.
+//   - string otherwise: exact match (select; "Men" != "Women").
+const matchesFilterValue = (raw: unknown, filterValue: unknown, options?: MatchOptions) => {
   if (filterValue == null || filterValue === "") {
+    return true;
+  }
+
+  if (typeof filterValue === "object" && !Array.isArray(filterValue) && hasDateBounds(filterValue)) {
+    const { from, to } = filterValue;
+    const cell = toDate(raw)?.getTime();
+    if (cell == null) {
+      return false;
+    }
+    const fromTime = toDate(from)?.getTime();
+    const toTime = toDate(to)?.getTime();
+    if (fromTime != null && cell < fromTime) {
+      return false;
+    }
+    if (toTime != null && cell > toTime) {
+      return false;
+    }
     return true;
   }
 
@@ -360,15 +397,12 @@ const matchesFilterValue = (raw: unknown, filterValue: unknown) => {
     return true;
   }
 
-  return String(raw ?? "") === String(filterValue);
-};
+  if (options?.filterType === "text") {
+    const haystack = (options.searchText ?? String(raw ?? "")).toLowerCase();
+    return haystack.includes(String(filterValue).toLowerCase());
+  }
 
-// Unified column filter: exact match for a string filter value (select),
-// membership for an array (multi-select), and numeric bounds for an object
-// { min, max } (range). Exact match avoids the substring leakage of the
-// default includesString filter (e.g. "Men" matching "Women").
-const gridColumnFilterFn: FilterFn<unknown> = (row, columnId, filterValue) => {
-  return matchesFilterValue(row.getValue(columnId), filterValue);
+  return String(raw ?? "") === String(filterValue);
 };
 
 // Sorts date columns chronologically across mixed representations (Date / ISO
@@ -662,6 +696,10 @@ export function DataGrid<TData extends object>({
     () => new Map(columnList.map((column) => [column.accessorKey, column])),
     [columnList],
   );
+  const filterTypeByColumnId = useMemo<Map<string, GridFilterType>>(
+    () => new Map(filters.map((filter) => [filter.accessorKey, filter.filterType ?? "select"])),
+    [filters],
+  );
   const groupableColumns = useMemo(
     () =>
       columnList
@@ -829,6 +867,22 @@ export function DataGrid<TData extends object>({
     () => ({ locale, currency, dateFormat }),
     [locale, currency, dateFormat],
   );
+  // Component-scoped so the "text" filter can match the column's FORMATTED text
+  // (needs the column config + formatOptions). The same matcher runs in the
+  // pivot source-row loop below, keeping both filter paths in lockstep.
+  const columnFilterFn = useMemo<FilterFn<TData>>(
+    () => (row, columnId, filterValue) => {
+      const filterType = filterTypeByColumnId.get(columnId);
+      const raw = row.getValue(columnId);
+      const column = columnsById.get(columnId);
+      const searchText =
+        filterType === "text" && column
+          ? getColumnSearchText(column, raw, row.original, formatOptions)
+          : undefined;
+      return matchesFilterValue(raw, filterValue, { filterType, searchText });
+    },
+    [columnsById, filterTypeByColumnId, formatOptions],
+  );
   const showDetailPanel = features.detailPanel && Boolean(renderDetailPanel);
   const hasLeafRowAction = showDetailPanel || Boolean(onRowClick);
 
@@ -924,7 +978,7 @@ export function DataGrid<TData extends object>({
         enablePinning: features.columnPinning && (column.enablePinning ?? true),
         enableGrouping: features.grouping && Boolean(column.enableGrouping),
         enableGlobalFilter: true,
-        filterFn: gridColumnFilterFn as FilterFn<TData>,
+        filterFn: columnFilterFn,
         ...(column.dataType === "date" ? { sortingFn: dateSortingFn as SortingFn<TData> } : {}),
         getGroupingValue: column.getGroupingValue,
         cell: ({ getValue, row }) => renderCellValue(column, getValue(), row.original, formatOptions),
@@ -932,6 +986,7 @@ export function DataGrid<TData extends object>({
     ],
     [
       columnList,
+      columnFilterFn,
       features.columnPinning,
       features.columnResizing,
       features.sorting,
@@ -975,7 +1030,13 @@ export function DataGrid<TData extends object>({
     return data.filter((row) => {
       const passesColumnFilters = activeFilters.every((filter) => {
         const raw = row[filter.id as Extract<keyof TData, string>];
-        return matchesFilterValue(raw, filter.value);
+        const filterType = filterTypeByColumnId.get(filter.id);
+        const column = columnsById.get(filter.id);
+        const searchText =
+          filterType === "text" && column
+            ? getColumnSearchText(column, raw, row, formatOptions)
+            : undefined;
+        return matchesFilterValue(raw, filter.value, { filterType, searchText });
       });
 
       if (!passesColumnFilters || !needle) {
@@ -991,10 +1052,12 @@ export function DataGrid<TData extends object>({
     });
   }, [
     columnList,
+    columnsById,
     currentColumnFilters,
     currentGlobalFilter,
     data,
     features.globalSearch,
+    filterTypeByColumnId,
     formatOptions,
     isPivotLayout,
   ]);

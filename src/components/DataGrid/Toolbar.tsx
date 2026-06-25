@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon, GripIcon, SearchIcon } from "./icons";
 
-type ToolbarFilterType = "select" | "multiSelect" | "range";
+type ToolbarFilterType = "select" | "multiSelect" | "range" | "text" | "date";
 
 type ToolbarFilter = {
   id: string;

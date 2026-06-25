@@ -63,3 +63,71 @@ describe("DataGrid column filters", () => {
     expect(screen.getByText("$1,500")).toBeInTheDocument();
   });
 });
+
+// Engine-level matcher behavior, isolated from the filter UI by driving the
+// controlled columnFilters slice directly. (The header UI is covered separately.)
+describe("DataGrid filter engine (text + date)", () => {
+  type EngineRow = { id: string; name: string; when: string };
+  const engineColumns: GridColumnConfig<EngineRow>[] = [
+    { accessorKey: "name", header: "Name", dataType: "text" },
+    { accessorKey: "when", header: "When", dataType: "date" },
+  ];
+  const engineData: EngineRow[] = [
+    { id: "1", name: "Red Shirt", when: "2026-01-10" },
+    { id: "2", name: "Blue Shirt", when: "2026-06-24" },
+    { id: "3", name: "Green Hat", when: "" },
+  ];
+  const engineFilters: GridFilterConfig<EngineRow>[] = [
+    { accessorKey: "name", label: "Name", filterType: "text" },
+    { accessorKey: "when", label: "When", filterType: "date" },
+  ];
+
+  it("matches the text filter as a case-insensitive contains", () => {
+    render(
+      <DataGrid
+        data={engineData}
+        columns={engineColumns}
+        filters={engineFilters}
+        getRowId={(r) => r.id}
+        state={{ columnFilters: [{ id: "name", value: "shirt" }] }}
+      />,
+    );
+
+    expect(screen.getByText("Red Shirt")).toBeInTheDocument();
+    expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
+  });
+
+  it("filters the date column by a {from,to} range and excludes blank/unparseable dates", () => {
+    render(
+      <DataGrid
+        data={engineData}
+        columns={engineColumns}
+        filters={engineFilters}
+        getRowId={(r) => r.id}
+        state={{ columnFilters: [{ id: "when", value: { from: "2026-03-01", to: "2026-12-31" } }] }}
+      />,
+    );
+
+    // Only Blue Shirt (Jun 24) is in range; Red Shirt (Jan 10) is before, and
+    // Green Hat has a blank date so it is excluded.
+    expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
+    expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
+  });
+
+  it("treats an open-ended date range (only `from`) as a lower bound", () => {
+    render(
+      <DataGrid
+        data={engineData}
+        columns={engineColumns}
+        filters={engineFilters}
+        getRowId={(r) => r.id}
+        state={{ columnFilters: [{ id: "when", value: { from: "2026-03-01" } }] }}
+      />,
+    );
+
+    expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
+  });
+});
