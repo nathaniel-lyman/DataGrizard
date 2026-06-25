@@ -6,10 +6,11 @@ This repository is a Vite + React + TypeScript component-surface project for a r
 
 - `src/App.tsx` composes the application shell and mounts the grid.
 - `src/components/DataGrid/` contains the reusable grid surface:
-  - `DataGrid.tsx` owns TanStack Table state, rendering, and keyboard cell navigation.
-  - `cells.tsx` / `filterMatch.ts` / `columnGroups.ts` / `storage.ts` hold the engine's pure helpers (cell rendering, the filter predicate, column-group assembly, scoped `localStorage`).
-  - `filters.tsx` owns all filter-control UI (header popover, floating row, pivot Filters popover); `cellEditor.tsx` owns inline edit UI; `pivot.tsx` owns pivot materialization.
-  - `Toolbar.tsx` owns generic search, column, saved-view, and Export controls (filtering lives in the column headers, not the toolbar).
+  - `DataGrid.tsx` is the orchestration engine — it composes state, builds column defs, owns the single `useReactTable` call, and renders the shared table chrome. It is long; navigate it via the `// ----- N. Phase -----` banners (a table-of-contents comment sits above the `DataGrid` function).
+  - State and interaction logic are extracted into hooks: `useGridState.ts` (the controlled/uncontrolled hybrid state triad), `useCellFocus.ts` (roving-`tabIndex` focus geometry), `useCellEditing.ts` (inline-edit state machine). `gridHelpers.ts` holds their shared pure utilities.
+  - `cells.tsx` / `filterMatch.ts` / `columnGroups.ts` / `storage.ts` hold pure engine helpers (cell rendering, the filter predicate, column-group assembly, scoped `localStorage`).
+  - `filters.tsx` owns filter-control chrome (header popover, floating row, pivot Filters popover) delegating per-type bodies to `filterBodies.tsx`; `cellEditor.tsx` owns inline edit UI; `pivot.tsx` owns pivot materialization (pure helpers in `pivotColumns.ts` / `pivotHelpers.ts`).
+  - `Toolbar.tsx` is a prop-driven shell that arranges sub-controls, each its own component: `ToolbarSearch.tsx`, `ToolbarColumns.tsx`, `ToolbarGrouping.tsx`, `ToolbarSavedViews.tsx`, plus Export (filtering lives in the column headers, not the toolbar).
   - `index.ts` exports the component boundary.
 - `src/types/grid.ts` defines reusable grid column and filter configuration types.
 - `src/data/mockRetailData.ts` generates synthetic retail rows plus demo column/filter configuration.
@@ -55,7 +56,7 @@ Name tests after the unit under test, for example `formatters.test.ts` or `DataG
 
 ## Commit & Pull Request Guidelines
 
-This repo has no commits yet, so there is no established history convention. Use concise, imperative commit messages such as `Add retail analytics grid prototype` or `Fix mobile grid overflow`.
+Follow the established Conventional Commits history: `type(scope): subject` with an imperative subject, e.g. `fix(datagrid): keep pinned body cells below the sticky header`, `feat(demo): client/server data-source toggle`, or `docs(datagrid): note dataMode server primitive`. Common scopes are `datagrid` and `demo`; common types are `feat`, `fix`, and `docs`.
 
 Pull requests should include a short summary, screenshots for UI changes, commands run, and any known limitations. Mention whether `npm run build` passes.
 

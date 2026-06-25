@@ -296,6 +296,21 @@ const getColumnControlLabel = <TData extends object>(
   return label;
 };
 
+// The DataGrid engine. This one function is long; it runs top-to-bottom through
+// these phases, each marked below with a `// ----- Phase -----` banner you can
+// jump between. Pure logic lives in siblings (see the file map in CLAUDE.md):
+//
+//   1. Feature resolution    — merge defaults × layoutMode × dataMode × overrides
+//   2. Column config         — columnList / columnsById / pinning / groupable
+//   3. Hybrid table state    — the current*/emit* triad (delegated to useGridState.ts)
+//   4. Filter matcher        — columnFilterFn closure (lockstep with the pivot loop)
+//   5. Pivot materialization — pivotSourceRows + materializePivot (pivot.tsx)
+//   6. Column defs           — data/group/pivot ColumnDefs + generated-ID reconcile
+//   7. Table instance        — the single useReactTable call
+//   8. Derived view data     — option lists, summary scopes, page totals, visibleRows
+//   9. Keyboard nav + edit    — useCellFocus / useCellEditing + onCellKeyDown chain
+//  10. Export + clipboard     — CSV download + TSV copy (src/utils/export.ts)
+//  11. Render                — renderBodyRows + the returned JSX (toolbar → table → pager)
 export function DataGrid<TData extends object>({
   data,
   columns,
@@ -351,6 +366,7 @@ export function DataGrid<TData extends object>({
   onCellEdit,
   getExportFileName,
 }: DataGridProps<TData>) {
+  // ----- 1. Feature resolution -----
   const isPivotLayout = layoutMode === "pivot";
   const isServerMode = dataMode === "server" && !isPivotLayout;
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
@@ -371,6 +387,7 @@ export function DataGrid<TData extends object>({
     ...dataModeFeatureDefaults,
     ...featureOverrides,
   };
+  // ----- 2. Column config (value-erased) + storage keys + default order/pinning -----
   const columnList = columns as unknown as AnyColumnConfig<TData>[];
   const defaultExpanded = useMemo<ExpandedState>(
     () => (isPivotLayout ? true : {}),
@@ -466,6 +483,7 @@ export function DataGrid<TData extends object>({
         })),
     [columnList, features.grouping],
   );
+  // ----- 3. Hybrid table state (the current*/emit* triad lives in useGridState.ts) -----
   const {
     currentSorting,
     currentGlobalFilter,
@@ -528,6 +546,7 @@ export function DataGrid<TData extends object>({
     () => ({ locale, currency, dateFormat }),
     [locale, currency, dateFormat],
   );
+  // ----- 4. Filter matcher -----
   // Component-scoped so the "text" filter can match the column's FORMATTED text
   // (needs the column config + formatOptions). The same matcher runs in the
   // pivot source-row loop below, keeping both filter paths in lockstep.
@@ -676,6 +695,7 @@ export function DataGrid<TData extends object>({
     [columnsById, formatOptions],
   );
 
+  // ----- 5. Pivot materialization (filtered source rows → materializePivot in pivot.tsx) -----
   const pivotSourceRows = useMemo(() => {
     if (!isPivotLayout) {
       return data;
@@ -905,6 +925,7 @@ export function DataGrid<TData extends object>({
       pivotSourceRows,
     ],
   );
+  // ----- 6. Column defs + pivot generated-ID reconciliation (visibility/order/pinning) -----
   const tableData = (pivotMaterialization?.data ?? data) as (TData | PivotRow<TData>)[];
   // Grid-mode column groups: wrap the data column defs in nested group defs that
   // render as header bands through the standard getHeaderGroups() path. The
@@ -998,6 +1019,7 @@ export function DataGrid<TData extends object>({
       ? Math.max(Math.ceil(pivotMaterialization.metadata.topLevelGroupCount / currentPagination.pageSize), 1)
       : undefined;
 
+  // ----- 7. Table instance (single useReactTable; manual* flags flip on in server mode) -----
   const table = useReactTable<TData | PivotRow<TData>>({
     data: tableData,
     columns: tableColumns,
@@ -1056,6 +1078,7 @@ export function DataGrid<TData extends object>({
       : {}),
   });
 
+  // ----- 8. Derived view data (option lists, summary scopes, page totals, visibleRows) -----
   // Option lists are the only O(rows) work here, so derive them once per
   // data/filters change instead of on every render (e.g. each keystroke).
   const filterOptionsById = useMemo(() => {
@@ -1490,7 +1513,7 @@ export function DataGrid<TData extends object>({
   });
   const bodyColSpan = table.getVisibleLeafColumns().length;
 
-  // ----- Keyboard cell navigation + inline editing -----
+  // ----- 9. Keyboard cell navigation + inline editing -----
   // useCellFocus owns the roving-tabindex geometry + focus; useCellEditing owns
   // the edit state machine; onCellKeyDown (below) is the precedence-chain
   // orchestrator that wires them together with row actions and clipboard.
@@ -1629,7 +1652,7 @@ export function DataGrid<TData extends object>({
     }
   };
 
-  // ----- Export + clipboard -----
+  // ----- 10. Export + clipboard -----
   const exportLeafColumns = () =>
     table.getVisibleLeafColumns().filter((column) => column.id !== "select");
   const getExportText = (
@@ -1857,6 +1880,7 @@ export function DataGrid<TData extends object>({
       : renderGridLeafRow(row, measureProps);
   };
 
+  // ----- 11. Render (renderBodyRows windows visibleRows; JSX below: toolbar → table → pager) -----
   const renderBodyRows = () => {
     if (!virtualizeRows) {
       return visibleRows.map((row) => renderVisibleRow(row));
