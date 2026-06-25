@@ -849,6 +849,7 @@ export function DataGrid<TData extends object>({
   const [activeRow, setActiveRow] = useState<TData | null>(null);
   const [focusedCell, setFocusedCell] = useState<DataGridFocusedCell>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const pendingFocusKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [savedViews, setSavedViews] = useState<DataGridSavedViews>(() =>
     loadJson<DataGridSavedViews>(storageKeys?.savedViews, {}),
@@ -1831,6 +1832,11 @@ export function DataGrid<TData extends object>({
         key={row.id}
         ref={measureProps?.ref}
         data-index={measureProps?.["data-index"]}
+        aria-rowindex={
+          rowVisibleIndexById.has(row.id)
+            ? headerRowCount + (rowVisibleIndexById.get(row.id) ?? 0) + 1
+            : undefined
+        }
         className="bg-slate-50"
       >
         <td
@@ -1955,7 +1961,7 @@ export function DataGrid<TData extends object>({
   );
   const headerRowCount =
     table.getHeaderGroups().length + (features.floatingFilters && !isPivotLayout ? 1 : 0);
-  const cellKey = (rowId: string, columnId: string) => `${rowId} ${columnId}`;
+  const cellKey = (rowId: string, columnId: string) => `${rowId}\u0000${columnId}`;
   const focusInGrid =
     focusedCell != null &&
     navRowIds.includes(focusedCell.rowId) &&
@@ -1972,15 +1978,21 @@ export function DataGrid<TData extends object>({
   };
   const focusCell = (rowId: string, columnId: string) => {
     updateFocusedCell({ rowId, columnId });
-    const focusNode = () => cellRefs.current.get(cellKey(rowId, columnId))?.focus();
+    const key = cellKey(rowId, columnId);
+    const existing = cellRefs.current.get(key);
+    if (existing) {
+      existing.focus();
+      return;
+    }
+    // Target row is outside the virtual window: scroll it into range and defer
+    // focus to the pending-focus effect, which fires once the row mounts (a
+    // single rAF is not enough for variable-height rows / large jumps).
     if (virtualizeRows) {
       const index = rowVisibleIndexById.get(rowId);
       if (index != null) {
         rowVirtualizer.scrollToIndex(index, { align: "auto" });
       }
-      requestAnimationFrame(focusNode);
-    } else {
-      focusNode();
+      pendingFocusKey.current = key;
     }
   };
   const onCellKeyDown = (
@@ -2050,6 +2062,19 @@ export function DataGrid<TData extends object>({
       event.preventDefault();
     }
   };
+  // Focuses a cell that focusCell scrolled into range, once the virtualizer
+  // mounts its row. Runs every render; a cheap no-op while nothing pends.
+  useEffect(() => {
+    const key = pendingFocusKey.current;
+    if (!key) {
+      return;
+    }
+    const node = cellRefs.current.get(key);
+    if (node) {
+      node.focus();
+      pendingFocusKey.current = null;
+    }
+  });
 
   const getPinnedColumnStyle = (
     column: Column<TData | PivotRow<TData>, unknown>,
@@ -2399,7 +2424,7 @@ export function DataGrid<TData extends object>({
           <table
             className="w-full border-separate border-spacing-0 text-xs"
             style={{ minWidth: minTableWidth }}
-            aria-rowcount={headerRowCount + navRowIds.length}
+            aria-rowcount={headerRowCount + visibleRows.length}
             aria-colcount={visibleLeafColumns.length}
           >
             {tableLabel ? <caption className="sr-only">{tableLabel}</caption> : null}
@@ -2421,12 +2446,18 @@ export function DataGrid<TData extends object>({
                       isPivotLayout || header.isPlaceholder
                         ? undefined
                         : headerFilterById.get(header.column.id);
+                    // aria-colindex over leaf columns only; band/group header
+                    // cells (not a leaf) resolve to -1 and omit the attribute.
+                    const headerColIndex = visibleLeafColumns.findIndex(
+                      (column) => column.id === header.column.id,
+                    );
 
                     return (
                       <th
                         key={header.id}
                         scope="col"
                         colSpan={header.colSpan}
+                        aria-colindex={headerColIndex >= 0 ? headerColIndex + 1 : undefined}
                         aria-sort={
                           canSort
                             ? sortState === "asc"
