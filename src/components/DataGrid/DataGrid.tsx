@@ -1708,7 +1708,13 @@ export function DataGrid<TData extends object>({
       left: pinned === "left" ? column.getStart("left") : undefined,
       right: pinned === "right" ? column.getAfter("right") : undefined,
       top: options.header ? 0 : undefined,
-      zIndex: options.header ? 30 : 20,
+      // Header cells (z-30) live inside the `sticky z-10` <thead> stacking
+      // context, so 30 is only relative to sibling header cells. Pinned body
+      // cells live in <tbody> (no stacking context), so their z-index resolves
+      // against the root alongside the header's effective z-10 — keep it below
+      // 10 (but above non-pinned body cells at z-auto) or they paint over the
+      // header as the body scrolls underneath.
+      zIndex: options.header ? 30 : 1,
       backgroundColor: options.backgroundColor,
       boxShadow: isLeftEdge
         ? "2px 0 4px -2px rgba(15, 23, 42, 0.28)"

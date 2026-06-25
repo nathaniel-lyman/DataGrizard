@@ -238,6 +238,35 @@ describe("DataGrid column pinning configuration", () => {
     });
   });
 
+  it("stacks pinned body cells below the sticky header so rows scroll underneath", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={[
+          { accessorKey: "name", header: "Name", dataType: "text", pinned: "left" },
+          { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+          { accessorKey: "status", header: "Status", dataType: "status" },
+        ]}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    const bodyCell = screen.getByText("Acme").closest("td")!;
+    const headerCell = screen.getByRole("columnheader", { name: /Name/ });
+    const bodyZ = Number(bodyCell.style.zIndex);
+    const headerZ = Number(headerCell.style.zIndex);
+
+    // The <thead> is `sticky top-0 z-10`, so it establishes a stacking context
+    // at root z-index 10. A pinned body cell sits in `tbody` (no stacking
+    // context), so its z-index resolves against the same root: it MUST stay
+    // below 10 or it paints over the header as the body scrolls.
+    expect(bodyZ).toBeGreaterThan(0); // still above non-pinned (z-auto) body cells
+    expect(bodyZ).toBeLessThan(10); // below the sticky header
+    // Pinned header cells still outrank pinned body cells.
+    expect(headerZ).toBeGreaterThan(bodyZ);
+  });
+
   it("pins and unpins columns from the Columns menu", () => {
     render(
       <DataGrid
