@@ -122,6 +122,7 @@ export type DataGridExpandedState = ExpandedState;
 export type DataGridColumnPinningState = ColumnPinningState;
 
 export type DataGridLayoutMode = "grid" | "pivot";
+export type DataGridDataMode = "client" | "server";
 
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
 
@@ -186,6 +187,18 @@ export type DataGridProps<TData extends object> = {
   data: TData[];
   columns: GridColumnConfig<TData>[];
   layoutMode?: DataGridLayoutMode;
+  /**
+   * Whether the grid sorts/filters/paginates locally ("client", default) or
+   * trusts externally supplied `data` + `rowCount` ("server"). Server mode
+   * applies to grid layout only; ignored in pivot layout.
+   */
+  dataMode?: DataGridDataMode;
+  /**
+   * Total server row count (server mode). Required for correct pagination; if
+   * omitted, the grid renders the current page with an unknown total (the
+   * "of N" page/row totals are hidden).
+   */
+  rowCount?: number;
   /** Grid-mode header bands. Ignored in pivot mode. */
   columnGroups?: DataGridColumnGroup[];
   pivot?: DataGridPivotConfig<TData>;
@@ -285,6 +298,8 @@ export function DataGrid<TData extends object>({
   data,
   columns,
   layoutMode = "grid",
+  dataMode = "client",
+  rowCount,
   columnGroups,
   pivot: pivotConfig,
   filters = [],
@@ -335,13 +350,25 @@ export function DataGrid<TData extends object>({
   getExportFileName,
 }: DataGridProps<TData>) {
   const isPivotLayout = layoutMode === "pivot";
+  const isServerMode = dataMode === "server" && !isPivotLayout;
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
     isPivotLayout
       ? {
           grouping: true,
         }
       : {};
-  const features = { ...defaultFeatures, ...layoutFeatureDefaults, ...featureOverrides };
+  // Server mode renders a single page, so any whole-dataset aggregate (summary
+  // bar, grid grouping) cannot be correct: default them OFF rather than wrong.
+  // Consumer `featureOverrides` stays last, so every default is reversible.
+  const dataModeFeatureDefaults: Partial<DataGridFeatures> = isServerMode
+    ? { grouping: false, summaries: false }
+    : {};
+  const features = {
+    ...defaultFeatures,
+    ...layoutFeatureDefaults,
+    ...dataModeFeatureDefaults,
+    ...featureOverrides,
+  };
   const columnList = columns as unknown as AnyColumnConfig<TData>[];
   const defaultExpanded = useMemo<ExpandedState>(
     () => (isPivotLayout ? true : {}),
@@ -996,8 +1023,11 @@ export function DataGrid<TData extends object>({
     columnResizeMode: "onChange",
     groupedColumnMode: "remove",
     paginateExpandedRows: false,
-    manualPagination: isTopLevelPivotPagination,
+    manualSorting: isServerMode,
+    manualFiltering: isServerMode,
+    manualPagination: isServerMode || isTopLevelPivotPagination,
     pageCount: pivotPageCount,
+    rowCount: isServerMode ? rowCount : undefined,
     onSortingChange: emitSortingChange,
     onGlobalFilterChange: emitGlobalFilterChange,
     onColumnFiltersChange: emitColumnFiltersChange,
@@ -1015,7 +1045,7 @@ export function DataGrid<TData extends object>({
     getFilteredRowModel: getFilteredRowModel(),
     ...(features.grouping && !isPivotLayout ? { getGroupedRowModel: getGroupedRowModel() } : {}),
     ...(features.grouping && !isPivotLayout ? { getExpandedRowModel: getExpandedRowModel() } : {}),
-    ...(features.pagination && !isTopLevelPivotPagination
+    ...(features.pagination && !isTopLevelPivotPagination && !isServerMode
       ? { getPaginationRowModel: getPaginationRowModel() }
       : {}),
   });
