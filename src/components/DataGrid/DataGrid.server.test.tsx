@@ -207,3 +207,19 @@ describe("DataGrid server mode — filter options", () => {
     expect(screen.getByRole("option", { name: "Alice" })).toBeInTheDocument();
   });
 });
+
+describe("DataGrid server mode — a11y", () => {
+  it("sets aria-rowcount to the server total plus header rows", () => {
+    render(
+      <DataGrid
+        data={data} // 3 rendered page rows
+        columns={columns}
+        getRowId={(r) => r.id}
+        dataMode="server"
+        rowCount={1000}
+      />,
+    );
+    // 1 header row (no column groups) + 1000 server rows.
+    expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
+  });
+});

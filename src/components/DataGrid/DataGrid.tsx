@@ -2047,7 +2047,10 @@ export function DataGrid<TData extends object>({
           <table
             className="w-full border-separate border-spacing-0 text-xs"
             style={{ minWidth: minTableWidth }}
-            aria-rowcount={headerRowCount + visibleRows.length}
+            aria-rowcount={
+              headerRowCount +
+              (isServerMode ? rowCount ?? visibleRows.length : visibleRows.length)
+            }
             aria-colcount={visibleLeafColumns.length}
           >
             {tableLabel ? <caption className="sr-only">{tableLabel}</caption> : null}
