@@ -66,6 +66,8 @@ import {
   normalizeColumnPinning,
   uniqueColumnValues,
 } from "./gridHelpers";
+import { useCellEditing } from "./useCellEditing";
+import { useCellFocus } from "./useCellFocus";
 import { useGridState } from "./useGridState";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
@@ -491,10 +493,6 @@ export function DataGrid<TData extends object>({
     onActiveViewNameChange,
   });
   const [activeRow, setActiveRow] = useState<TData | null>(null);
-  const [focusedCell, setFocusedCell] = useState<DataGridFocusedCell>(null);
-  const [editingCell, setEditingCell] = useState<{ rowId: string; columnId: string } | null>(null);
-  const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
-  const pendingFocusKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const formatOptions = useMemo<FormatOptions>(
@@ -1267,22 +1265,6 @@ export function DataGrid<TData extends object>({
     emitActiveViewNameChange("");
   };
 
-  useEffect(() => {
-    if (activeRow == null) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      // The editor stops Escape from reaching here, but guard anyway so a cell
-      // edit always wins the Escape over closing the detail panel.
-      if (event.key === "Escape" && editingCell == null) {
-        closeActiveRow();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRow, editingCell]);
-
   const toggleGroupRow = (row: Row<TData>) => {
     emitExpandedChange((current) => {
       const isExpanded =
@@ -1467,55 +1449,62 @@ export function DataGrid<TData extends object>({
   });
   const bodyColSpan = table.getVisibleLeafColumns().length;
 
-  // ----- Keyboard cell navigation (roving tabindex over a rectangular grid) -----
-  // Group rows render a single spanning toggle button (already Tab-focusable) and
-  // the select column hosts its own checkbox, so neither participates in the cell
-  // grid. The grid is therefore leaf data rows × non-select visible leaf columns.
+  // ----- Keyboard cell navigation + inline editing -----
+  // useCellFocus owns the roving-tabindex geometry + focus; useCellEditing owns
+  // the edit state machine; onCellKeyDown (below) is the precedence-chain
+  // orchestrator that wires them together with row actions and clipboard.
   const visibleLeafColumns = table.getVisibleLeafColumns();
-  const navColumnIds = visibleLeafColumns.map((column) => column.id).filter((id) => id !== "select");
-  const navRowIds = visibleRows
-    .filter((row) => isPivotLayout || !row.getIsGrouped())
-    .map((row) => row.id);
-  const rowVisibleIndexById = useMemo(
-    () => new Map(visibleRows.map((row, index) => [row.id, index])),
-    [visibleRows],
-  );
-  const headerRowCount =
-    table.getHeaderGroups().length + (features.floatingFilters && !isPivotLayout ? 1 : 0);
-  const cellKey = (rowId: string, columnId: string) => `${rowId}\u0000${columnId}`;
-  const focusInGrid =
-    focusedCell != null &&
-    navRowIds.includes(focusedCell.rowId) &&
-    navColumnIds.includes(focusedCell.columnId);
-  const fallbackTabCell: DataGridFocusedCell =
-    navRowIds.length > 0 && navColumnIds.length > 0
-      ? { rowId: navRowIds[0], columnId: navColumnIds[0] }
-      : null;
-  const activeTabCell = focusInGrid ? focusedCell : fallbackTabCell;
+  const {
+    navColumnIds,
+    navRowIds,
+    rowVisibleIndexById,
+    headerRowCount,
+    activeTabCell,
+    cellKey,
+    cellRefs,
+    focusCell,
+    updateFocusedCell,
+  } = useCellFocus({
+    visibleRows,
+    isPivotLayout,
+    table,
+    floatingFiltersEnabled: features.floatingFilters,
+    virtualizeRows,
+    rowVirtualizer,
+    onFocusedCellChange,
+  });
+  const {
+    editingCell,
+    isCellEditable,
+    beginEdit,
+    cancelEdit,
+    commitEdit,
+    statusEditOptions,
+  } = useCellEditing({
+    editingEnabled: features.editing,
+    columnsById,
+    data,
+    navColumnIds,
+    onCellEdit,
+    focusCell,
+  });
 
-  const updateFocusedCell = (cell: DataGridFocusedCell) => {
-    setFocusedCell(cell);
-    onFocusedCellChange?.(cell);
-  };
-  const focusCell = (rowId: string, columnId: string) => {
-    updateFocusedCell({ rowId, columnId });
-    const key = cellKey(rowId, columnId);
-    const existing = cellRefs.current.get(key);
-    if (existing) {
-      existing.focus();
+  useEffect(() => {
+    if (activeRow == null) {
       return;
     }
-    // Target row is outside the virtual window: scroll it into range and defer
-    // focus to the pending-focus effect, which fires once the row mounts (a
-    // single rAF is not enough for variable-height rows / large jumps).
-    if (virtualizeRows) {
-      const index = rowVisibleIndexById.get(rowId);
-      if (index != null) {
-        rowVirtualizer.scrollToIndex(index, { align: "auto" });
+    const onKeyDown = (event: KeyboardEvent) => {
+      // The editor stops Escape from reaching here, but guard anyway so a cell
+      // edit always wins the Escape over closing the detail panel.
+      if (event.key === "Escape" && editingCell == null) {
+        closeActiveRow();
       }
-      pendingFocusKey.current = key;
-    }
-  };
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRow, editingCell]);
+
   const onCellKeyDown = (
     event: ReactKeyboardEvent<HTMLTableCellElement>,
     row: Row<TData | PivotRow<TData>>,
@@ -1597,71 +1586,6 @@ export function DataGrid<TData extends object>({
     if (handled) {
       event.preventDefault();
     }
-  };
-  // Focuses a cell that focusCell scrolled into range, once the virtualizer
-  // mounts its row. Runs every render; a cheap no-op while nothing pends.
-  useEffect(() => {
-    const key = pendingFocusKey.current;
-    if (!key) {
-      return;
-    }
-    const node = cellRefs.current.get(key);
-    if (node) {
-      node.focus();
-      pendingFocusKey.current = null;
-    }
-  });
-
-  // ----- Cell editing -----
-  const isCellEditable = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
-    if (!features.editing || isPivotRow(row.original)) {
-      return false;
-    }
-    const column = columnsById.get(columnId);
-    if (!column?.editable) {
-      return false;
-    }
-    const source = row.original as TData;
-    return typeof column.editable === "function" ? column.editable(source) : column.editable;
-  };
-  const nextEditableColumnId = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
-    for (let i = navColumnIds.indexOf(columnId) + 1; i < navColumnIds.length; i += 1) {
-      if (isCellEditable(row, navColumnIds[i])) {
-        return navColumnIds[i];
-      }
-    }
-    return null;
-  };
-  const beginEdit = (rowId: string, columnId: string) => setEditingCell({ rowId, columnId });
-  const cancelEdit = (rowId: string, columnId: string) => {
-    setEditingCell(null);
-    focusCell(rowId, columnId);
-  };
-  // The grid never mutates `data`: it emits onCellEdit and the consumer updates
-  // the data prop. Tab advances to the next editable cell in the row.
-  const commitEdit = (
-    row: Row<TData | PivotRow<TData>>,
-    columnId: string,
-    value: unknown,
-    advance: boolean,
-  ) => {
-    const source = row.original as TData;
-    const previousValue = (source as Record<string, unknown>)[columnId];
-    onCellEdit?.({ rowId: row.id, row: source, columnId, value, previousValue });
-    if (advance) {
-      const nextColumnId = nextEditableColumnId(row, columnId);
-      if (nextColumnId) {
-        beginEdit(row.id, nextColumnId);
-        return;
-      }
-    }
-    setEditingCell(null);
-    focusCell(row.id, columnId);
-  };
-  const statusEditOptions = (columnId: string) => {
-    const column = columnsById.get(columnId);
-    const styleKeys = column?.statusStyles ? Object.keys(column.statusStyles) : [];
-    return styleKeys.length > 0 ? styleKeys : uniqueColumnValues(data, columnId as Extract<keyof TData, string>);
   };
 
   // ----- Export + clipboard -----
