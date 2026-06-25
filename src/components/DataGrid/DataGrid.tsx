@@ -2202,7 +2202,7 @@ export function DataGrid<TData extends object>({
             <div className="flex items-center gap-2">
               <span>
                 Page {table.getState().pagination.pageIndex + 1}
-                {isServerMode && rowCount == null
+                {displayedTotalRowCount == null
                   ? ""
                   : ` of ${Math.max(table.getPageCount(), 1)}`}
               </span>
