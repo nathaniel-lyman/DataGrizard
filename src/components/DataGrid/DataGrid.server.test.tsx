@@ -167,3 +167,43 @@ describe("DataGrid server mode — pagination", () => {
     expect(screen.getByText(/Page 1/)).toBeInTheDocument();
   });
 });
+
+describe("DataGrid server mode — filter options", () => {
+  it("does not derive select options from the page, but honors static options", () => {
+    const filtersNoOptions: GridFilterConfig<Row>[] = [
+      { accessorKey: "name", label: "Name" }, // select, no static options
+    ];
+    const { rerender } = render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        filters={filtersNoOptions}
+        dataMode="server"
+        rowCount={3}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
+    // The page contains "Alice" but it must NOT become a derived option.
+    expect(screen.queryByRole("option", { name: "Alice" })).not.toBeInTheDocument();
+    // The popover instance survives `rerender`; close it so the click below
+    // re-opens (rather than toggles shut) the popover for the static-options case.
+    fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
+
+    const filtersWithOptions: GridFilterConfig<Row>[] = [
+      { accessorKey: "name", label: "Name", options: ["Alice", "Bob"] },
+    ];
+    rerender(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        filters={filtersWithOptions}
+        dataMode="server"
+        rowCount={3}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
+    expect(screen.getByRole("option", { name: "Alice" })).toBeInTheDocument();
+  });
+});

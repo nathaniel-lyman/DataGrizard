@@ -1055,10 +1055,12 @@ export function DataGrid<TData extends object>({
   const filterOptionsById = useMemo(() => {
     const map: Record<string, string[]> = {};
     filters.forEach((filter) => {
-      map[filter.accessorKey] = filter.options ?? uniqueColumnValues(data, filter.accessorKey);
+      map[filter.accessorKey] =
+        filter.options ??
+        (isServerMode ? [] : uniqueColumnValues(data, filter.accessorKey));
     });
     return map;
-  }, [data, filters]);
+  }, [data, filters, isServerMode]);
 
   const toolbarFilters: GridFilter[] = filters.map((filter) => {
     const column = isPivotLayout ? undefined : table.getColumn(filter.accessorKey);
