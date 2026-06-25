@@ -7,6 +7,23 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { MinusIcon, PlusIcon } from "./icons";
+import {
+  asText,
+  getSourceValue,
+  groupId,
+  isExpanded,
+  leafId,
+  measureColumnId,
+  segmentId,
+  stableValueKey,
+  type PivotSourceColumn,
+} from "./pivotHelpers";
+import {
+  buildColumnBuckets,
+  collectValueBuckets,
+  computeValues,
+  type PivotColumnBucket,
+} from "./pivotColumns";
 
 export const PIVOT_ROW_LABEL_COLUMN_ID = "pivot:rowLabel";
 
@@ -51,13 +68,6 @@ export type PivotRow<TData extends object> = {
   __isExpanded?: boolean;
   __label: ReactNode;
   __labelText: string;
-};
-
-type PivotColumnBucket<TData extends object> = {
-  path: PivotGroupPathSegment[];
-  rows: TData[];
-  children?: PivotColumnBucket<TData>[];
-  totalLevel?: "subtotal" | "grandTotal";
 };
 
 export type DataGridPivotAggregationContext<TData extends object> = {
@@ -126,17 +136,6 @@ export type PivotMaterialization<TData extends object> = {
   };
 };
 
-type PivotSourceColumn<TData extends object> = {
-  accessorKey: Extract<keyof TData, string>;
-  header: string;
-  width?: number;
-  minWidth?: number;
-  maxWidth?: number;
-  enablePinning?: boolean;
-  getGroupingValue?: (row: TData) => unknown;
-  formatGroupingValue?: (value: unknown, rows: TData[]) => ReactNode;
-};
-
 type MaterializePivotOptions<TData extends object> = {
   sourceRows: TData[];
   sourceColumns: PivotSourceColumn<TData>[];
@@ -155,94 +154,6 @@ type MaterializePivotOptions<TData extends object> = {
   enableColumnVisibility: boolean;
   enableColumnResizing: boolean;
   enableColumnPinning: boolean;
-};
-
-const stableValueKey = (value: unknown) => {
-  if (value == null || value === "") {
-    return "blank";
-  }
-
-  return encodeURIComponent(String(value));
-};
-
-const segmentId = (segment: PivotGroupPathSegment) =>
-  `${segment.columnId}=${segment.stableKey}`;
-
-const groupId = (path: PivotGroupPathSegment[]) =>
-  `pivot:group|${path.map(segmentId).join("|")}`;
-
-const measureColumnId = (
-  measureId: string,
-  columnPath: PivotGroupPathSegment[] = [],
-  totalLevel?: "subtotal" | "grandTotal",
-) =>
-  [
-    `measure:${measureId}`,
-    ...columnPath.map((segment) => `col:${segmentId(segment)}`),
-    ...(totalLevel ? [`total:${totalLevel}`] : []),
-  ].join("|");
-
-const leafId = <TData extends object>(
-  row: TData,
-  index: number,
-  getRowId: MaterializePivotOptions<TData>["getRowId"],
-) => `pivot:leaf|source=${encodeURIComponent(getRowId?.(row, index) ?? String(index))}`;
-
-const isExpanded = (expanded: ExpandedState | undefined, rowId: string) =>
-  expanded === true || Boolean(expanded && typeof expanded === "object" && expanded[rowId]);
-
-const getSourceValue = <TData extends object>(
-  row: TData,
-  column: PivotSourceColumn<TData> | undefined,
-) => {
-  if (!column) {
-    return undefined;
-  }
-  return column.getGroupingValue ? column.getGroupingValue(row) : row[column.accessorKey];
-};
-
-const asText = (value: ReactNode) => {
-  if (typeof value === "string" || typeof value === "number") {
-    return String(value);
-  }
-  return "";
-};
-
-const aggregateMeasure = <TData extends object>(
-  rows: TData[],
-  measure: DataGridPivotMeasure<TData>,
-  context: DataGridPivotAggregationContext<TData>,
-) => {
-  if (typeof measure.aggregation === "function") {
-    return measure.aggregation(rows, context);
-  }
-
-  if (measure.aggregation === "count") {
-    return rows.length;
-  }
-
-  const values = rows
-    .map((row) => (measure.columnId ? Number(row[measure.columnId]) : Number.NaN))
-    .filter(Number.isFinite);
-
-  if (measure.aggregation === "sum") {
-    return values.reduce((total, value) => total + value, 0);
-  }
-  if (measure.aggregation === "avg") {
-    return values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
-  }
-  if (measure.aggregation === "min") {
-    return values.length ? Math.min(...values) : null;
-  }
-  if (measure.aggregation === "max") {
-    return values.length ? Math.max(...values) : null;
-  }
-  return null;
-};
-
-const sumNumericValues = (values: unknown[]) => {
-  const numericValues = values.map(Number).filter(Number.isFinite);
-  return numericValues.reduce((total, value) => total + value, 0);
 };
 
 const comparePivotRows = <TData extends object>(
@@ -266,151 +177,6 @@ const comparePivotRows = <TData extends object>(
   }
 
   return 0;
-};
-
-const computeValues = <TData extends object>(
-  rows: TData[],
-  measures: DataGridPivotMeasure<TData>[],
-  rowPath: PivotGroupPathSegment[],
-  valueBuckets: PivotColumnBucket<TData>[],
-) => {
-  const values: Record<string, unknown> = {};
-
-  valueBuckets.forEach((bucket) => {
-    measures.forEach((measure) => {
-      const columnId = measureColumnId(measure.id, bucket.path, bucket.totalLevel);
-      const behavior = bucket.totalLevel ? measure.totalBehavior ?? "aggregate" : "aggregate";
-
-      if (behavior === "blank") {
-        values[columnId] = "";
-        return;
-      }
-
-      if (behavior === "sumVisibleChildren" && bucket.children?.length) {
-        values[columnId] = sumNumericValues(
-          flattenBuckets(bucket.children).map((childBucket) => {
-            const childRows = rows.filter((row) => childBucket.rows.includes(row));
-            return aggregateMeasure(childRows, measure, {
-              columnId: measure.columnId,
-              measureId: measure.id,
-              rowPath,
-              columnPath: childBucket.path,
-            });
-          }),
-        );
-        return;
-      }
-
-      const bucketRows =
-        bucket.path.length || bucket.totalLevel
-          ? rows.filter((row) => bucket.rows.includes(row))
-          : rows;
-      values[columnId] = aggregateMeasure(bucketRows, measure, {
-        columnId: measure.columnId,
-        measureId: measure.id,
-        rowPath,
-        columnPath: bucket.path,
-      });
-    });
-  });
-
-  return values;
-};
-
-const flattenBuckets = <TData extends object>(
-  buckets: PivotColumnBucket<TData>[],
-): PivotColumnBucket<TData>[] =>
-  buckets.flatMap((bucket) =>
-    bucket.children?.length ? flattenBuckets(bucket.children) : [bucket],
-  );
-
-const buildColumnBuckets = <TData extends object>(
-  rows: TData[],
-  axes: DataGridPivotColumnAxis[] | undefined,
-  columnsById: Map<string, PivotSourceColumn<TData>>,
-) => {
-  const build = (
-    bucketRows: TData[],
-    depth: number,
-    path: PivotGroupPathSegment[],
-  ): PivotColumnBucket<TData>[] => {
-    const axis = axes?.[depth];
-
-    if (!axis) {
-      return [{ path, rows: bucketRows }];
-    }
-
-    const sourceColumn = columnsById.get(axis.columnId as Extract<keyof TData, string>);
-    const groups = new Map<string, { value: unknown; rows: TData[] }>();
-
-    bucketRows.forEach((row) => {
-      const value = getSourceValue(row, sourceColumn);
-      const key = stableValueKey(value);
-      const bucket = groups.get(key) ?? { value, rows: [] };
-      bucket.rows.push(row);
-      groups.set(key, bucket);
-    });
-
-    const grouped = Array.from(groups.entries()).map(([stableKey, group]) => {
-      const label =
-        sourceColumn?.formatGroupingValue?.(group.value, group.rows) ??
-        (group.value == null || group.value === "" ? "Blank" : String(group.value));
-      const nextPath = [
-        ...path,
-        {
-          columnId: axis.columnId,
-          value: group.value,
-          label,
-          stableKey,
-        },
-      ];
-
-      return {
-        path: nextPath,
-        rows: group.rows,
-        children: build(group.rows, depth + 1, nextPath),
-      };
-    });
-
-    grouped.sort((a, b) => {
-      const aSegment = a.path[a.path.length - 1];
-      const bSegment = b.path[b.path.length - 1];
-      const result = String(aSegment?.value ?? "").localeCompare(String(bSegment?.value ?? ""));
-      return axis.order === "desc" ? -result : result;
-    });
-
-    return grouped;
-  };
-
-  return axes?.length ? build(rows, 0, []) : [{ path: [], rows }];
-};
-
-const collectValueBuckets = <TData extends object>(
-  buckets: PivotColumnBucket<TData>[],
-  includeGrandTotal: boolean,
-  sourceRows: TData[],
-): PivotColumnBucket<TData>[] => {
-  const withSubtotals = (bucketList: PivotColumnBucket<TData>[]): PivotColumnBucket<TData>[] =>
-    bucketList.flatMap((bucket) => {
-      if (!bucket.children?.length) {
-        return [bucket];
-      }
-
-      return [
-        ...withSubtotals(bucket.children),
-        {
-          path: bucket.path,
-          rows: bucket.rows,
-          children: bucket.children,
-          totalLevel: "subtotal" as const,
-        },
-      ];
-    });
-
-  return [
-    ...withSubtotals(buckets),
-    ...(includeGrandTotal ? [{ path: [], rows: sourceRows, totalLevel: "grandTotal" as const }] : []),
-  ];
 };
 
 export function materializePivot<TData extends object>({
