@@ -31,7 +31,6 @@ import {
   type RowSelectionState,
   type SortingFn,
   type SortingState,
-  type Updater,
   type VisibilityState,
 } from "@tanstack/react-table";
 import type { GridColumnConfig, GridDataType, GridFilterConfig, GridFilterType } from "../../types/grid";
@@ -47,7 +46,7 @@ import { Toolbar } from "./Toolbar";
 import { FilterPopover, type GridFilter } from "./filters";
 import { CellEditor, type EditCellColumn } from "./cellEditor";
 import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
-import { loadJson, removeJson, saveJson } from "./storage";
+import { removeJson } from "./storage";
 import { dateSortingFn, matchesFilterValue } from "./filterMatch";
 import { buildGroupedColumnDefs, type DataGridColumnGroup } from "./columnGroups";
 import {
@@ -65,9 +64,9 @@ import {
   isGeneratedPivotColumnId,
   isPivotRow,
   normalizeColumnPinning,
-  resolveUpdater,
   uniqueColumnValues,
 } from "./gridHelpers";
+import { useGridState } from "./useGridState";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
   PIVOT_ROW_LABEL_COLUMN_ID,
@@ -436,162 +435,67 @@ export function DataGrid<TData extends object>({
         })),
     [columnList, features.grouping],
   );
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() =>
-    loadJson<ColumnSizingState>(storageKeys?.columnSizing, {}),
-  );
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() =>
-    loadJson<ColumnOrderState>(storageKeys?.columnOrder, defaultColumnOrder),
-  );
-  const [columnPinning, setColumnPinning] = useState<ColumnPinningState>(() =>
-    normalizeColumnPinning(
-      loadJson<ColumnPinningState>(storageKeys?.columnPinning, defaultPinningState),
-      lockedLeftColumnIds,
-    ),
-  );
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: pageSizeOptions[1] ?? pageSizeOptions[0] ?? 50,
+  const {
+    currentSorting,
+    currentGlobalFilter,
+    currentColumnFilters,
+    currentColumnVisibility,
+    currentColumnSizing,
+    currentColumnOrder,
+    currentColumnPinning,
+    currentPagination,
+    currentRowSelection,
+    currentGrouping,
+    currentExpanded,
+    currentPivot,
+    currentSavedViews,
+    currentActiveViewName,
+    emitSortingChange,
+    emitGlobalFilterChange,
+    emitColumnFiltersChange,
+    emitColumnVisibilityChange,
+    emitColumnSizingChange,
+    emitColumnOrderChange,
+    emitColumnPinningChange,
+    emitPaginationChange,
+    emitRowSelectionChange,
+    emitGroupingChange,
+    emitExpandedChange,
+    emitPivotChange,
+    emitSavedViewsChange,
+    emitActiveViewNameChange,
+  } = useGridState({
+    controlledState,
+    storageKeys,
+    defaultColumnOrder,
+    defaultPinningState,
+    lockedLeftColumnIds,
+    defaultGrouping,
+    defaultExpanded,
+    defaultPivotState,
+    pageSizeOptions,
+    columnPinningEnabled: features.columnPinning,
+    onSortingChange,
+    onGlobalFilterChange,
+    onColumnFiltersChange,
+    onColumnVisibilityChange,
+    onColumnSizingChange,
+    onColumnOrderChange,
+    onColumnPinningChange,
+    onPaginationChange,
+    onRowSelectionChange,
+    onGroupingChange,
+    onExpandedChange,
+    onPivotChange,
+    onSavedViewsChange,
+    onActiveViewNameChange,
   });
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [grouping, setGrouping] = useState<GroupingState>(defaultGrouping);
-  const [expanded, setExpanded] = useState<ExpandedState>(defaultExpanded);
-  const [pivot, setPivot] = useState<DataGridPivotState>(defaultPivotState);
   const [activeRow, setActiveRow] = useState<TData | null>(null);
   const [focusedCell, setFocusedCell] = useState<DataGridFocusedCell>(null);
   const [editingCell, setEditingCell] = useState<{ rowId: string; columnId: string } | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const pendingFocusKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [savedViews, setSavedViews] = useState<DataGridSavedViews>(() =>
-    loadJson<DataGridSavedViews>(storageKeys?.savedViews, {}),
-  );
-  const [activeViewName, setActiveViewName] = useState("");
-  const currentSorting = controlledState?.sorting ?? sorting;
-  const currentGlobalFilter = controlledState?.globalFilter ?? globalFilter;
-  const currentColumnFilters = controlledState?.columnFilters ?? columnFilters;
-  const currentColumnVisibility = controlledState?.columnVisibility ?? columnVisibility;
-  const currentColumnSizing = controlledState?.columnSizing ?? columnSizing;
-  const currentColumnOrder = controlledState?.columnOrder ?? columnOrder;
-  const currentColumnPinning = features.columnPinning
-    ? normalizeColumnPinning(
-        controlledState?.columnPinning ?? columnPinning,
-        lockedLeftColumnIds,
-      )
-    : {};
-  const currentPagination = controlledState?.pagination ?? pagination;
-  const currentRowSelection = controlledState?.rowSelection ?? rowSelection;
-  const currentGrouping = controlledState?.grouping ?? grouping;
-  const currentExpanded = controlledState?.expanded ?? expanded;
-  const currentPivot = controlledState?.pivot ?? pivot;
-  const currentSavedViews = controlledState?.savedViews ?? savedViews;
-  const currentActiveViewName = controlledState?.activeViewName ?? activeViewName;
-  const emitSortingChange = (updater: Updater<SortingState>) => {
-    const next = resolveUpdater(updater, currentSorting);
-    if (controlledState?.sorting === undefined) {
-      setSorting(next);
-    }
-    onSortingChange?.(next);
-  };
-  const emitGlobalFilterChange = (updater: Updater<string>) => {
-    const next = resolveUpdater(updater, currentGlobalFilter);
-    if (controlledState?.globalFilter === undefined) {
-      setGlobalFilter(next);
-    }
-    onGlobalFilterChange?.(next);
-  };
-  const emitColumnFiltersChange = (updater: Updater<ColumnFiltersState>) => {
-    const next = resolveUpdater(updater, currentColumnFilters);
-    if (controlledState?.columnFilters === undefined) {
-      setColumnFilters(next);
-    }
-    onColumnFiltersChange?.(next);
-  };
-  const emitColumnVisibilityChange = (updater: Updater<VisibilityState>) => {
-    const next = resolveUpdater(updater, currentColumnVisibility);
-    if (controlledState?.columnVisibility === undefined) {
-      setColumnVisibility(next);
-    }
-    onColumnVisibilityChange?.(next);
-  };
-  const emitColumnSizingChange = (updater: Updater<ColumnSizingState>) => {
-    const next = resolveUpdater(updater, currentColumnSizing);
-    if (controlledState?.columnSizing === undefined) {
-      setColumnSizing(next);
-      saveJson(storageKeys?.columnSizing, next);
-    }
-    onColumnSizingChange?.(next);
-  };
-  const emitColumnOrderChange = (updater: Updater<ColumnOrderState>) => {
-    const next = resolveUpdater(updater, currentColumnOrder);
-    if (controlledState?.columnOrder === undefined) {
-      setColumnOrder(next);
-      saveJson(storageKeys?.columnOrder, next);
-    }
-    onColumnOrderChange?.(next);
-  };
-  const emitColumnPinningChange = (updater: Updater<ColumnPinningState>) => {
-    const next = normalizeColumnPinning(
-      resolveUpdater(updater, currentColumnPinning),
-      lockedLeftColumnIds,
-    );
-    if (controlledState?.columnPinning === undefined) {
-      setColumnPinning(next);
-      saveJson(storageKeys?.columnPinning, next);
-    }
-    onColumnPinningChange?.(next);
-  };
-  const emitPaginationChange = (updater: Updater<PaginationState>) => {
-    const next = resolveUpdater(updater, currentPagination);
-    if (controlledState?.pagination === undefined) {
-      setPagination(next);
-    }
-    onPaginationChange?.(next);
-  };
-  const emitRowSelectionChange = (updater: Updater<RowSelectionState>) => {
-    const next = resolveUpdater(updater, currentRowSelection);
-    if (controlledState?.rowSelection === undefined) {
-      setRowSelection(next);
-    }
-    onRowSelectionChange?.(next);
-  };
-  const emitGroupingChange = (updater: Updater<GroupingState>) => {
-    const next = resolveUpdater(updater, currentGrouping);
-    if (controlledState?.grouping === undefined) {
-      setGrouping(next);
-    }
-    onGroupingChange?.(next);
-  };
-  const emitExpandedChange = (updater: Updater<ExpandedState>) => {
-    const next = resolveUpdater(updater, currentExpanded);
-    if (controlledState?.expanded === undefined) {
-      setExpanded(next);
-    }
-    onExpandedChange?.(next);
-  };
-  const emitPivotChange = (updater: Updater<DataGridPivotState>) => {
-    const next = resolveUpdater(updater, currentPivot);
-    if (controlledState?.pivot === undefined) {
-      setPivot(next);
-    }
-    onPivotChange?.(next);
-  };
-  const emitSavedViewsChange = (next: DataGridSavedViews) => {
-    if (controlledState?.savedViews === undefined) {
-      setSavedViews(next);
-      saveJson(storageKeys?.savedViews, next);
-    }
-    onSavedViewsChange?.(next);
-  };
-  const emitActiveViewNameChange = (next: string) => {
-    if (controlledState?.activeViewName === undefined) {
-      setActiveViewName(next);
-    }
-    onActiveViewNameChange?.(next);
-  };
 
   const formatOptions = useMemo<FormatOptions>(
     () => ({ locale, currency, dateFormat }),
