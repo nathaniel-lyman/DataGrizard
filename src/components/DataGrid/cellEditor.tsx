@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { GridDataType } from "../../types/grid";
 import { toDate } from "../../utils/formatters";
 
@@ -99,6 +99,7 @@ export function CellEditor<TData>({
   const [error, setError] = useState<string | null>(null);
   const committedRef = useRef(false);
   const fieldRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+  const errorId = useId();
 
   useEffect(() => {
     const node = fieldRef.current;
@@ -120,7 +121,18 @@ export function CellEditor<TData>({
     committedRef.current = true;
     onCommit(typed, advance);
   };
-  const commitText = (advance: boolean) => commitTyped(parseEditValue(column, draftText), advance);
+  const commitText = (advance: boolean) => {
+    let parsed: unknown;
+    try {
+      parsed = parseEditValue(column, draftText);
+    } catch {
+      // A consumer parseValue that throws surfaces as a validation error rather
+      // than an unhandled exception that leaves the editor silently stuck.
+      setError("Invalid value");
+      return;
+    }
+    commitTyped(parsed, advance);
+  };
   const cancel = () => {
     committedRef.current = true;
     onCancel();
@@ -166,12 +178,29 @@ export function CellEditor<TData>({
     onKeyDown,
     onBlur: () => commitText(false),
     "aria-invalid": error ? true : undefined,
-    "aria-label": error ?? undefined,
+    // Error is surfaced via a described element, not aria-label, so the field
+    // keeps its own accessible name and the message is also visible.
+    "aria-describedby": error ? errorId : undefined,
     className: error ? `${inputClass} border-rose-500 ring-2 ring-rose-200` : inputClass,
   };
 
+  const withError = (field: ReactNode) => (
+    <div className="relative">
+      {field}
+      {error ? (
+        <span
+          id={errorId}
+          role="alert"
+          className="absolute left-0 top-full z-10 mt-0.5 rounded bg-rose-600 px-1 py-0.5 text-[10px] font-medium text-white shadow"
+        >
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+
   if (column.dataType === "status") {
-    return (
+    return withError(
       <select
         {...common}
         value={draftText}
@@ -185,11 +214,11 @@ export function CellEditor<TData>({
             {option}
           </option>
         ))}
-      </select>
+      </select>,
     );
   }
 
-  return (
+  return withError(
     <input
       {...common}
       type={isNumericType(column.dataType) ? "number" : column.dataType === "date" ? "date" : "text"}
@@ -198,6 +227,6 @@ export function CellEditor<TData>({
         setDraftText(event.target.value);
         setError(null);
       }}
-    />
+    />,
   );
 }

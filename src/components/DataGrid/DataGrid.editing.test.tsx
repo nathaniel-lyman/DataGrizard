@@ -125,10 +125,41 @@ describe("DataGrid cell editing", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCellEdit).not.toHaveBeenCalled();
 
+    // The error message is surfaced as a visible alert (not the field's name).
+    expect(screen.getByRole("alert")).toHaveTextContent("Must be positive");
+
     // Tab on an invalid value also stays in edit mode (validation wins).
     fireEvent.keyDown(screen.getByDisplayValue("-3"), { key: "Tab" });
     expect(onCellEdit).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue("-3")).toBeInTheDocument();
+  });
+
+  it("surfaces a throwing parseValue as an error instead of crashing", () => {
+    const onCellEdit = vi.fn();
+    const throwingColumns: GridColumnConfig<Row>[] = [
+      {
+        accessorKey: "name",
+        header: "Name",
+        dataType: "text",
+        editable: true,
+        parseValue: () => {
+          throw new Error("nope");
+        },
+      },
+      ...columns.slice(1),
+    ];
+    render(
+      <DataGrid data={makeData()} columns={throwingColumns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
+    );
+
+    fireEvent.doubleClick(cellOf("Alpha"));
+    const input = screen.getByDisplayValue("Alpha");
+    fireEvent.change(input, { target: { value: "X" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("X")).toBeInTheDocument(); // still editing
   });
 
   it("renders a status select editor over statusStyles keys", () => {

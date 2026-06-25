@@ -1788,14 +1788,16 @@ export function DataGrid<TData extends object>({
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      // The editor stops Escape from reaching here, but guard anyway so a cell
+      // edit always wins the Escape over closing the detail panel.
+      if (event.key === "Escape" && editingCell == null) {
         closeActiveRow();
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRow]);
+  }, [activeRow, editingCell]);
 
   const toggleGroupRow = (row: Row<TData>) => {
     emitExpandedChange((current) => {
@@ -2198,6 +2200,9 @@ export function DataGrid<TData extends object>({
   };
   const leafExportRows = (source: Row<TData | PivotRow<TData>>[]) =>
     source.filter((row) => !row.getIsGrouped());
+  // Selection-only export is a grid-mode feature. Pivot selection is over source
+  // rows (a separate, less-complete model), so pivot always exports all visible
+  // pivot rows rather than silently mapping a selection it can't represent here.
   const selectedExportRows = () =>
     isPivotLayout ? [] : leafExportRows(table.getSelectedRowModel().flatRows);
   const handleExportCsv = () => {
