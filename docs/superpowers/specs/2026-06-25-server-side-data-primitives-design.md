@@ -7,7 +7,7 @@
 
 ## 1. Motivation
 
-`DataGrid` is fully client-side: `data: TData[]` is held in memory and sorting, filtering, search, and pagination all run in the browser (`getFilteredRowModel` / `getSortedRowModel` / `getPaginationRowModel` wired at `DataGrid.tsx:1013-1019`). This caps the component at datasets that fit in memory and forbids any real backend-driven grid.
+`DataGrid` is fully client-side: `data: TData[]` is held in memory and sorting, filtering, search, and pagination all run in the browser (`getFilteredRowModel` / `getSortedRowModel` / `getPaginationRowModel` wired at `DataGrid.tsx:1013-1020`). This caps the component at datasets that fit in memory and forbids any real backend-driven grid.
 
 This phase adds the smallest coherent primitive that unblocks the common case (large, flat, server-paginated tables): a single `dataMode` switch that flips the grid into TanStack "manual" mode and trusts externally supplied `data` + `rowCount`. The component starts no requests and owns no fetching — it rides the controlled-state triad that already exists.
 
@@ -29,7 +29,9 @@ New props on `DataGridProps<TData>` (exported via `src/components/DataGrid/index
 dataMode?: "client" | "server";
 
 /** Total row count on the server. Required for correct pagination in server
- *  mode; if omitted the grid renders the current page with an unknown total. */
+ *  mode. If omitted, the grid renders the current page with an unknown total:
+ *  the pagination footer hides the "of N" total and the jump-to-last-page
+ *  control is disabled (next/prev still work). */
 rowCount?: number;
 ```
 
@@ -68,7 +70,11 @@ rowCount: isServerMode ? rowCount : undefined,               // TanStack derives
 
 Because `isServerMode` is false in pivot layout, the existing `pivotPageCount` / pivot manual-pagination path (`DataGrid.tsx:999-1000`) is untouched, and pivot stays fully client-side.
 
-`aria-rowcount` derivation is refined: in server mode it reflects `rowCount` (the full server total) rather than the in-memory page length, so assistive tech announces "row X of <total>".
+`aria-rowcount` derivation is refined: in server mode it reflects `rowCount` (the full server total) rather than the in-memory page length, so assistive tech announces "row X of <total>". Exact expression (current code at `DataGrid.tsx:2013` is `headerRowCount + visibleRows.length`):
+
+```ts
+aria-rowcount = headerRowCount + (isServerMode ? (rowCount ?? visibleRows.length) : visibleRows.length)
+```
 
 ## 5. Data flow
 
@@ -117,9 +123,12 @@ Keeps `src/components/DataGrid/` free of any retail/async assumptions; the demo 
     globalFilter: string;
     pagination: PaginationState;
   }): Promise<{ rows: RetailItem[]; rowCount: number }>;
+
+  // Mutation entry point so demo edits survive a refetch (see App.tsx onCellEdit).
+  function applyEdit(itemId: string, columnId: string, value: unknown): void;
   ```
-  It applies sort -> filter -> search -> page-slice, wrapped in a ~300ms `setTimeout` to simulate latency. It **reuses the component's exported `matchesFilterValue`** (`filterMatch.ts`) so the demo's "server" filtering matches the grid's client semantics exactly.
-- **`src/App.tsx`** gains a Client/Server toggle. In server mode it holds `data` / `rowCount` / `isLoading` in state, controls the `sorting` / `columnFilters` / `globalFilter` / `pagination` slices, and on any `on*Change` calls `queryRetail`, flips `isLoading`, and stores the result. A request-id guard drops stale responses (demonstrating the race-handling the grid intentionally does not own). `onCellEdit` writes back to `queryRetail`'s in-memory store so edits survive a refetch. Client mode is exactly today's behavior.
+  `queryRetail` applies sort -> filter -> search -> page-slice, wrapped in a ~300ms `setTimeout` to simulate latency. It **reuses the component's exported `matchesFilterValue`** (`filterMatch.ts`) so the demo's "server" filtering matches the grid's client semantics exactly. `applyEdit` mutates the in-memory store by `item_id` so a subsequent `queryRetail` reflects the edit.
+- **`src/App.tsx`** gains a Client/Server toggle. In server mode it holds `data` / `rowCount` / `isLoading` in state, controls the `sorting` / `columnFilters` / `globalFilter` / `pagination` slices, and on any `on*Change` calls `queryRetail`, flips `isLoading`, and stores the result. A request-id guard drops stale responses (demonstrating the race-handling the grid intentionally does not own). `onCellEdit` calls `applyEdit` so edits survive a refetch. Client mode is exactly today's behavior.
 
 ## 8. Testing
 
