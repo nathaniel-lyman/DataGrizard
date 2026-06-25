@@ -6,13 +6,15 @@ This repository is a Vite + React + TypeScript component-surface project for a r
 
 - `src/App.tsx` composes the application shell and mounts the grid.
 - `src/components/DataGrid/` contains the reusable grid surface:
-  - `DataGrid.tsx` owns TanStack Table state and rendering.
-  - `Toolbar.tsx` owns generic search, filter, column, and saved-view controls.
+  - `DataGrid.tsx` owns TanStack Table state, rendering, and keyboard cell navigation.
+  - `cells.tsx` / `filterMatch.ts` / `columnGroups.ts` / `storage.ts` hold the engine's pure helpers (cell rendering, the filter predicate, column-group assembly, scoped `localStorage`).
+  - `filters.tsx` owns all filter-control UI (header popover, floating row, pivot Filters popover); `cellEditor.tsx` owns inline edit UI; `pivot.tsx` owns pivot materialization.
+  - `Toolbar.tsx` owns generic search, column, saved-view, and Export controls (filtering lives in the column headers, not the toolbar).
   - `index.ts` exports the component boundary.
 - `src/types/grid.ts` defines reusable grid column and filter configuration types.
 - `src/data/mockRetailData.ts` generates synthetic retail rows plus demo column/filter configuration.
 - `src/demo/` contains retail-specific demo UI, such as detail panels and action placeholders.
-- `src/utils/formatters.ts` contains number, currency, percent, and status formatters.
+- `src/utils/formatters.ts` contains number, currency, percent, status, and date formatters; `src/utils/export.ts` holds domain-neutral CSV/TSV + clipboard helpers.
 - `src/index.css` holds Tailwind setup and global base styles.
 
 Tests live next to the feature they cover, for example `src/components/DataGrid/DataGrid.test.tsx`.
