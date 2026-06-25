@@ -525,6 +525,9 @@ describe("DataGrid pivot layout mode", () => {
       />,
     );
 
+    // Pivot mode has no leaf data columns to host header filters, so filtering
+    // is driven through the consolidated toolbar "Filters" popover.
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     fireEvent.click(screen.getByRole("button", { name: /Department filter/i }));
     fireEvent.click(screen.getByRole("option", { name: "Grocery" }));
 

@@ -132,10 +132,12 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
 ];
 
 export const retailFilters: GridFilterConfig<RetailItem>[] = [
+  { accessorKey: "item_name", label: "Item Name", filterType: "text", placeholder: "Search names…" },
   { accessorKey: "department", label: "Department", filterType: "multiSelect" },
   { accessorKey: "category", label: "Category" },
   { accessorKey: "recommendation_status", label: "Status", filterType: "multiSelect" },
   { accessorKey: "sales", label: "Sales", filterType: "range", min: 0, step: 1000 },
+  { accessorKey: "last_restocked_at", label: "Last Restocked", filterType: "date" },
 ];
 
 const sum = (rows: RetailItem[], key: "sales" | "units") =>

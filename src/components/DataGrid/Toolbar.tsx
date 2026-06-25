@@ -1,25 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon, GripIcon, SearchIcon } from "./icons";
-
-type ToolbarFilterType = "select" | "multiSelect" | "range" | "text" | "date";
-
-type ToolbarFilter = {
-  id: string;
-  label: string;
-  filterType: ToolbarFilterType;
-  value: unknown;
-  options: string[];
-  formatOption?: (value: string) => string;
-  min?: number;
-  max?: number;
-  step?: number;
-  onChange: (value: unknown) => void;
-};
+import { FiltersPopover, type GridFilter } from "./filters";
 
 type ToolbarProps = {
   search: string;
   searchPlaceholder: string;
-  filters: ToolbarFilter[];
+  filters: GridFilter[];
+  /** Pivot mode: render a consolidated Filters popover (grid mode filters live in headers). */
+  showFiltersPopover: boolean;
   enableGlobalSearch: boolean;
   enableColumnVisibility: boolean;
   enableColumnOrdering: boolean;
@@ -57,247 +45,11 @@ type ToolbarProps = {
   onActiveViewNameChange: (name: string) => void;
 };
 
-const formatOptionLabel = (option: string) =>
-  option
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-
-const SelectFilter = ({ filter }: { filter: ToolbarFilter }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const selected = typeof filter.value === "string" ? filter.value : "";
-  const format = filter.formatOption ?? formatOptionLabel;
-  const selectedLabel = selected ? format(selected) : "All";
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const choose = (value: string) => {
-    filter.onChange(value);
-    setOpen(false);
-    triggerRef.current?.focus();
-  };
-
-  return (
-    <div
-      ref={ref}
-      className="relative flex min-w-36 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500"
-    >
-      {filter.label}
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={`${filter.label} filter`}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => setOpen((isOpen) => !isOpen)}
-        className="flex h-8 items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium normal-case tracking-normal text-slate-800 outline-none transition hover:bg-slate-50 focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300"
-      >
-        <span className="truncate">{selectedLabel}</span>
-        <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-      </button>
-      {open ? (
-        <div
-          role="listbox"
-          aria-label={`${filter.label} options`}
-          className="absolute left-0 top-full z-20 mt-1 max-h-64 w-56 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg"
-        >
-          <button
-            type="button"
-            role="option"
-            aria-selected={selected === ""}
-            onClick={() => choose("")}
-            className={`flex h-8 w-full items-center rounded px-2 text-left text-xs font-medium normal-case tracking-normal ${
-              selected === "" ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-50"
-            }`}
-          >
-            All
-          </button>
-          {filter.options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="option"
-              aria-selected={selected === option}
-              onClick={() => choose(option)}
-              className={`flex h-8 w-full items-center rounded px-2 text-left text-xs font-medium normal-case tracking-normal ${
-                selected === option ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-50"
-              }`}
-            >
-              <span className="truncate">{format(option)}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const MultiSelectFilter = ({ filter }: { filter: ToolbarFilter }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const selected = Array.isArray(filter.value) ? (filter.value as string[]) : [];
-  const format = filter.formatOption ?? formatOptionLabel;
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const toggle = (option: string) => {
-    const next = selected.includes(option)
-      ? selected.filter((value) => value !== option)
-      : [...selected, option];
-    filter.onChange(next.length ? next : undefined);
-  };
-
-  return (
-    <div
-      ref={ref}
-      className="relative flex min-w-36 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500"
-    >
-      {filter.label}
-      <button
-        type="button"
-        aria-label={`${filter.label} filter`}
-        aria-expanded={open}
-        onClick={() => setOpen((isOpen) => !isOpen)}
-        className="flex h-8 items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium normal-case tracking-normal text-slate-800 outline-none transition hover:bg-slate-50 focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300"
-      >
-        <span className="truncate">
-          {selected.length ? `${selected.length} selected` : "All"}
-        </span>
-        <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-48 overflow-auto rounded-md border border-slate-200 bg-white p-2 shadow-lg">
-          {filter.options.map((option) => (
-            <label
-              key={option}
-              className="flex h-7 items-center gap-2 rounded px-1 text-xs font-medium normal-case tracking-normal text-slate-800 hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(option)}
-                onChange={() => toggle(option)}
-                aria-label={format(option)}
-                className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-              />
-              <span className="truncate">{format(option)}</span>
-            </label>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const RangeFilter = ({ filter }: { filter: ToolbarFilter }) => {
-  const value =
-    filter.value && typeof filter.value === "object" && !Array.isArray(filter.value)
-      ? (filter.value as { min?: number; max?: number })
-      : {};
-  const parse = (raw: string) => (raw === "" ? undefined : Number(raw));
-  const update = (patch: { min?: number; max?: number }) => {
-    const next = { min: value.min, max: value.max, ...patch };
-    if (next.min == null && next.max == null) {
-      filter.onChange(undefined);
-    } else {
-      filter.onChange(next);
-    }
-  };
-  const inputClass =
-    "h-8 w-20 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 outline-none transition focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300";
-
-  return (
-    <div className="flex min-w-36 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-      {filter.label}
-      <div className="flex items-center gap-1 normal-case tracking-normal">
-        <input
-          type="number"
-          inputMode="numeric"
-          placeholder="Min"
-          aria-label={`${filter.label} minimum`}
-          value={value.min ?? ""}
-          min={filter.min}
-          max={filter.max}
-          step={filter.step}
-          onChange={(event) => update({ min: parse(event.target.value) })}
-          className={inputClass}
-        />
-        <span aria-hidden="true" className="text-slate-400">
-          –
-        </span>
-        <input
-          type="number"
-          inputMode="numeric"
-          placeholder="Max"
-          aria-label={`${filter.label} maximum`}
-          value={value.max ?? ""}
-          min={filter.min}
-          max={filter.max}
-          step={filter.step}
-          onChange={(event) => update({ max: parse(event.target.value) })}
-          className={inputClass}
-        />
-      </div>
-    </div>
-  );
-};
-
-const FilterControl = ({ filter }: { filter: ToolbarFilter }) => {
-  if (filter.filterType === "multiSelect") {
-    return <MultiSelectFilter filter={filter} />;
-  }
-  if (filter.filterType === "range") {
-    return <RangeFilter filter={filter} />;
-  }
-  return <SelectFilter filter={filter} />;
-};
-
 export function Toolbar({
   search,
   searchPlaceholder,
   filters,
+  showFiltersPopover,
   enableGlobalSearch,
   enableColumnVisibility,
   enableColumnOrdering,
@@ -405,17 +157,17 @@ export function Toolbar({
             </label>
           ) : null}
 
-          {filters.map((filter) => (
-            <FilterControl key={filter.id} filter={filter} />
-          ))}
+          {showFiltersPopover && filters.length > 0 ? <FiltersPopover filters={filters} /> : null}
 
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
-          >
-            Clear filters
-          </button>
+          {filters.length > 0 ? (
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              Clear filters
+            </button>
+          ) : null}
         </div>
       ) : null}
 

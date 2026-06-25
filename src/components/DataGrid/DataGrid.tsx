@@ -68,6 +68,7 @@ import {
   type FormatOptions,
 } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
+import { FilterPopover, type GridFilter } from "./filters";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
   PIVOT_ROW_LABEL_COLUMN_ID,
@@ -100,6 +101,8 @@ export type DataGridFeatures = {
   detailPanel: boolean;
   summaries: boolean;
   grouping: boolean;
+  /** Grid mode: render an always-visible filter row under the headers. */
+  floatingFilters: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -227,6 +230,7 @@ const defaultFeatures: DataGridFeatures = {
   detailPanel: true,
   summaries: true,
   grouping: true,
+  floatingFilters: false,
 };
 
 const resolveUpdater = <TValue,>(updater: Updater<TValue>, current: TValue): TValue =>
@@ -1386,7 +1390,7 @@ export function DataGrid<TData extends object>({
     return map;
   }, [data, filters]);
 
-  const toolbarFilters = filters.map((filter) => {
+  const toolbarFilters: GridFilter[] = filters.map((filter) => {
     const column = isPivotLayout ? undefined : table.getColumn(filter.accessorKey);
     const pivotFilter = currentColumnFilters.find((item) => item.id === filter.accessorKey);
     return {
@@ -1399,9 +1403,13 @@ export function DataGrid<TData extends object>({
       min: filter.min,
       max: filter.max,
       step: filter.step,
+      placeholder: filter.placeholder,
+      dateFormat: filter.dateFormat,
+      presets: filter.presets,
       onChange: (value: unknown) => {
         if (!isPivotLayout) {
           column?.setFilterValue(value);
+          resetPageIndex();
           return;
         }
 
@@ -1416,6 +1424,7 @@ export function DataGrid<TData extends object>({
       },
     };
   });
+  const headerFilterById = new Map(toolbarFilters.map((filter) => [filter.id, filter]));
 
   const resetPageIndex = () => {
     if (!features.pagination) {
@@ -2007,6 +2016,7 @@ export function DataGrid<TData extends object>({
             search={currentGlobalFilter}
             searchPlaceholder={searchPlaceholder}
             filters={toolbarFilters}
+            showFiltersPopover={isPivotLayout}
             enableGlobalSearch={features.globalSearch}
             enableColumnVisibility={features.columnVisibility}
             enableColumnOrdering={features.columnOrdering}
@@ -2146,6 +2156,12 @@ export function DataGrid<TData extends object>({
                   {headerGroup.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sortState = header.column.getIsSorted();
+                    // Grid-mode header filter affordance (pivot filters live in
+                    // the toolbar popover). Only declared, leaf data columns.
+                    const headerFilter =
+                      isPivotLayout || header.isPlaceholder
+                        ? undefined
+                        : headerFilterById.get(header.column.id);
 
                     return (
                       <th
@@ -2171,26 +2187,35 @@ export function DataGrid<TData extends object>({
                           isPivotLayout ? "border-cyan-200" : "border-slate-200"
                         }`}
                       >
-                        {header.isPlaceholder ? null : canSort ? (
-                          <button
-                            type="button"
-                            onClick={header.column.getToggleSortingHandler()}
-                            title="Click to sort. Shift-click to add to multi-sort."
-                            className="flex w-full cursor-pointer items-center gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
-                          >
-                            <span className="truncate">
-                              {flexRender(header.column.columnDef.header, header.getContext())}
-                            </span>
-                            <SortIcon state={sortState} />
-                            {currentSorting.length > 1 && header.column.getSortIndex() >= 0 ? (
-                              <span className="ml-0.5 rounded bg-slate-200 px-1 text-[9px] font-semibold leading-tight text-slate-600">
-                                {header.column.getSortIndex() + 1}
-                              </span>
+                        {header.isPlaceholder ? null : (
+                          <div className="flex w-full items-center gap-1">
+                            <div className="min-w-0 flex-1">
+                              {canSort ? (
+                                <button
+                                  type="button"
+                                  onClick={header.column.getToggleSortingHandler()}
+                                  title="Click to sort. Shift-click to add to multi-sort."
+                                  className="flex w-full cursor-pointer items-center gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                                >
+                                  <span className="truncate">
+                                    {flexRender(header.column.columnDef.header, header.getContext())}
+                                  </span>
+                                  <SortIcon state={sortState} />
+                                  {currentSorting.length > 1 && header.column.getSortIndex() >= 0 ? (
+                                    <span className="ml-0.5 rounded bg-slate-200 px-1 text-[9px] font-semibold leading-tight text-slate-600">
+                                      {header.column.getSortIndex() + 1}
+                                    </span>
+                                  ) : null}
+                                </button>
+                              ) : (
+                                <div className="flex w-full items-center truncate">
+                                  {flexRender(header.column.columnDef.header, header.getContext())}
+                                </div>
+                              )}
+                            </div>
+                            {headerFilter ? (
+                              <FilterPopover filter={headerFilter} variant="icon" />
                             ) : null}
-                          </button>
-                        ) : (
-                          <div className="flex w-full items-center">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
                           </div>
                         )}
                         {features.columnResizing && header.column.getCanResize() ? (
@@ -2233,6 +2258,29 @@ export function DataGrid<TData extends object>({
                   })}
                 </tr>
               ))}
+              {features.floatingFilters && !isPivotLayout ? (
+                <tr>
+                  {table.getVisibleLeafColumns().map((column) => {
+                    const filter = headerFilterById.get(column.id);
+                    return (
+                      <th
+                        key={column.id}
+                        scope="col"
+                        style={{
+                          width: column.getSize(),
+                          ...getPinnedColumnStyle(column, {
+                            header: true,
+                            backgroundColor: "#f8fafc",
+                          }),
+                        }}
+                        className="border-r border-slate-200 px-2 py-1 align-top last:border-r-0"
+                      >
+                        {filter ? <FilterPopover filter={filter} variant="inline" /> : null}
+                      </th>
+                    );
+                  })}
+                </tr>
+              ) : null}
             </thead>
             <tbody>{renderBodyRows()}</tbody>
           </table>

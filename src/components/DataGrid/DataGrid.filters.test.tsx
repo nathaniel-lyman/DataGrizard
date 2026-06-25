@@ -56,11 +56,48 @@ describe("DataGrid column filters", () => {
     ];
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
 
+    fireEvent.click(screen.getByRole("button", { name: /Revenue filter/i }));
     fireEvent.change(screen.getByLabelText("Revenue minimum"), { target: { value: "1000" } });
 
     expect(screen.queryByText("$500")).not.toBeInTheDocument();
     expect(screen.getByText("$1,000")).toBeInTheDocument();
     expect(screen.getByText("$1,500")).toBeInTheDocument();
+  });
+
+  it("filters via a header text popover and marks the trigger active", () => {
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "dept", label: "Dept", filterType: "text" },
+    ];
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
+
+    const trigger = screen.getByRole("button", { name: /Dept filter/i });
+    expect(trigger).not.toHaveAttribute("data-active");
+
+    fireEvent.click(trigger);
+    fireEvent.change(screen.getByLabelText("Dept contains"), { target: { value: "men" } });
+
+    // contains "men" → "Men" and "Women" (case-insensitive), not "Kids".
+    expect(screen.getByText("$500")).toBeInTheDocument();
+    expect(screen.getByText("$1,500")).toBeInTheDocument();
+    expect(screen.queryByText("$1,000")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Dept filter/i })).toHaveAttribute("data-active");
+  });
+
+  it("renders an always-visible floating filter row when enabled", () => {
+    const filters: GridFilterConfig<Row>[] = [{ accessorKey: "dept", label: "Dept" }];
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        filters={filters}
+        features={{ floatingFilters: true }}
+      />,
+    );
+
+    // The floating row shows the inline trigger summarizing the current value
+    // ("All") without needing to open the header icon popover first.
+    expect(screen.getAllByRole("button", { name: /Dept filter/i }).length).toBeGreaterThan(1);
   });
 });
 

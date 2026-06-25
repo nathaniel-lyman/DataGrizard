@@ -62,6 +62,12 @@ export const SearchIcon = (props: IconProps) => (
   </svg>
 );
 
+export const FilterIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M2.5 3.5h11l-4.2 5v4l-2.6 1.3v-5.3z" />
+  </svg>
+);
+
 export const GripIcon = (props: IconProps) => (
   <svg {...base({ strokeWidth: 0, fill: "currentColor", ...props })}>
     <circle cx="6" cy="4" r="1" />
