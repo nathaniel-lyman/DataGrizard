@@ -103,7 +103,14 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     enableGrouping: true,
   },
   { accessorKey: "sales", header: "Sales", dataType: "currency", width: 128 },
-  { accessorKey: "units", header: "Units", dataType: "number", width: 104 },
+  {
+    accessorKey: "units",
+    header: "Units",
+    dataType: "number",
+    width: 104,
+    editable: true,
+    validate: (value) => (Number(value) < 0 ? "Units cannot be negative" : null),
+  },
   {
     accessorKey: "margin_rate",
     header: "Margin",
@@ -125,10 +132,12 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     dataType: "status",
     width: 150,
     enableGrouping: true,
+    editable: true,
+    statusStyles,
     formatGroupingValue: (value) => formatStatusLabel(String(value)),
     getStatusClassName: (value) => statusStyles[value as RecommendationStatus],
   },
-  { accessorKey: "last_restocked_at", header: "Last Restocked", dataType: "date", width: 140 },
+  { accessorKey: "last_restocked_at", header: "Last Restocked", dataType: "date", width: 140, editable: true },
 ];
 
 export const retailFilters: GridFilterConfig<RetailItem>[] = [

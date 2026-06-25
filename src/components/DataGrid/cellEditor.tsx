@@ -1,0 +1,203 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { GridDataType } from "../../types/grid";
+import { toDate } from "../../utils/formatters";
+
+// Value-erased column shape the editor needs (the public per-key config is cast
+// to this once at the prop boundary, mirroring AnyColumnConfig in the engine).
+export type EditCellColumn<TData> = {
+  accessorKey: string;
+  dataType: GridDataType;
+  parseValue?: (input: string) => unknown;
+  validate?: (value: unknown, row: TData) => string | null;
+  statusStyles?: Record<string, string>;
+  renderEditCell?: (props: {
+    value: unknown;
+    row: TData;
+    onChange: (next: unknown) => void;
+    commit: () => void;
+    cancel: () => void;
+    error: string | null;
+  }) => ReactNode;
+};
+
+const isNumericType = (dataType: GridDataType) =>
+  dataType === "number" || dataType === "currency" || dataType === "percent";
+
+const toDateInputValue = (value: unknown): string => {
+  const date = toDate(value);
+  if (!date) {
+    return "";
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const toInputString = <TData,>(column: EditCellColumn<TData>, value: unknown): string => {
+  if (value == null) {
+    return "";
+  }
+  if (column.dataType === "date") {
+    return toDateInputValue(value);
+  }
+  return String(value);
+};
+
+// Default string -> typed conversion when the column provides no parseValue.
+// Numeric -> Number (NaN is rejected by computeEditError); date -> the ISO
+// yyyy-mm-dd string from the date input; text/status -> the string.
+export const parseEditValue = <TData,>(column: EditCellColumn<TData>, input: string): unknown => {
+  if (column.parseValue) {
+    return column.parseValue(input);
+  }
+  if (isNumericType(column.dataType)) {
+    return input === "" ? Number.NaN : Number(input);
+  }
+  return input;
+};
+
+// A custom `validate` fully owns validation (so a consumer can allow blanks);
+// otherwise the built-in numeric-NaN / invalid-date guards apply.
+export const computeEditError = <TData,>(
+  column: EditCellColumn<TData>,
+  value: unknown,
+  row: TData,
+): string | null => {
+  if (column.validate) {
+    return column.validate(value, row);
+  }
+  if (isNumericType(column.dataType) && typeof value === "number" && Number.isNaN(value)) {
+    return "Enter a number";
+  }
+  if (column.dataType === "date" && (value == null || value === "" || toDate(value) === null)) {
+    return "Enter a valid date";
+  }
+  return null;
+};
+
+const inputClass =
+  "h-7 w-full rounded border border-slate-400 bg-white px-1.5 text-xs text-slate-900 outline-none focus:border-slate-600 focus:ring-2 focus:ring-slate-300";
+
+export function CellEditor<TData>({
+  column,
+  value,
+  row,
+  statusOptions,
+  onCommit,
+  onCancel,
+}: {
+  column: EditCellColumn<TData>;
+  value: unknown;
+  row: TData;
+  statusOptions: string[];
+  onCommit: (value: unknown, advance: boolean) => void;
+  onCancel: () => void;
+}) {
+  const [draftValue, setDraftValue] = useState<unknown>(value);
+  const [draftText, setDraftText] = useState<string>(() => toInputString(column, value));
+  const [error, setError] = useState<string | null>(null);
+  const committedRef = useRef(false);
+  const fieldRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+
+  useEffect(() => {
+    const node = fieldRef.current;
+    node?.focus();
+    if (node instanceof HTMLInputElement && node.type !== "date") {
+      node.select();
+    }
+  }, []);
+
+  const commitTyped = (typed: unknown, advance: boolean) => {
+    if (committedRef.current) {
+      return;
+    }
+    const validationError = computeEditError(column, typed, row);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    committedRef.current = true;
+    onCommit(typed, advance);
+  };
+  const commitText = (advance: boolean) => commitTyped(parseEditValue(column, draftText), advance);
+  const cancel = () => {
+    committedRef.current = true;
+    onCancel();
+  };
+
+  if (column.renderEditCell) {
+    return (
+      <div onKeyDown={(event) => event.stopPropagation()}>
+        {column.renderEditCell({
+          value: draftValue,
+          row,
+          onChange: (next) => {
+            setDraftValue(next);
+            setError(null);
+          },
+          commit: () => commitTyped(draftValue, false),
+          cancel,
+          error,
+        })}
+      </div>
+    );
+  }
+
+  // Editing keys must never bubble to the cell-navigation handler.
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitText(false);
+    } else if (event.key === "Tab") {
+      event.preventDefault();
+      commitText(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancel();
+    }
+  };
+
+  const common = {
+    ref: (node: HTMLInputElement | HTMLSelectElement | null) => {
+      fieldRef.current = node;
+    },
+    onKeyDown,
+    onBlur: () => commitText(false),
+    "aria-invalid": error ? true : undefined,
+    "aria-label": error ?? undefined,
+    className: error ? `${inputClass} border-rose-500 ring-2 ring-rose-200` : inputClass,
+  };
+
+  if (column.dataType === "status") {
+    return (
+      <select
+        {...common}
+        value={draftText}
+        onChange={(event) => {
+          setDraftText(event.target.value);
+          setError(null);
+        }}
+      >
+        {statusOptions.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <input
+      {...common}
+      type={isNumericType(column.dataType) ? "number" : column.dataType === "date" ? "date" : "text"}
+      value={draftText}
+      onChange={(event) => {
+        setDraftText(event.target.value);
+        setError(null);
+      }}
+    />
+  );
+}

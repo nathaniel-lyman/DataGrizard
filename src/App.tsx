@@ -27,6 +27,9 @@ const retailColumnGroups: DataGridColumnGroup[] = [
 
 function App() {
   const [layoutMode, setLayoutMode] = useState<DataGridLayoutMode>("pivot");
+  // The grid never mutates `data`; it emits onCellEdit and the consumer applies
+  // the change. Here that means updating the row in local state by item_id.
+  const [rows, setRows] = useState(mockRetailData);
 
   return (
     <main className="flex h-screen flex-col bg-slate-100 text-slate-900">
@@ -73,11 +76,18 @@ function App() {
 
       <section className="flex min-h-0 flex-1 p-4">
         <DataGrid
-          data={mockRetailData}
+          data={rows}
           columns={retailColumns}
           layoutMode={layoutMode}
           columnGroups={retailColumnGroups}
           filters={retailFilters}
+          onCellEdit={({ rowId, columnId, value }) =>
+            setRows((current) =>
+              current.map((row) =>
+                row.item_id === rowId ? { ...row, [columnId]: value } : row,
+              ),
+            )
+          }
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}
           defaultGrouping={["department", "category"]}

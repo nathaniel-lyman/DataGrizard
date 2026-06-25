@@ -58,6 +58,17 @@ type AnyColumnConfig<TData> = {
   getStatusClassName?: (value: unknown, row: TData) => string;
   statusStyles?: Record<string, string>;
   conditionalFormats?: { when: (value: unknown, row: TData) => boolean; className: string }[];
+  editable?: boolean | ((row: TData) => boolean);
+  validate?: (value: unknown, row: TData) => string | null;
+  parseValue?: (input: string) => unknown;
+  renderEditCell?: (props: {
+    value: unknown;
+    row: TData;
+    onChange: (next: unknown) => void;
+    commit: () => void;
+    cancel: () => void;
+    error: string | null;
+  }) => ReactNode;
 };
 
 // Props attached to a row when virtualization is active so @tanstack/react-virtual
@@ -77,6 +88,7 @@ import {
 } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, type GridFilter } from "./filters";
+import { CellEditor, type EditCellColumn } from "./cellEditor";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
   PIVOT_ROW_LABEL_COLUMN_ID,
@@ -111,6 +123,8 @@ export type DataGridFeatures = {
   grouping: boolean;
   /** Grid mode: render an always-visible filter row under the headers. */
   floatingFilters: boolean;
+  /** Enable inline cell editing (inert until a column sets `editable`). */
+  editing: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -126,6 +140,14 @@ export type DataGridColumnPinningState = ColumnPinningState;
 export type DataGridLayoutMode = "grid" | "pivot";
 
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
+
+export type DataGridCellEdit<TData extends object> = {
+  rowId: string;
+  row: TData;
+  columnId: string;
+  value: unknown;
+  previousValue: unknown;
+};
 
 /**
  * A grid-mode column-group band. `children` are leaf column `accessorKey`s or
@@ -238,6 +260,7 @@ export type DataGridProps<TData extends object> = {
   onRowClick?: (row: TData) => void;
   onActiveRowChange?: (row: TData | null) => void;
   onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
+  onCellEdit?: (edit: DataGridCellEdit<TData>) => void;
 };
 
 const defaultFeatures: DataGridFeatures = {
@@ -255,6 +278,7 @@ const defaultFeatures: DataGridFeatures = {
   summaries: true,
   grouping: true,
   floatingFilters: false,
+  editing: true,
 };
 
 const resolveUpdater = <TValue,>(updater: Updater<TValue>, current: TValue): TValue =>
@@ -718,6 +742,7 @@ export function DataGrid<TData extends object>({
   onRowClick,
   onActiveRowChange,
   onFocusedCellChange,
+  onCellEdit,
 }: DataGridProps<TData>) {
   const isPivotLayout = layoutMode === "pivot";
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
@@ -848,6 +873,7 @@ export function DataGrid<TData extends object>({
   const [pivot, setPivot] = useState<DataGridPivotState>(defaultPivotState);
   const [activeRow, setActiveRow] = useState<TData | null>(null);
   const [focusedCell, setFocusedCell] = useState<DataGridFocusedCell>(null);
+  const [editingCell, setEditingCell] = useState<{ rowId: string; columnId: string } | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const pendingFocusKey = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -2000,6 +2026,10 @@ export function DataGrid<TData extends object>({
     row: Row<TData | PivotRow<TData>>,
     columnId: string,
   ) => {
+    // While this cell is editing, the editor owns the keys.
+    if (editingCell?.rowId === row.id && editingCell?.columnId === columnId) {
+      return;
+    }
     const rowIdx = navRowIds.indexOf(row.id);
     const colIdx = navColumnIds.indexOf(columnId);
     if (rowIdx < 0 || colIdx < 0) {
@@ -2039,10 +2069,11 @@ export function DataGrid<TData extends object>({
         break;
       case "Enter":
       case "F2": {
-        // Precedence: edit (Feature 5, not yet) → row action → no-op.
-        const source = !isPivotRow(row.original) ? (row.original as TData) : undefined;
-        if (source && hasLeafRowAction) {
-          handleRowClick(source);
+        // Precedence: edit → row action → no-op (editing wins on an editable cell).
+        if (isCellEditable(row, columnId)) {
+          beginEdit(row.id, columnId);
+        } else if (!isPivotRow(row.original) && hasLeafRowAction) {
+          handleRowClick(row.original as TData);
         } else {
           handled = false;
         }
@@ -2075,6 +2106,58 @@ export function DataGrid<TData extends object>({
       pendingFocusKey.current = null;
     }
   });
+
+  // ----- Cell editing -----
+  const isCellEditable = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
+    if (!features.editing || isPivotRow(row.original)) {
+      return false;
+    }
+    const column = columnsById.get(columnId);
+    if (!column?.editable) {
+      return false;
+    }
+    const source = row.original as TData;
+    return typeof column.editable === "function" ? column.editable(source) : column.editable;
+  };
+  const nextEditableColumnId = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
+    for (let i = navColumnIds.indexOf(columnId) + 1; i < navColumnIds.length; i += 1) {
+      if (isCellEditable(row, navColumnIds[i])) {
+        return navColumnIds[i];
+      }
+    }
+    return null;
+  };
+  const beginEdit = (rowId: string, columnId: string) => setEditingCell({ rowId, columnId });
+  const cancelEdit = (rowId: string, columnId: string) => {
+    setEditingCell(null);
+    focusCell(rowId, columnId);
+  };
+  // The grid never mutates `data`: it emits onCellEdit and the consumer updates
+  // the data prop. Tab advances to the next editable cell in the row.
+  const commitEdit = (
+    row: Row<TData | PivotRow<TData>>,
+    columnId: string,
+    value: unknown,
+    advance: boolean,
+  ) => {
+    const source = row.original as TData;
+    const previousValue = (source as Record<string, unknown>)[columnId];
+    onCellEdit?.({ rowId: row.id, row: source, columnId, value, previousValue });
+    if (advance) {
+      const nextColumnId = nextEditableColumnId(row, columnId);
+      if (nextColumnId) {
+        beginEdit(row.id, nextColumnId);
+        return;
+      }
+    }
+    setEditingCell(null);
+    focusCell(row.id, columnId);
+  };
+  const statusEditOptions = (columnId: string) => {
+    const column = columnsById.get(columnId);
+    const styleKeys = column?.statusStyles ? Object.keys(column.statusStyles) : [];
+    return styleKeys.length > 0 ? styleKeys : uniqueColumnValues(data, columnId as Extract<keyof TData, string>);
+  };
 
   const getPinnedColumnStyle = (
     column: Column<TData | PivotRow<TData>, unknown>,
@@ -2167,10 +2250,16 @@ export function DataGrid<TData extends object>({
           const isTabStop =
             activeTabCell?.rowId === row.id && activeTabCell?.columnId === cell.column.id;
           const colIndex = visibleLeafColumns.findIndex((column) => column.id === cell.column.id);
+          const isEditingCell =
+            editingCell?.rowId === row.id && editingCell?.columnId === cell.column.id;
+          const canEditCell = isNavCell && Boolean(columnConfig) && isCellEditable(row, cell.column.id);
 
           return (
             <td
               key={cell.id}
+              onDoubleClick={
+                canEditCell ? () => beginEdit(row.id, cell.column.id) : undefined
+              }
               ref={
                 isNavCell
                   ? (node) => {
@@ -2207,7 +2296,18 @@ export function DataGrid<TData extends object>({
                     : "text-left text-slate-950"
               }`}
             >
-              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              {isEditingCell && columnConfig ? (
+                <CellEditor<TData>
+                  column={columnConfig as unknown as EditCellColumn<TData>}
+                  value={cell.getValue()}
+                  row={sourceRow as TData}
+                  statusOptions={statusEditOptions(cell.column.id)}
+                  onCommit={(value, advance) => commitEdit(row, cell.column.id, value, advance)}
+                  onCancel={() => cancelEdit(row.id, cell.column.id)}
+                />
+              ) : (
+                flexRender(cell.column.columnDef.cell, cell.getContext())
+              )}
             </td>
           );
         })}

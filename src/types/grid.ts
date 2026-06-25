@@ -7,6 +7,16 @@ export type GridConditionalFormat<TValue = unknown, TData = unknown> = {
   className: string;
 };
 
+/** Props handed to a custom cell editor via `column.renderEditCell`. */
+export type GridEditCellProps<TData, K extends Extract<keyof TData, string>> = {
+  value: TData[K];
+  row: TData;
+  onChange: (next: TData[K]) => void;
+  commit: () => void;
+  cancel: () => void;
+  error: string | null;
+};
+
 type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
   accessorKey: K;
   header: string;
@@ -35,6 +45,15 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
    * matches contributes its className. Composes with getCellClassName.
    */
   conditionalFormats?: GridConditionalFormat<TData[K], TData>[];
+  /** Whether this column's cells can be edited (static or per-row). */
+  editable?: boolean | ((row: TData) => boolean);
+  /** Returns an error message (non-null blocks commit). When provided, it fully
+   * owns validation — the built-in numeric/date checks are skipped. */
+  validate?: (value: TData[K], row: TData) => string | null;
+  /** Converts the editor's string input to the typed value. Defaults per dataType. */
+  parseValue?: (input: string) => TData[K];
+  /** Full editor override; receives value/onChange/commit/cancel/error. */
+  renderEditCell?: (props: GridEditCellProps<TData, K>) => ReactNode;
 };
 
 /**

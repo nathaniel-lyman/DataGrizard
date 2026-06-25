@@ -1,10 +1,12 @@
 export { DataGrid } from "./DataGrid";
 export type {
   DataGridFeatures,
+  DataGridCellEdit,
   DataGridColumnGroup,
   DataGridColumnPinningState,
   DataGridControlledState,
   DataGridExpandedState,
+  DataGridFocusedCell,
   DataGridGroupingState,
   DataGridLayoutMode,
   DataGridProps,
@@ -34,6 +36,7 @@ export type {
   GridColumnConfig,
   GridConditionalFormat,
   GridDataType,
+  GridEditCellProps,
   GridFilterConfig,
   GridFilterType,
 } from "../../types/grid";
