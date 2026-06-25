@@ -429,6 +429,9 @@ describe("DataGrid server mode — filter options", () => {
     fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
     // The page contains "Alice" but it must NOT become a derived option.
     expect(screen.queryByRole("option", { name: "Alice" })).not.toBeInTheDocument();
+    // FilterPopover holds its own open state and the instance survives rerender;
+    // close it here so the next trigger-click re-opens rather than toggles shut.
+    fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
 
     const filtersWithOptions: GridFilterConfig<Row>[] = [
       { accessorKey: "name", label: "Name", options: ["Alice", "Bob"] },
