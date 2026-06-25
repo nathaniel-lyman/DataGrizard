@@ -760,11 +760,13 @@ import type {
 import { matchesFilterValue } from "../components/DataGrid/filterMatch";
 import { mockRetailData, retailFilters, type RetailItem } from "./mockRetailData";
 
+// Accept readonly inputs (the test's `as const` baseQuery, and any consumer
+// passing frozen state) as well as mutable TanStack state from App.tsx.
 export type RetailQuery = {
-  sorting: SortingState;
-  columnFilters: ColumnFiltersState;
+  sorting: ReadonlyArray<SortingState[number]>;
+  columnFilters: ReadonlyArray<ColumnFiltersState[number]>;
   globalFilter: string;
-  pagination: PaginationState;
+  pagination: Readonly<PaginationState>;
 };
 
 export type RetailQueryResult = {
@@ -801,7 +803,7 @@ const compare = (a: unknown, b: unknown): number => {
   return String(a).localeCompare(String(b));
 };
 
-const applySort = (rows: RetailItem[], sorting: SortingState): RetailItem[] => {
+const applySort = (rows: RetailItem[], sorting: RetailQuery["sorting"]): RetailItem[] => {
   if (sorting.length === 0) return rows;
   return [...rows].sort((rowA, rowB) => {
     for (const sort of sorting) {
@@ -817,7 +819,7 @@ const applySort = (rows: RetailItem[], sorting: SortingState): RetailItem[] => {
 
 const applyColumnFilters = (
   rows: RetailItem[],
-  columnFilters: ColumnFiltersState,
+  columnFilters: RetailQuery["columnFilters"],
 ): RetailItem[] =>
   rows.filter((row) =>
     columnFilters.every((filter) => {
