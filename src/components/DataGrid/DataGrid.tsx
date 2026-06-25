@@ -58,6 +58,16 @@ import {
   renderGroupingValue,
   type AnyColumnConfig,
 } from "./cells";
+import {
+  collectExpandableGroupIds,
+  flattenExpandedRows,
+  getSelectionStatus,
+  isGeneratedPivotColumnId,
+  isPivotRow,
+  normalizeColumnPinning,
+  resolveUpdater,
+  uniqueColumnValues,
+} from "./gridHelpers";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
   PIVOT_ROW_LABEL_COLUMN_ID,
@@ -248,35 +258,6 @@ const defaultFeatures: DataGridFeatures = {
   clipboard: true,
 };
 
-const resolveUpdater = <TValue,>(updater: Updater<TValue>, current: TValue): TValue =>
-  typeof updater === "function" ? (updater as (old: TValue) => TValue)(current) : updater;
-
-const uniqueIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
-
-const normalizeColumnPinning = (
-  pinning: ColumnPinningState | undefined,
-  lockedLeftIds: string[] = [],
-): ColumnPinningState => {
-  const right = uniqueIds(pinning?.right ?? []).filter((id) => !lockedLeftIds.includes(id));
-  const left = uniqueIds([...(lockedLeftIds ?? []), ...(pinning?.left ?? [])]).filter(
-    (id) => !right.includes(id),
-  );
-
-  return { left, right };
-};
-
-const uniqueColumnValues = <TData extends object>(
-  data: TData[],
-  key: Extract<keyof TData, string>,
-) => Array.from(new Set(data.map((row) => String(row[key] ?? "")))).filter(Boolean).sort();
-
-const isPivotRow = <TData extends object>(row: TData | PivotRow<TData>): row is PivotRow<TData> =>
-  "__pivot" in row && row.__pivot === true;
-
-const isGeneratedPivotColumnId = (columnId: string) =>
-  columnId === PIVOT_ROW_LABEL_COLUMN_ID || columnId.startsWith("measure:");
-
-
 const getColumnControlLabel = <TData extends object>(
   column: Column<TData | PivotRow<TData>, unknown>,
 ) => {
@@ -297,36 +278,6 @@ const getColumnControlLabel = <TData extends object>(
     return `${pathLabel.join(" / ")} ${label}`;
   }
   return label;
-};
-
-
-const flattenExpandedRows = <TData extends object>(rows: Row<TData>[]): Row<TData>[] =>
-  rows.flatMap((row) =>
-    row.getIsGrouped() && row.getIsExpanded()
-      ? [row, ...flattenExpandedRows(row.subRows)]
-      : [row],
-  );
-
-const collectExpandableGroupIds = <TData extends object>(
-  rows: Row<TData>[],
-  groupingDepth: number,
-): string[] =>
-  rows.flatMap((row) => {
-    if (!row.getIsGrouped()) {
-      return [];
-    }
-
-    const childIds = collectExpandableGroupIds(row.subRows, groupingDepth);
-    return row.depth < groupingDepth - 1 ? [row.id, ...childIds] : childIds;
-  });
-
-const getSelectionStatus = (rowIds: string[], selectedIds: Set<string>) => {
-  const selectedCount = rowIds.filter((rowId) => selectedIds.has(rowId)).length;
-
-  return {
-    allSelected: rowIds.length > 0 && selectedCount === rowIds.length,
-    someSelected: selectedCount > 0 && selectedCount < rowIds.length,
-  };
 };
 
 export function DataGrid<TData extends object>({
