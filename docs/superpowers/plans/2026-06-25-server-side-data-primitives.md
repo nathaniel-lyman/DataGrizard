@@ -311,7 +311,9 @@ describe("DataGrid server mode — pagination", () => {
         getRowId={(r) => r.id}
         dataMode="server"
         rowCount={1000}
-        pageSizeOptions={[25, 50]}
+        // Single option ⇒ the grid's default page size resolves to 25
+        // (pageSizeOptions[1] ?? pageSizeOptions[0]), so 1000/25 = 40 pages.
+        pageSizeOptions={[25]}
         onPaginationChange={onPaginationChange}
       />,
     );
