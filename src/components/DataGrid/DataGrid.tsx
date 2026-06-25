@@ -36,62 +36,28 @@ import {
 } from "@tanstack/react-table";
 import type { GridColumnConfig, GridDataType, GridFilterConfig, GridFilterType } from "../../types/grid";
 
-// Widened, value-erased view of a column config used internally by the engine.
-// The public GridColumnConfig is a per-key union (value: TData[K]); the engine
-// works generically over `unknown` cell values, so consumer columns are cast to
-// this shape once at the prop boundary.
-type AnyColumnConfig<TData> = {
-  accessorKey: Extract<keyof TData, string>;
-  header: string;
-  dataType: GridDataType;
-  width?: number;
-  minWidth?: number;
-  maxWidth?: number;
-  pinned?: "left" | "right";
-  enablePinning?: boolean;
-  enableGrouping?: boolean;
-  dateFormat?: Intl.DateTimeFormatOptions;
-  formatValue?: (value: unknown, row: TData) => ReactNode;
-  formatGroupingValue?: (value: unknown, rows: TData[]) => ReactNode;
-  getGroupingValue?: (row: TData) => unknown;
-  getCellClassName?: (value: unknown, row: TData) => string;
-  getStatusClassName?: (value: unknown, row: TData) => string;
-  statusStyles?: Record<string, string>;
-  conditionalFormats?: { when: (value: unknown, row: TData) => boolean; className: string }[];
-  editable?: boolean | ((row: TData) => boolean);
-  validate?: (value: unknown, row: TData) => string | null;
-  parseValue?: (input: string) => unknown;
-  renderEditCell?: (props: {
-    value: unknown;
-    row: TData;
-    onChange: (next: unknown) => void;
-    commit: () => void;
-    cancel: () => void;
-    error: string | null;
-  }) => ReactNode;
-};
-
 // Props attached to a row when virtualization is active so @tanstack/react-virtual
 // can measure its real height. Undefined when not virtualizing.
 type RowMeasureProps = {
   ref: (node: HTMLTableRowElement | null) => void;
   "data-index": number;
 };
-import {
-  formatCurrency,
-  formatDate,
-  formatNumber,
-  formatPercent,
-  formatStatusLabel,
-  toDate,
-  type FormatOptions,
-} from "../../utils/formatters";
+import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, type GridFilter } from "./filters";
 import { CellEditor, type EditCellColumn } from "./cellEditor";
 import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
 import { loadJson, removeJson, saveJson } from "./storage";
 import { dateSortingFn, matchesFilterValue } from "./filterMatch";
+import { buildGroupedColumnDefs, type DataGridColumnGroup } from "./columnGroups";
+import {
+  getCellClasses,
+  getColumnSearchText,
+  reactNodeToText,
+  renderCellValue,
+  renderGroupingValue,
+  type AnyColumnConfig,
+} from "./cells";
 import { MinusIcon, PlusIcon, SortIcon } from "./icons";
 import {
   PIVOT_ROW_LABEL_COLUMN_ID,
@@ -156,16 +122,7 @@ export type DataGridCellEdit<TData extends object> = {
   previousValue: unknown;
 };
 
-/**
- * A grid-mode column-group band. `children` are leaf column `accessorKey`s or
- * nested groups. Groups render as header bands over their (visible) leaf
- * columns through the standard `getHeaderGroups()` path. Ignored in pivot mode.
- */
-export type DataGridColumnGroup = {
-  groupId: string;
-  header: string;
-  children: Array<string | DataGridColumnGroup>;
-};
+export type { DataGridColumnGroup } from "./columnGroups";
 
 export type DataGridSummaryContext<TData extends object> = {
   rows: TData[];
@@ -313,110 +270,12 @@ const uniqueColumnValues = <TData extends object>(
   key: Extract<keyof TData, string>,
 ) => Array.from(new Set(data.map((row) => String(row[key] ?? "")))).filter(Boolean).sort();
 
-// Assemble flat leaf ColumnDefs into nested grouped ColumnDefs per columnGroups.
-// A group is emitted at the position of its first-encountered member and pulls
-// all its (declared-order) leaves into the band; columns named in no group stay
-// standalone. Bands span their visible leaves automatically via getHeaderGroups.
-const buildGroupedColumnDefs = <TData,>(
-  dataDefs: ColumnDef<TData>[],
-  columnGroups: DataGridColumnGroup[],
-): ColumnDef<TData>[] => {
-  const defByKey = new Map<string, ColumnDef<TData>>();
-  dataDefs.forEach((def) => {
-    const key = (def as { accessorKey?: string }).accessorKey;
-    if (key) {
-      defByKey.set(key, def);
-    }
-  });
-
-  const topGroupByKey = new Map<string, DataGridColumnGroup>();
-  const collectLeaves = (group: DataGridColumnGroup, top: DataGridColumnGroup) => {
-    group.children.forEach((child) => {
-      if (typeof child === "string") {
-        topGroupByKey.set(child, top);
-      } else {
-        collectLeaves(child, top);
-      }
-    });
-  };
-  columnGroups.forEach((group) => collectLeaves(group, group));
-
-  const consumed = new Set<string>();
-  const buildGroup = (group: DataGridColumnGroup): ColumnDef<TData> | null => {
-    const columns = group.children
-      .map((child) => {
-        if (typeof child === "string") {
-          const def = defByKey.get(child);
-          if (!def) {
-            return null;
-          }
-          consumed.add(child);
-          return def;
-        }
-        return buildGroup(child);
-      })
-      .filter((def): def is ColumnDef<TData> => Boolean(def));
-    if (!columns.length) {
-      return null;
-    }
-    return { id: group.groupId, header: group.header, columns };
-  };
-
-  const result: ColumnDef<TData>[] = [];
-  dataDefs.forEach((def) => {
-    const key = (def as { accessorKey?: string }).accessorKey;
-    if (key && consumed.has(key)) {
-      return;
-    }
-    const top = key ? topGroupByKey.get(key) : undefined;
-    if (!top) {
-      result.push(def);
-      if (key) {
-        consumed.add(key);
-      }
-      return;
-    }
-    const groupDef = buildGroup(top);
-    if (groupDef) {
-      result.push(groupDef);
-    }
-  });
-  return result;
-};
-
 const isPivotRow = <TData extends object>(row: TData | PivotRow<TData>): row is PivotRow<TData> =>
   "__pivot" in row && row.__pivot === true;
 
 const isGeneratedPivotColumnId = (columnId: string) =>
   columnId === PIVOT_ROW_LABEL_COLUMN_ID || columnId.startsWith("measure:");
 
-const reactNodeToText = (value: ReactNode) => {
-  if (typeof value === "string" || typeof value === "number") {
-    return String(value);
-  }
-  return "";
-};
-
-const isNumericDataType = (dataType: GridDataType) =>
-  dataType === "currency" || dataType === "number" || dataType === "percent";
-
-const formatNumericValue = (
-  dataType: GridDataType,
-  value: unknown,
-  formatOptions: FormatOptions,
-) => {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) {
-    return "";
-  }
-  if (dataType === "currency") {
-    return formatCurrency(numericValue, formatOptions);
-  }
-  if (dataType === "number") {
-    return formatNumber(numericValue, formatOptions);
-  }
-  return formatPercent(numericValue, formatOptions);
-};
 
 const getColumnControlLabel = <TData extends object>(
   column: Column<TData | PivotRow<TData>, unknown>,
@@ -440,115 +299,6 @@ const getColumnControlLabel = <TData extends object>(
   return label;
 };
 
-const renderCellValue = <TData extends object>(
-  column: AnyColumnConfig<TData>,
-  value: unknown,
-  row: TData,
-  formatOptions: FormatOptions,
-) => {
-  if (column.formatValue) {
-    return column.formatValue(value, row);
-  }
-
-  if (value == null || value === "") {
-    return "";
-  }
-
-  if (isNumericDataType(column.dataType)) {
-    return formatNumericValue(column.dataType, value, formatOptions);
-  }
-
-  if (column.dataType === "status") {
-    const statusClassName =
-      column.getStatusClassName?.(value, row) ??
-      column.statusStyles?.[String(value)] ??
-      "border-slate-200 bg-slate-50 text-slate-700";
-
-    return (
-      <span
-        className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClassName}`}
-      >
-        {formatStatusLabel(String(value))}
-      </span>
-    );
-  }
-
-  if (column.dataType === "date") {
-    return formatDate(value, {
-      ...formatOptions,
-      dateFormat: column.dateFormat ?? formatOptions.dateFormat,
-    });
-  }
-
-  return String(value);
-};
-
-const renderGroupingValue = <TData extends object>(
-  column: AnyColumnConfig<TData>,
-  value: unknown,
-  rows: TData[],
-) => {
-  if (column.formatGroupingValue) {
-    return column.formatGroupingValue(value, rows);
-  }
-
-  if (value == null || value === "") {
-    return "Blank";
-  }
-
-  return String(value);
-};
-
-// Produces the plain-text representation a user actually sees in a cell, so
-// global search can match formatted output ("$1,200", "12.0%", "In Progress")
-// in addition to the raw underlying value.
-const getColumnSearchText = <TData extends object>(
-  column: AnyColumnConfig<TData>,
-  value: unknown,
-  row: TData,
-  formatOptions: FormatOptions,
-): string => {
-  if (value == null || value === "") {
-    return "";
-  }
-  if (column.formatValue) {
-    const formatted = column.formatValue(value, row);
-    if (typeof formatted === "string" || typeof formatted === "number") {
-      return String(formatted);
-    }
-  }
-  if (column.dataType === "status") {
-    return formatStatusLabel(String(value));
-  }
-  if (isNumericDataType(column.dataType)) {
-    return formatNumericValue(column.dataType, value, formatOptions);
-  }
-  if (column.dataType === "date") {
-    return formatDate(value, {
-      ...formatOptions,
-      dateFormat: column.dateFormat ?? formatOptions.dateFormat,
-    });
-  }
-  return String(value);
-};
-
-const getCellClasses = <TData extends object>(
-  column: AnyColumnConfig<TData>,
-  value: unknown,
-  row: TData,
-) => {
-  const alignment =
-    isNumericDataType(column.dataType)
-      ? "text-right tabular-nums"
-      : "text-left";
-
-  const conditional = (column.conditionalFormats ?? [])
-    .filter((rule) => rule.when(value, row))
-    .map((rule) => rule.className)
-    .join(" ");
-
-  return `${alignment} text-slate-800 ${column.getCellClassName?.(value, row) ?? ""} ${conditional}`.trim();
-};
 
 const flattenExpandedRows = <TData extends object>(rows: Row<TData>[]): Row<TData>[] =>
   rows.flatMap((row) =>
