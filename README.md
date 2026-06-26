@@ -307,6 +307,7 @@ npm run dev            # demo app at http://127.0.0.1:5173/
 npm test               # vitest
 npm run build          # type-check + build the demo app
 npm run build:package  # build the distributable library (dist/: ESM, CJS, .d.ts, CSS)
+npm run test:package   # build, pack, and smoke-test the package exports
 ```
 
 ## License

@@ -24,13 +24,14 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build:lib": "vite build --config vite.lib.config.ts",
     "build:types": "tsc -p tsconfig.lib.json",
     "build:css": "tailwindcss -c tailwind.lib.config.js -i src/styles.css -o dist/datagrid.css --minify",
-    "prebuild:package": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build:package": "npm run build:lib && npm run build:types && npm run build:css",
+    "build:package": "npm run clean:dist && npm run build:lib && npm run build:types && npm run build:css",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:package": "npm run build:package && node scripts/verify-package.mjs"
   },
   "peerDependencies": {
     "@tanstack/react-table": "^8.21.3",

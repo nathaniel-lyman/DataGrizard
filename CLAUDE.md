@@ -12,7 +12,8 @@ A Vite + React 19 + TypeScript project whose **product is a single reusable comp
 
 - `npm run dev` — Vite dev server at http://127.0.0.1:5173/ (host pinned to 127.0.0.1).
 - `npm run build` — `tsc -b && vite build`. The `tsc -b` step **is** the type-check (project references in `tsconfig.json` → `tsconfig.app.json` for `src`, `tsconfig.node.json` for config files). Run `npx tsc -b` alone for a type-check without bundling. This builds the **demo app**, not the library.
-- `npm run build:package` — build the distributable **library** to `dist/`: ESM `datagrid.js` + CJS `datagrid.cjs` (peers externalized via `vite.lib.config.ts`), declarations under `dist/types/` (`tsc -p tsconfig.lib.json`, emit-only), and precompiled `datagrid.css` (Tailwind via `tailwind.lib.config.js`). `prebuild:package` wipes `dist/` first. `package.json` exposes these through `exports`/`main`/`module`/`types` + a `./styles.css` subpath; react/react-dom/@tanstack are `peerDependencies`.
+- `npm run build:package` — build the distributable **library** to `dist/`: ESM `datagrid.js` + CJS `datagrid.cjs` (peers externalized via `vite.lib.config.ts`), declarations under `dist/types/` (`tsc -p tsconfig.lib.json`, emit-only), and precompiled `datagrid.css` (Tailwind via `tailwind.lib.config.js`). This script runs `clean:dist` first so stale demo-app files cannot leak into the package tarball. `package.json` exposes these through `exports`/`main`/`module`/`types` + a `./styles.css` subpath; react/react-dom/@tanstack are `peerDependencies`.
+- `npm run test:package` — run the package build, pack it, assert the tarball only contains library files, then smoke-test ESM/CJS imports plus the `datagrizard/styles.css` export from an extracted package.
 - `npm run preview` — serve the production `dist/` build.
 - `npm test` — `vitest run` (single pass, no watch; jsdom env from `vite.config.ts`).
   - Single file: `npx vitest run src/components/DataGrid/DataGrid.test.tsx`
