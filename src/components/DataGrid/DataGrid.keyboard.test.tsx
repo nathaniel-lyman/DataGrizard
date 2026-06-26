@@ -51,6 +51,20 @@ describe("DataGrid keyboard cell navigation", () => {
     expect(document.activeElement).toBe(cellOf("9"));
   });
 
+  it("extends a cell range with Shift+Arrow keys", () => {
+    render(
+      <DataGrid data={data} columns={columns} getRowId={(r) => r.id} features={{ rowSelection: false }} />,
+    );
+
+    const start = cellOf("Alpha");
+    start.focus();
+    fireEvent.keyDown(start, { key: "ArrowRight", shiftKey: true });
+
+    expect(start).toHaveAttribute("data-cell-selected", "true");
+    expect(cellOf("5")).toHaveAttribute("data-cell-selected", "true");
+    expect(document.activeElement).toBe(cellOf("5"));
+  });
+
   it("jumps to row ends with Home/End and grid corners with Ctrl+Home/End", () => {
     render(
       <DataGrid data={data} columns={columns} getRowId={(r) => r.id} features={{ rowSelection: false }} />,

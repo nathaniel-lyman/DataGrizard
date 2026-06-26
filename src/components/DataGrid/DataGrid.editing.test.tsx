@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
@@ -209,6 +209,62 @@ describe("DataGrid cell editing", () => {
     fireEvent.blur(custom);
 
     expect(onCellEdit).toHaveBeenCalledWith(expect.objectContaining({ value: "Custom" }));
+  });
+
+  it("pastes clipboard text into the focused editable cell through parse and validate", async () => {
+    const onCellEdit = vi.fn();
+    const readText = vi.fn().mockResolvedValue("12");
+    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
+
+    render(
+      <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
+    );
+
+    const qtyCell = cellOf("5");
+    qtyCell.focus();
+    fireEvent.keyDown(qtyCell, { key: "v", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(onCellEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ rowId: "1", columnId: "qty", value: 12, previousValue: 5 }),
+      ),
+    );
+  });
+
+  it("pastes a TSV matrix into a selected cell range", async () => {
+    const onCellEdit = vi.fn();
+    const readText = vi.fn().mockResolvedValue("Delta\t10\nEcho\t20");
+    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
+
+    render(
+      <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
+    );
+
+    const start = cellOf("Alpha");
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("9"), { buttons: 1 });
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "v", metaKey: true });
+
+    await waitFor(() => expect(onCellEdit).toHaveBeenCalledTimes(4));
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ rowId: "1", columnId: "name", value: "Delta" }),
+    );
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ rowId: "1", columnId: "qty", value: 10 }),
+    );
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ rowId: "2", columnId: "name", value: "Echo" }),
+    );
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ rowId: "2", columnId: "qty", value: 20 }),
+    );
+    expect(start).toHaveAttribute("data-cell-selected", "true");
+    expect(cellOf("9")).toHaveAttribute("data-cell-selected", "true");
   });
 
   it("cancelling an edit with Escape does not close an open detail panel", () => {

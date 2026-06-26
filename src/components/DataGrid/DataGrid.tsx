@@ -50,7 +50,12 @@ type RowMeasureProps = {
 import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, type GridFilter } from "./filters";
-import { CellEditor, type EditCellColumn } from "./cellEditor";
+import {
+  CellEditor,
+  computeEditError,
+  parseEditValue,
+  type EditCellColumn,
+} from "./cellEditor";
 import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
 import { removeJson } from "./storage";
 import { dateSortingFn, isFilterValueActive, matchesFilterValue } from "./filterMatch";
@@ -111,9 +116,11 @@ export type DataGridFeatures = {
   floatingFilters: boolean;
   /** Enable inline cell editing (inert until a column sets `editable`). */
   editing: boolean;
+  /** Enable rectangular cell selection for spreadsheet-style copy/paste. */
+  cellSelection: boolean;
   /** Show the toolbar Export CSV button. */
   export: boolean;
-  /** Enable Ctrl/Cmd-C copy of the selection / focused cell as TSV. */
+  /** Enable Ctrl/Cmd-C copy and Ctrl/Cmd-V paste for grid cells as TSV. */
   clipboard: boolean;
 };
 
@@ -132,6 +139,11 @@ export type DataGridDataMode = "client" | "server";
 export type DataGridGroupSummaryDisplay = "inline" | "columns";
 
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
+
+type DataGridCellRange = {
+  anchor: Exclude<DataGridFocusedCell, null>;
+  focus: Exclude<DataGridFocusedCell, null>;
+};
 
 export type DataGridCellEdit<TData extends object> = {
   rowId: string;
@@ -282,8 +294,18 @@ const defaultFeatures: DataGridFeatures = {
   grouping: true,
   floatingFilters: false,
   editing: true,
+  cellSelection: true,
   export: true,
   clipboard: true,
+};
+
+const parseClipboardTsv = (text: string): string[][] => {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const rows = normalized.split("\n");
+  if (rows[rows.length - 1] === "") {
+    rows.pop();
+  }
+  return rows.map((row) => row.split("\t"));
 };
 
 const getColumnControlLabel = <TData extends object>(
@@ -1669,6 +1691,10 @@ export function DataGrid<TData extends object>({
     enabled: virtualizeRows,
   });
   const bodyColSpan = table.getVisibleLeafColumns().length;
+  const rowById = useMemo(
+    () => new Map(visibleRows.map((row) => [row.id, row])),
+    [visibleRows],
+  );
 
   // ----- 9. Keyboard cell navigation + inline editing -----
   // useCellFocus owns the roving-tabindex geometry + focus; useCellEditing owns
@@ -1709,6 +1735,192 @@ export function DataGrid<TData extends object>({
     onCellEdit,
     focusCell,
   });
+  const cellSelectionEnabled = features.cellSelection && !isPivotLayout;
+  const [cellSelection, setCellSelection] = useState<DataGridCellRange | null>(null);
+  const isSelectingCellsRef = useRef(false);
+  const suppressNextCellClickRef = useRef(false);
+
+  const normalizeCellRange = (range: DataGridCellRange | null) => {
+    if (!range) {
+      return null;
+    }
+    const anchorRowIdx = navRowIds.indexOf(range.anchor.rowId);
+    const focusRowIdx = navRowIds.indexOf(range.focus.rowId);
+    const anchorColIdx = navColumnIds.indexOf(range.anchor.columnId);
+    const focusColIdx = navColumnIds.indexOf(range.focus.columnId);
+    if (anchorRowIdx < 0 || focusRowIdx < 0 || anchorColIdx < 0 || focusColIdx < 0) {
+      return null;
+    }
+    const startRowIdx = Math.min(anchorRowIdx, focusRowIdx);
+    const endRowIdx = Math.max(anchorRowIdx, focusRowIdx);
+    const startColIdx = Math.min(anchorColIdx, focusColIdx);
+    const endColIdx = Math.max(anchorColIdx, focusColIdx);
+    const rowIds = navRowIds.slice(startRowIdx, endRowIdx + 1);
+    const columnIds = navColumnIds.slice(startColIdx, endColIdx + 1);
+    return {
+      rowIds,
+      columnIds,
+      startRowIdx,
+      startColIdx,
+      area: rowIds.length * columnIds.length,
+    };
+  };
+  const selectedCellKeys = useMemo(() => {
+    const normalized = normalizeCellRange(cellSelection);
+    if (!normalized) {
+      return new Set<string>();
+    }
+    const keys = new Set<string>();
+    normalized.rowIds.forEach((rowId) => {
+      normalized.columnIds.forEach((columnId) => {
+        keys.add(cellKey(rowId, columnId));
+      });
+    });
+    return keys;
+    // normalizeCellRange is intentionally local and depends on these arrays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cellSelection, navColumnIds, navRowIds]);
+
+  useEffect(() => {
+    const stopSelecting = () => {
+      isSelectingCellsRef.current = false;
+    };
+    document.addEventListener("mouseup", stopSelecting);
+    return () => document.removeEventListener("mouseup", stopSelecting);
+  }, []);
+
+  const beginCellSelection = (
+    cell: Exclude<DataGridFocusedCell, null>,
+    extendFromExisting: boolean,
+  ) => {
+    if (!cellSelectionEnabled) {
+      return;
+    }
+    setCellSelection((current) => ({
+      anchor: extendFromExisting ? current?.anchor ?? activeTabCell ?? cell : cell,
+      focus: cell,
+    }));
+  };
+
+  const extendCellSelection = (cell: Exclude<DataGridFocusedCell, null>) => {
+    if (!cellSelectionEnabled) {
+      return;
+    }
+    setCellSelection((current) => {
+      const anchor = current?.anchor ?? activeTabCell ?? cell;
+      if (anchor.rowId !== cell.rowId || anchor.columnId !== cell.columnId) {
+        suppressNextCellClickRef.current = true;
+      }
+      return { anchor, focus: cell };
+    });
+  };
+
+  const navigateTargetForKey = (
+    key: string,
+    rowIdx: number,
+    colIdx: number,
+    ctrl: boolean,
+  ): Exclude<DataGridFocusedCell, null> | null => {
+    const lastRow = navRowIds.length - 1;
+    const lastCol = navColumnIds.length - 1;
+    const page = 10;
+    switch (key) {
+      case "ArrowDown":
+        return { rowId: navRowIds[Math.min(lastRow, rowIdx + 1)], columnId: navColumnIds[colIdx] };
+      case "ArrowUp":
+        return { rowId: navRowIds[Math.max(0, rowIdx - 1)], columnId: navColumnIds[colIdx] };
+      case "ArrowRight":
+        return { rowId: navRowIds[rowIdx], columnId: navColumnIds[Math.min(lastCol, colIdx + 1)] };
+      case "ArrowLeft":
+        return { rowId: navRowIds[rowIdx], columnId: navColumnIds[Math.max(0, colIdx - 1)] };
+      case "Home":
+        return ctrl
+          ? { rowId: navRowIds[0], columnId: navColumnIds[0] }
+          : { rowId: navRowIds[rowIdx], columnId: navColumnIds[0] };
+      case "End":
+        return ctrl
+          ? { rowId: navRowIds[lastRow], columnId: navColumnIds[lastCol] }
+          : { rowId: navRowIds[rowIdx], columnId: navColumnIds[lastCol] };
+      case "PageDown":
+        return { rowId: navRowIds[Math.min(lastRow, rowIdx + page)], columnId: navColumnIds[colIdx] };
+      case "PageUp":
+        return { rowId: navRowIds[Math.max(0, rowIdx - page)], columnId: navColumnIds[colIdx] };
+      default:
+        return null;
+    }
+  };
+
+  const pasteTextIntoCell = (
+    text: string,
+    row: Row<TData | PivotRow<TData>>,
+    columnId: string,
+  ) => {
+    if (!features.editing || !onCellEdit) {
+      return;
+    }
+    const matrix = parseClipboardTsv(text);
+    if (!matrix.length || !matrix.some((matrixRow) => matrixRow.length > 0)) {
+      return;
+    }
+    const normalized = normalizeCellRange(cellSelection);
+    const rangeTarget = normalized && normalized.area > 1 ? normalized : null;
+    const startRowIdx = rangeTarget?.startRowIdx ?? navRowIds.indexOf(row.id);
+    const startColIdx = rangeTarget?.startColIdx ?? navColumnIds.indexOf(columnId);
+    if (startRowIdx < 0 || startColIdx < 0) {
+      return;
+    }
+    const singleClipboardCell = matrix.length === 1 && matrix[0].length === 1;
+    const rowCount = rangeTarget?.rowIds.length ?? matrix.length;
+    const columnCount = rangeTarget?.columnIds.length ?? Math.max(...matrix.map((matrixRow) => matrixRow.length));
+    const edits: DataGridCellEdit<TData>[] = [];
+
+    for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
+      const targetRowId = navRowIds[startRowIdx + rowOffset];
+      const targetRow = targetRowId ? rowById.get(targetRowId) : undefined;
+      if (!targetRow) {
+        continue;
+      }
+      for (let columnOffset = 0; columnOffset < columnCount; columnOffset += 1) {
+        const targetColumnId = navColumnIds[startColIdx + columnOffset];
+        const columnConfig = targetColumnId ? columnsById.get(targetColumnId) : undefined;
+        const input = singleClipboardCell ? matrix[0][0] : matrix[rowOffset]?.[columnOffset];
+        if (!targetColumnId || !columnConfig || input === undefined || !isCellEditable(targetRow, targetColumnId)) {
+          continue;
+        }
+        let value: unknown;
+        try {
+          value = parseEditValue(columnConfig as unknown as EditCellColumn<TData>, input);
+        } catch {
+          continue;
+        }
+        const source = targetRow.original as TData;
+        if (computeEditError(columnConfig as unknown as EditCellColumn<TData>, value, source)) {
+          continue;
+        }
+        edits.push({
+          rowId: targetRow.id,
+          row: source,
+          columnId: targetColumnId,
+          value,
+          previousValue: (source as Record<string, unknown>)[targetColumnId],
+        });
+      }
+    }
+
+    edits.forEach((edit) => onCellEdit(edit));
+  };
+
+  const pasteFromClipboard = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
+      return;
+    }
+    navigator.clipboard
+      .readText()
+      .then((text) => pasteTextIntoCell(text, row, columnId))
+      .catch(() => {
+        /* denied clipboard access */
+      });
+  };
 
   useEffect(() => {
     if (activeRow == null) {
@@ -1740,10 +1952,7 @@ export function DataGrid<TData extends object>({
     if (rowIdx < 0 || colIdx < 0) {
       return;
     }
-    const lastRow = navRowIds.length - 1;
-    const lastCol = navColumnIds.length - 1;
     const ctrl = event.ctrlKey || event.metaKey;
-    const page = 10;
     // Ctrl/Cmd-C copies the selection (or this focused cell) as TSV. Only fires
     // with a cell focused, so editors / filter inputs (which never bubble here)
     // keep the native copy — the suppression gate is structural.
@@ -1754,38 +1963,31 @@ export function DataGrid<TData extends object>({
       }
       return;
     }
+    if (ctrl && (event.key === "v" || event.key === "V")) {
+      if (features.clipboard && features.editing) {
+        pasteFromClipboard(row, columnId);
+        event.preventDefault();
+      }
+      return;
+    }
+    const navigationTarget = navigateTargetForKey(event.key, rowIdx, colIdx, ctrl);
+    if (navigationTarget) {
+      if (event.shiftKey && cellSelectionEnabled) {
+        extendCellSelection(navigationTarget);
+      } else {
+        setCellSelection(null);
+      }
+      focusCell(navigationTarget.rowId, navigationTarget.columnId);
+      event.preventDefault();
+      return;
+    }
     let handled = true;
     switch (event.key) {
-      case "ArrowDown":
-        focusCell(navRowIds[Math.min(lastRow, rowIdx + 1)], columnId);
-        break;
-      case "ArrowUp":
-        focusCell(navRowIds[Math.max(0, rowIdx - 1)], columnId);
-        break;
-      case "ArrowRight":
-        focusCell(row.id, navColumnIds[Math.min(lastCol, colIdx + 1)]);
-        break;
-      case "ArrowLeft":
-        focusCell(row.id, navColumnIds[Math.max(0, colIdx - 1)]);
-        break;
-      case "Home":
-        ctrl ? focusCell(navRowIds[0], navColumnIds[0]) : focusCell(row.id, navColumnIds[0]);
-        break;
-      case "End":
-        ctrl
-          ? focusCell(navRowIds[lastRow], navColumnIds[lastCol])
-          : focusCell(row.id, navColumnIds[lastCol]);
-        break;
-      case "PageDown":
-        focusCell(navRowIds[Math.min(lastRow, rowIdx + page)], columnId);
-        break;
-      case "PageUp":
-        focusCell(navRowIds[Math.max(0, rowIdx - page)], columnId);
-        break;
       case "Enter":
       case "F2": {
         // Precedence: edit → row action → no-op (editing wins on an editable cell).
         if (isCellEditable(row, columnId)) {
+          setCellSelection(null);
           beginEdit(row.id, columnId);
         } else if (!isPivotRow(row.original) && hasLeafRowAction) {
           handleRowClick(row.original as TData);
@@ -1795,6 +1997,7 @@ export function DataGrid<TData extends object>({
         break;
       }
       case " ":
+        setCellSelection(null);
         if (features.rowSelection && !isPivotLayout && row.getCanSelect()) {
           row.toggleSelected();
         } else {
@@ -1856,7 +2059,20 @@ export function DataGrid<TData extends object>({
     const columns = exportLeafColumns();
     const selected = selectedExportRows();
     const focusedColumn = table.getColumn(columnId);
-    const matrix = selected.length
+    const normalized = normalizeCellRange(cellSelection);
+    const rangeMatrix =
+      normalized && normalized.area > 1
+        ? normalized.rowIds.map((rowId) => {
+            const selectedRow = rowById.get(rowId);
+            return normalized.columnIds.map((selectedColumnId) => {
+              const selectedColumn = table.getColumn(selectedColumnId);
+              return selectedRow && selectedColumn ? getExportText(selectedRow, selectedColumn) : "";
+            });
+          })
+        : null;
+    const matrix = rangeMatrix
+      ? rangeMatrix
+      : selected.length
       ? selected.map((selectedRow) => columns.map((column) => getExportText(selectedRow, column)))
       : focusedColumn
         ? [[getExportText(row, focusedColumn)]]
@@ -1966,12 +2182,50 @@ export function DataGrid<TData extends object>({
           const isEditingCell =
             editingCell?.rowId === row.id && editingCell?.columnId === cell.column.id;
           const canEditCell = isNavCell && Boolean(columnConfig) && isCellEditable(row, cell.column.id);
+          const selectedCellKey = cellKey(row.id, cell.column.id);
+          const isCellRangeSelected = selectedCellKeys.has(selectedCellKey);
 
           return (
             <td
               key={cell.id}
               onDoubleClick={
                 canEditCell ? () => beginEdit(row.id, cell.column.id) : undefined
+              }
+              onClick={
+                isNavCell
+                  ? (event) => {
+                      if (suppressNextCellClickRef.current) {
+                        event.stopPropagation();
+                        suppressNextCellClickRef.current = false;
+                      }
+                    }
+                  : undefined
+              }
+              onMouseDown={
+                isNavCell && cellSelectionEnabled
+                  ? (event) => {
+                      if (event.button !== 0) {
+                        return;
+                      }
+                      const nextCell = { rowId: row.id, columnId: cell.column.id };
+                      beginCellSelection(nextCell, event.shiftKey);
+                      focusCell(row.id, cell.column.id);
+                      isSelectingCellsRef.current = true;
+                      if (event.shiftKey) {
+                        suppressNextCellClickRef.current = true;
+                      }
+                    }
+                  : undefined
+              }
+              onMouseEnter={
+                isNavCell && cellSelectionEnabled
+                  ? (event) => {
+                      if (!isSelectingCellsRef.current || event.buttons !== 1) {
+                        return;
+                      }
+                      extendCellSelection({ rowId: row.id, columnId: cell.column.id });
+                    }
+                  : undefined
               }
               ref={
                 isNavCell
@@ -1993,10 +2247,16 @@ export function DataGrid<TData extends object>({
                   ? () => updateFocusedCell({ rowId: row.id, columnId: cell.column.id })
                   : undefined
               }
+              aria-selected={isCellRangeSelected ? true : undefined}
+              data-cell-selected={isCellRangeSelected ? "true" : undefined}
               style={{
                 width: cell.column.getSize(),
                 ...getPinnedColumnStyle(cell.column, {
-                  backgroundColor: row.getIsSelected() ? "#eff6ff" : rowBackground,
+                  backgroundColor: isCellRangeSelected
+                    ? "#dbeafe"
+                    : row.getIsSelected()
+                      ? "#eff6ff"
+                      : rowBackground,
                 }),
               }}
               className={`border-b border-r px-3 py-2 align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
@@ -2007,6 +2267,8 @@ export function DataGrid<TData extends object>({
                   : columnConfig
                     ? getCellClasses(columnConfig, cell.getValue(), sourceRow as TData)
                     : "text-left text-slate-950"
+              } ${isCellRangeSelected ? "shadow-[inset_0_0_0_1px_rgb(37_99_235)]" : ""} ${
+                cellSelectionEnabled ? "select-none" : ""
               }`}
             >
               {isEditingCell && columnConfig ? (

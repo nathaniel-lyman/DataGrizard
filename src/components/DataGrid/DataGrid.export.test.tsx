@@ -159,4 +159,20 @@ describe("DataGrid clipboard copy", () => {
     expect(tsv).toContain("Cara\t$1,500");
     expect(tsv).not.toContain("Bravo");
   });
+
+  it("copies a selected cell range as TSV before falling back to selected rows", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByLabelText("Select 3")); // row selection should not win over a multi-cell range
+
+    const start = cellOf("Alpha");
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("$900"), { buttons: 1 });
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "c", ctrlKey: true });
+
+    expect(writeText).toHaveBeenCalledWith("Alpha\t$1,200\r\nBravo\t$900");
+  });
 });
