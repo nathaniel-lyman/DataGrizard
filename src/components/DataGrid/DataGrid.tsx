@@ -129,6 +129,7 @@ export type DataGridColumnPinningState = ColumnPinningState;
 
 export type DataGridLayoutMode = "grid" | "pivot";
 export type DataGridDataMode = "client" | "server";
+export type DataGridGroupSummaryDisplay = "inline" | "columns";
 
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
 
@@ -213,6 +214,11 @@ export type DataGridProps<TData extends object> = {
   filters?: GridFilterConfig<TData>[];
   summaryItems?: DataGridSummaryItem<TData>[];
   groupSummaryItems?: DataGridSummaryItem<TData>[];
+  /**
+   * Grid-mode grouped rows: "inline" keeps the compact group-summary chips;
+   * "columns" places summary values under their matching `columnId` headers.
+   */
+  groupSummaryDisplay?: DataGridGroupSummaryDisplay;
   summarySelectionMode?: DataGridSummarySelectionMode;
   features?: Partial<DataGridFeatures>;
   isLoading?: boolean;
@@ -343,6 +349,7 @@ export function DataGrid<TData extends object>({
   filters = [],
   summaryItems = [],
   groupSummaryItems,
+  groupSummaryDisplay = "inline",
   summarySelectionMode = "auto",
   features: featureOverrides,
   isLoading = false,
@@ -565,6 +572,7 @@ export function DataGrid<TData extends object>({
     onActiveViewNameChange,
   });
   const [activeRow, setActiveRow] = useState<TData | null>(null);
+  const [horizontalScrollLeft, setHorizontalScrollLeft] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const formatOptions = useMemo<FormatOptions>(
@@ -1434,6 +1442,96 @@ export function DataGrid<TData extends object>({
     const leafRows = groupContext.rows;
     const visibleCellCount = Math.max(row.getVisibleCells().length, 1);
     const summaryItemsForGroup = groupSummaryItems ?? summaryItems;
+    const summaryItemByColumnId = new Map(
+      summaryItemsForGroup
+        .filter((item) => item.columnId)
+        .map((item) => [item.columnId, item] as const),
+    );
+    const firstSummaryColumnIndex = visibleLeafColumns.findIndex((column) =>
+      summaryItemByColumnId.has(column.id as Extract<keyof TData, string>),
+    );
+    const renderColumnSummaryRow =
+      groupSummaryDisplay === "columns" && firstSummaryColumnIndex > 0;
+
+    if (!renderColumnSummaryRow) {
+      return (
+        <tr
+          key={row.id}
+          ref={measureProps?.ref}
+          data-index={measureProps?.["data-index"]}
+          aria-rowindex={
+            rowVisibleIndexById.has(row.id)
+              ? headerRowCount + (rowVisibleIndexById.get(row.id) ?? 0) + 1
+              : undefined
+          }
+          className="bg-slate-50"
+        >
+          <td
+            colSpan={visibleCellCount}
+            className="border-b border-slate-200 p-0"
+          >
+            <button
+              type="button"
+              onClick={() => toggleGroupRow(row)}
+              className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300"
+              style={{ paddingLeft: 12 + row.depth * 18 }}
+              aria-expanded={row.getIsExpanded()}
+              aria-label={`Toggle ${groupColumnLabel} ${groupValueLabel} group`}
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600"
+              >
+                {row.getIsExpanded() ? (
+                  <MinusIcon className="h-3 w-3" />
+                ) : (
+                  <PlusIcon className="h-3 w-3" />
+                )}
+              </span>
+              <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                {groupColumnLabel}
+              </span>
+              <span className="min-w-0 truncate">
+                {renderedGroupValue}
+              </span>
+              <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                {leafRows.length} {rowLabel}
+              </span>
+
+              {summaryItemsForGroup.map((item) => (
+                <span
+                  key={item.id}
+                  className="inline-flex items-center gap-1 border-l border-slate-200 pl-3 text-[11px]"
+                >
+                  <span className="font-medium uppercase tracking-wide text-slate-500">
+                    {item.label}
+                  </span>
+                  <span className="font-semibold text-slate-900">
+                    {item.value(groupContext)}
+                  </span>
+                </span>
+              ))}
+            </button>
+          </td>
+        </tr>
+      );
+    }
+
+    const labelColumns = visibleLeafColumns.slice(0, firstSummaryColumnIndex);
+    const labelWidth = labelColumns.reduce((total, column) => total + column.getSize(), 0);
+    const visibleLabelWidth = Math.max(0, labelWidth - horizontalScrollLeft);
+    const columnSummaryLabelStyle: CSSProperties = {
+      position: "sticky",
+      left: 0,
+      zIndex: 1,
+      width: labelWidth,
+      backgroundColor: "#f8fafc",
+      boxShadow: "2px 0 4px -2px rgba(15, 23, 42, 0.28)",
+      clipPath:
+        visibleLabelWidth < labelWidth
+          ? `inset(0 ${labelWidth - visibleLabelWidth}px 0 0)`
+          : undefined,
+    };
 
     return (
       <tr
@@ -1448,8 +1546,10 @@ export function DataGrid<TData extends object>({
         className="bg-slate-50"
       >
         <td
-          colSpan={visibleCellCount}
-          className="border-b border-slate-200 p-0"
+          colSpan={firstSummaryColumnIndex}
+          aria-colindex={1}
+          style={columnSummaryLabelStyle}
+          className="border-b border-r border-slate-200 p-0 last:border-r-0"
         >
           <button
             type="button"
@@ -1478,22 +1578,35 @@ export function DataGrid<TData extends object>({
             <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
               {leafRows.length} {rowLabel}
             </span>
-
-            {summaryItemsForGroup.map((item) => (
-              <span
-                key={item.id}
-                className="inline-flex items-center gap-1 border-l border-slate-200 pl-3 text-[11px]"
-              >
-                <span className="font-medium uppercase tracking-wide text-slate-500">
-                  {item.label}
-                </span>
-                <span className="font-semibold text-slate-900">
-                  {item.value(groupContext)}
-                </span>
-              </span>
-            ))}
           </button>
         </td>
+        {visibleLeafColumns.slice(firstSummaryColumnIndex).map((column) => {
+          const item = summaryItemByColumnId.get(column.id as Extract<keyof TData, string>);
+          const columnConfig = columnsById.get(column.id);
+          const isNumeric =
+            columnConfig?.dataType === "currency" ||
+            columnConfig?.dataType === "number" ||
+            columnConfig?.dataType === "percent";
+
+          return (
+            <td
+              key={`${row.id}:${column.id}`}
+              aria-colindex={visibleLeafColumns.findIndex((visible) => visible.id === column.id) + 1}
+              style={{ width: column.getSize() }}
+              className={`border-b border-r border-slate-200 px-3 py-2 text-xs last:border-r-0 ${
+                isNumeric ? "text-right tabular-nums" : "text-left"
+              }`}
+              title={item?.label}
+            >
+              {item ? (
+                <span className="font-semibold text-slate-900">
+                  <span className="sr-only">{item.label}: </span>
+                  {item.value(groupContext)}
+                </span>
+              ) : null}
+            </td>
+          );
+        })}
       </tr>
     );
   };
@@ -2118,6 +2231,7 @@ export function DataGrid<TData extends object>({
 
         <div
           ref={scrollRef}
+          onScroll={(event) => setHorizontalScrollLeft(event.currentTarget.scrollLeft)}
           className="relative h-[min(68dvh,640px)] min-h-72 overflow-auto md:h-auto md:min-h-0 md:flex-1"
         >
           {overlay ? (

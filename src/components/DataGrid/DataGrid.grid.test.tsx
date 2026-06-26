@@ -119,6 +119,58 @@ describe("DataGrid grid layout — grouping + pagination (bug #1)", () => {
     expect(dupKeyWarning).toBe(false);
     errorSpy.mockRestore();
   });
+
+  it("can place group summary values in their matching columns", () => {
+    const groupSummaryItems: DataGridSummaryItem<Row>[] = [
+      {
+        id: "revenue",
+        columnId: "revenue",
+        label: "Revenue",
+        value: ({ rows }) => rows.reduce((total, row) => total + row.revenue, 0),
+      },
+      {
+        id: "units",
+        columnId: "units",
+        label: "Units",
+        value: ({ rows }) => rows.reduce((total, row) => total + row.units, 0),
+      },
+    ];
+
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        defaultGrouping={["dept"]}
+        getRowId={(r) => r.id}
+        groupSummaryItems={groupSummaryItems}
+        groupSummaryDisplay="columns"
+        features={{
+          toolbar: false,
+          rowSelection: false,
+          pagination: false,
+          summaries: false,
+        }}
+      />,
+    );
+
+    const groceryRow = screen.getByRole("button", { name: "Toggle Dept Grocery group" }).closest("tr");
+    expect(groceryRow).not.toBeNull();
+    const groceryCells = Array.from(groceryRow!.querySelectorAll("td"));
+
+    expect(groceryCells).toHaveLength(3);
+    expect(groceryCells[0]).toHaveAttribute("colspan", "1");
+    expect(groceryCells[0]).toHaveStyle({ position: "sticky", left: "0px" });
+    expect(groceryCells[0]).toHaveTextContent("Grocery");
+    expect(groceryCells[0]).not.toHaveTextContent("Revenue");
+    expect(groceryCells[1]).toHaveTextContent("2100");
+    expect(groceryCells[2]).toHaveTextContent("66");
+
+    const scroller = screen.getByRole("table").parentElement!;
+    Object.defineProperty(scroller, "scrollLeft", { value: 40, configurable: true });
+    fireEvent.scroll(scroller);
+
+    expect(groceryCells[0].style.clipPath).toBe("inset(0 40px 0 0)");
+  });
 });
 
 describe("DataGrid pivot layout — pagination override (bug #3)", () => {

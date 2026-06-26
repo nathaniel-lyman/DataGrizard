@@ -175,6 +175,7 @@ function App() {
           }
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}
+          groupSummaryDisplay="columns"
           defaultGrouping={["department", "category"]}
           pivot={{ showLeafRows: true }}
           storageKey="retail-recommendation-workbench"

@@ -8,6 +8,7 @@ export type {
   DataGridDataMode,
   DataGridExpandedState,
   DataGridFocusedCell,
+  DataGridGroupSummaryDisplay,
   DataGridGroupingState,
   DataGridLayoutMode,
   DataGridProps,
