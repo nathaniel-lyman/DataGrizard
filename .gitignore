@@ -4,3 +4,5 @@ dist/
 .playwright-mcp/
 *.local
 datagrizard-grid-*.png
+
+.superpowers/
