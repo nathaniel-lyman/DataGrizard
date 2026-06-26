@@ -33,7 +33,13 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import type { GridColumnConfig, GridDataType, GridFilterConfig, GridFilterType } from "../../types/grid";
+import type {
+  GridColumnConfig,
+  GridDataType,
+  GridFilterConfig,
+  GridFilterOperator,
+  GridFilterType,
+} from "../../types/grid";
 
 // Props attached to a row when virtualization is active so @tanstack/react-virtual
 // can measure its real height. Undefined when not virtualizing.
@@ -47,7 +53,7 @@ import { FilterPopover, type GridFilter } from "./filters";
 import { CellEditor, type EditCellColumn } from "./cellEditor";
 import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
 import { removeJson } from "./storage";
-import { dateSortingFn, matchesFilterValue } from "./filterMatch";
+import { dateSortingFn, isFilterValueActive, matchesFilterValue } from "./filterMatch";
 import { buildGroupedColumnDefs, type DataGridColumnGroup } from "./columnGroups";
 import {
   getCellClasses,
@@ -473,6 +479,10 @@ export function DataGrid<TData extends object>({
     () => new Map(filters.map((filter) => [filter.accessorKey, filter.filterType ?? "select"])),
     [filters],
   );
+  const filterOperatorByColumnId = useMemo<Map<string, GridFilterOperator | undefined>>(
+    () => new Map(filters.map((filter) => [filter.accessorKey, filter.operator])),
+    [filters],
+  );
   const groupableColumns = useMemo(
     () =>
       columnList
@@ -553,15 +563,16 @@ export function DataGrid<TData extends object>({
   const columnFilterFn = useMemo<FilterFn<TData>>(
     () => (row, columnId, filterValue) => {
       const filterType = filterTypeByColumnId.get(columnId);
+      const operator = filterOperatorByColumnId.get(columnId);
       const raw = row.getValue(columnId);
       const column = columnsById.get(columnId);
       const searchText =
         filterType === "text" && column
           ? getColumnSearchText(column, raw, row.original, formatOptions)
           : undefined;
-      return matchesFilterValue(raw, filterValue, { filterType, searchText });
+      return matchesFilterValue(raw, filterValue, { filterType, operator, searchText });
     },
-    [columnsById, filterTypeByColumnId, formatOptions],
+    [columnsById, filterOperatorByColumnId, filterTypeByColumnId, formatOptions],
   );
   const showDetailPanel = features.detailPanel && Boolean(renderDetailPanel);
   const hasLeafRowAction = showDetailPanel || Boolean(onRowClick);
@@ -701,8 +712,11 @@ export function DataGrid<TData extends object>({
       return data;
     }
 
-    const activeFilters = currentColumnFilters.filter(
-      (filter) => filter.value != null && filter.value !== "",
+    const activeFilters = currentColumnFilters.filter((filter) =>
+      isFilterValueActive(filter.value, {
+        filterType: filterTypeByColumnId.get(filter.id),
+        operator: filterOperatorByColumnId.get(filter.id),
+      }),
     );
     const needle = features.globalSearch
       ? String(currentGlobalFilter ?? "").trim().toLowerCase()
@@ -712,12 +726,13 @@ export function DataGrid<TData extends object>({
       const passesColumnFilters = activeFilters.every((filter) => {
         const raw = row[filter.id as Extract<keyof TData, string>];
         const filterType = filterTypeByColumnId.get(filter.id);
+        const operator = filterOperatorByColumnId.get(filter.id);
         const column = columnsById.get(filter.id);
         const searchText =
           filterType === "text" && column
             ? getColumnSearchText(column, raw, row, formatOptions)
             : undefined;
-        return matchesFilterValue(raw, filter.value, { filterType, searchText });
+        return matchesFilterValue(raw, filter.value, { filterType, operator, searchText });
       });
 
       if (!passesColumnFilters || !needle) {
@@ -739,6 +754,7 @@ export function DataGrid<TData extends object>({
     data,
     features.globalSearch,
     filterTypeByColumnId,
+    filterOperatorByColumnId,
     formatOptions,
     isPivotLayout,
   ]);
@@ -1098,6 +1114,8 @@ export function DataGrid<TData extends object>({
       id: filter.accessorKey,
       label: filter.label,
       filterType: filter.filterType ?? "select",
+      operator: filter.operator,
+      operators: filter.operators,
       value: isPivotLayout ? pivotFilter?.value : column?.getFilterValue(),
       options: filterOptionsById[filter.accessorKey] ?? [],
       formatOption: filter.formatOption,
@@ -1116,7 +1134,18 @@ export function DataGrid<TData extends object>({
 
         emitColumnFiltersChange((current) => {
           const next = current.filter((item) => item.id !== filter.accessorKey);
-          if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) {
+          const keepsInactiveOperator =
+            value != null &&
+            typeof value === "object" &&
+            !Array.isArray(value) &&
+            "operator" in value;
+          if (
+            !keepsInactiveOperator &&
+            !isFilterValueActive(value, {
+              filterType: filter.filterType ?? "select",
+              operator: filter.operator,
+            })
+          ) {
             return next;
           }
           return [...next, { id: filter.accessorKey, value }];

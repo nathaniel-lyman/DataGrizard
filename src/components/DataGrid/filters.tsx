@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronDownIcon, FilterIcon } from "./icons";
 import { FilterBody, formatOptionLabel } from "./filterBodies";
+import { isFilterValueActive } from "./filterMatch";
+import type { GridFilterOperator } from "../../types/grid";
 
 // Runtime descriptor for one column filter. Domain-neutral: built by DataGrid
 // from the public GridFilterConfig + current filter value, and rendered in the
@@ -9,6 +11,8 @@ export type GridFilter = {
   id: string;
   label: string;
   filterType: "select" | "multiSelect" | "range" | "text" | "date";
+  operator?: GridFilterOperator;
+  operators?: GridFilterOperator[];
   value: unknown;
   options: string[];
   formatOption?: (value: string) => string;
@@ -21,19 +25,11 @@ export type GridFilter = {
   onChange: (value: unknown) => void;
 };
 
-export const isFilterActive = (filter: GridFilter) => {
-  const value = filter.value;
-  if (value == null || value === "") {
-    return false;
-  }
-  if (Array.isArray(value)) {
-    return value.length > 0;
-  }
-  if (typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).some((bound) => bound != null && bound !== "");
-  }
-  return true;
-};
+export const isFilterActive = (filter: GridFilter) =>
+  isFilterValueActive(filter.value, {
+    filterType: filter.filterType,
+    operator: filter.operator,
+  });
 
 // Outside-click + Escape dismissal shared by every filter popover.
 const useDismiss = (
@@ -81,6 +77,21 @@ const summarize = (filter: GridFilter) => {
   if (filter.filterType === "text" && typeof value === "string") {
     return `"${value}"`;
   }
+  if (value && typeof value === "object" && "operator" in value) {
+    const clause = value as { operator?: string; value?: unknown };
+    if (clause.operator === "isEmpty") return "Empty";
+    if (clause.operator === "isNotEmpty") return "Not empty";
+    if (Array.isArray(clause.value)) return `${clause.value.length} selected`;
+    if (typeof clause.value === "string" || typeof clause.value === "number") {
+      return String(clause.value);
+    }
+    if (clause.value && typeof clause.value === "object") {
+      const bounds = clause.value as { min?: number; max?: number; from?: string; to?: string };
+      const lo = bounds.min ?? bounds.from ?? "";
+      const hi = bounds.max ?? bounds.to ?? "";
+      return `${lo || "…"} – ${hi || "…"}`;
+    }
+  }
   if (typeof value === "object" && value) {
     const bounds = value as { min?: number; max?: number; from?: string; to?: string };
     const lo = bounds.min ?? bounds.from ?? "";
@@ -101,10 +112,24 @@ export const FilterPopover = ({
   variant?: "icon" | "inline";
 }) => {
   const [open, setOpen] = useState(false);
+  const [alignEnd, setAlignEnd] = useState(true);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const active = isFilterActive(filter);
   useDismiss(open, () => setOpen(false), containerRef, triggerRef);
+
+  const toggleOpen = () => {
+    setOpen((isOpen) => {
+      if (!isOpen) {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const estimatedPopoverWidth = 280;
+          setAlignEnd(rect.left + estimatedPopoverWidth > window.innerWidth);
+        }
+      }
+      return !isOpen;
+    });
+  };
 
   return (
     <div ref={containerRef} className="relative inline-flex">
@@ -115,7 +140,7 @@ export const FilterPopover = ({
         aria-expanded={open}
         aria-haspopup="dialog"
         data-active={active || undefined}
-        onClick={() => setOpen((isOpen) => !isOpen)}
+        onClick={toggleOpen}
         className={
           variant === "icon"
             ? `flex h-6 w-6 items-center justify-center rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
@@ -139,7 +164,9 @@ export const FilterPopover = ({
         <div
           role="dialog"
           aria-label={`${filter.label} filter`}
-          className="absolute right-0 top-full z-30 mt-1 rounded-md border border-slate-200 bg-white p-2 text-left shadow-lg"
+          className={`absolute top-full z-30 mt-1 rounded-md border border-slate-200 bg-white p-2 text-left shadow-lg ${
+            alignEnd ? "right-0" : "left-0"
+          }`}
         >
           <FilterBody filter={filter} onClose={() => setOpen(false)} />
         </div>

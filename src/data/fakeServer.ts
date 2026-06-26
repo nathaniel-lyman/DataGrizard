@@ -32,6 +32,13 @@ const filterTypeById = new Map(
   ]),
 );
 
+const filterOperatorById = new Map(
+  retailFilters.map((filter) => [
+    filter.accessorKey as string,
+    filter.operator,
+  ]),
+);
+
 const SEARCH_FIELDS: (keyof RetailItem)[] = [
   "item_id",
   "item_name",
@@ -75,6 +82,7 @@ const applyColumnFilters = (
       const raw = row[filter.id as keyof RetailItem];
       return matchesFilterValue(raw, filter.value, {
         filterType: filterTypeById.get(filter.id),
+        operator: filterOperatorById.get(filter.id),
         searchText: String(raw ?? ""),
       });
     }),

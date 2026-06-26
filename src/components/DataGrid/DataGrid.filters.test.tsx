@@ -83,6 +83,36 @@ describe("DataGrid column filters", () => {
     expect(screen.getByRole("button", { name: /Dept filter/i })).toHaveAttribute("data-active");
   });
 
+  it("lets text filters use a starts-with operator from the header popover", () => {
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "dept", label: "Dept", filterType: "text" },
+    ];
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    fireEvent.change(screen.getByLabelText("Dept operator"), { target: { value: "startsWith" } });
+    fireEvent.change(screen.getByLabelText("Dept contains"), { target: { value: "Wo" } });
+
+    expect(screen.queryByText("$500")).not.toBeInTheDocument();
+    expect(screen.getByText("$1,500")).toBeInTheDocument();
+    expect(screen.queryByText("$1,000")).not.toBeInTheDocument();
+  });
+
+  it("lets numeric filters use a greater-than operator from the header popover", () => {
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "revenue", label: "Revenue", filterType: "range" },
+    ];
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Revenue filter/i }));
+    fireEvent.change(screen.getByLabelText("Revenue operator"), { target: { value: "gt" } });
+    fireEvent.change(screen.getByLabelText("Revenue value"), { target: { value: "1000" } });
+
+    expect(screen.queryByText("$500")).not.toBeInTheDocument();
+    expect(screen.queryByText("$1,000")).not.toBeInTheDocument();
+    expect(screen.getByText("$1,500")).toBeInTheDocument();
+  });
+
   it("renders an always-visible floating filter row when enabled", () => {
     const filters: GridFilterConfig<Row>[] = [{ accessorKey: "dept", label: "Dept" }];
     render(
@@ -109,6 +139,22 @@ describe("DataGrid filter engine (text + date)", () => {
     { accessorKey: "name", header: "Name", dataType: "text" },
     { accessorKey: "when", header: "When", dataType: "date" },
   ];
+
+  it("supports wrapped operator values while preserving legacy raw filters", () => {
+    render(
+      <DataGrid
+        data={engineData}
+        columns={engineColumns}
+        filters={engineFilters}
+        getRowId={(r) => r.id}
+        state={{ columnFilters: [{ id: "name", value: { operator: "startsWith", value: "Blue" } }] }}
+      />,
+    );
+
+    expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
+    expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
+  });
   const engineData: EngineRow[] = [
     { id: "1", name: "Red Shirt", when: "2026-01-10" },
     { id: "2", name: "Blue Shirt", when: "2026-06-24" },
@@ -166,5 +212,21 @@ describe("DataGrid filter engine (text + date)", () => {
 
     expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
     expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
+  });
+
+  it("supports date comparison operators", () => {
+    render(
+      <DataGrid
+        data={engineData}
+        columns={engineColumns}
+        filters={engineFilters}
+        getRowId={(r) => r.id}
+        state={{ columnFilters: [{ id: "when", value: { operator: "after", value: "2026-03-01" } }] }}
+      />,
+    );
+
+    expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
+    expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
   });
 });

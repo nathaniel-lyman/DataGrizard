@@ -160,7 +160,7 @@ compatibility adapter, but new consumers should use `pivot.measures`.
 type GridColumnConfig<TData> = {
   accessorKey: keyof TData & string;
   header: string;
-  dataType: "text" | "number" | "currency" | "percent" | "status";
+  dataType: "text" | "number" | "currency" | "percent" | "status" | "date";
   width?: number; minWidth?: number; maxWidth?: number;
   pinned?: "left" | "right";
   enablePinning?: boolean;
@@ -193,6 +193,8 @@ filters={[
   { accessorKey: "category", label: "Category" },                       // select (exact match)
   { accessorKey: "brand",    label: "Brand", filterType: "multiSelect" },
   { accessorKey: "revenue",  label: "Revenue", filterType: "range" },   // numeric min/max
+  { accessorKey: "name",     label: "Name", filterType: "text" },
+  { accessorKey: "createdAt", label: "Created", filterType: "date" },
 ]}
 ```
 
@@ -200,6 +202,38 @@ Select filters use **exact** matching (no substring leakage). Options default to
 the distinct column values, or pass `options`. Global search matches the
 **formatted** text users see (`$1,200`, `12.0%`, `In Progress`) as well as raw
 values.
+
+Column filters support operator-aware clauses while preserving the legacy raw
+values. The header filter popover exposes contextual operators such as
+`contains`, `startsWith`, `equals`, `gt`, `between`, `before`, `after`,
+`isEmpty`, and `isNotEmpty`.
+
+```tsx
+<DataGrid
+  data={rows}
+  columns={columns}
+  filters={[
+    {
+      accessorKey: "name",
+      label: "Name",
+      filterType: "text",
+      operators: ["contains", "startsWith", "equals", "isEmpty"],
+    },
+    {
+      accessorKey: "revenue",
+      label: "Revenue",
+      filterType: "range",
+      operator: "gte",
+    },
+  ]}
+  state={{
+    columnFilters: [
+      { id: "name", value: { operator: "startsWith", value: "Blue" } },
+      { id: "revenue", value: { operator: "gte", value: 1000 } },
+    ],
+  }}
+/>
+```
 
 ## Summaries
 

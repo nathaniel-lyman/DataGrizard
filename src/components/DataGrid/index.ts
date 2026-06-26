@@ -39,5 +39,7 @@ export type {
   GridDataType,
   GridEditCellProps,
   GridFilterConfig,
+  GridFilterOperator,
   GridFilterType,
+  GridFilterValue,
 } from "../../types/grid";

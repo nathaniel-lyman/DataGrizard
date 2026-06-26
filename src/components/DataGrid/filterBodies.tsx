@@ -2,6 +2,11 @@
 // the FilterBody dispatcher. Stateless and value-driven; the popover chrome that
 // hosts them lives in filters.tsx. GridFilter is imported type-only (erased).
 import type { GridFilter } from "./filters";
+import {
+  defaultOperatorForFilterType,
+  resolveFilterClause,
+} from "./filterMatch";
+import type { GridFilterOperator, GridFilterType } from "../../types/grid";
 
 export const formatOptionLabel = (option: string) =>
   option
@@ -12,13 +17,110 @@ export const formatOptionLabel = (option: string) =>
 const inputClass =
   "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 outline-none transition focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300";
 
+const operatorClass =
+  "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 outline-none transition focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300";
+
+const operatorLabels: Record<GridFilterOperator, string> = {
+  is: "Is",
+  isNot: "Is not",
+  isAnyOf: "Is any of",
+  isNoneOf: "Is none of",
+  contains: "Contains",
+  notContains: "Does not contain",
+  startsWith: "Starts with",
+  endsWith: "Ends with",
+  equals: "Equals",
+  notEquals: "Does not equal",
+  gt: "Greater than",
+  gte: "Greater than or equal",
+  lt: "Less than",
+  lte: "Less than or equal",
+  between: "Between",
+  before: "Before",
+  onOrBefore: "On or before",
+  after: "After",
+  onOrAfter: "On or after",
+  isEmpty: "Is empty",
+  isNotEmpty: "Is not empty",
+};
+
+const defaultOperatorsByType: Record<GridFilterType, GridFilterOperator[]> = {
+  select: ["is", "isNot", "isEmpty", "isNotEmpty"],
+  multiSelect: ["isAnyOf", "isNoneOf", "isEmpty", "isNotEmpty"],
+  text: ["contains", "notContains", "equals", "notEquals", "startsWith", "endsWith", "isEmpty", "isNotEmpty"],
+  range: ["between", "equals", "notEquals", "gt", "gte", "lt", "lte", "isEmpty", "isNotEmpty"],
+  date: ["between", "equals", "notEquals", "before", "onOrBefore", "after", "onOrAfter", "isEmpty", "isNotEmpty"],
+};
+
+const getOperators = (filter: GridFilter) =>
+  filter.operators?.length ? filter.operators : defaultOperatorsByType[filter.filterType];
+
+const isUnaryOperator = (operator: GridFilterOperator) =>
+  operator === "isEmpty" || operator === "isNotEmpty";
+
+const resolveFilterState = (filter: GridFilter) => {
+  const clause = resolveFilterClause(filter.value, {
+    filterType: filter.filterType,
+    operator: filter.operator,
+  });
+  return {
+    operator: clause.operator,
+    value: clause.value,
+  };
+};
+
+const commitFilterValue = (filter: GridFilter, operator: GridFilterOperator, value: unknown) => {
+  const defaultOperator = filter.operator ?? defaultOperatorForFilterType(filter.filterType);
+  if (isUnaryOperator(operator)) {
+    filter.onChange({ operator });
+    return;
+  }
+  const emptyArray = Array.isArray(value) && value.length === 0;
+  const emptyObject =
+    value != null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    !Object.values(value as Record<string, unknown>).some((bound) => bound != null && bound !== "");
+  if (value == null || value === "" || emptyArray || emptyObject) {
+    filter.onChange(operator === defaultOperator ? undefined : { operator, value });
+    return;
+  }
+  filter.onChange({ operator, value });
+};
+
+const OperatorSelect = ({ filter }: { filter: GridFilter }) => {
+  const { operator, value } = resolveFilterState(filter);
+  const operators = getOperators(filter);
+  return (
+    <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+      Match
+      <select
+        aria-label={`${filter.label} operator`}
+        value={operator}
+        onChange={(event) => commitFilterValue(filter, event.target.value as GridFilterOperator, value)}
+        className={`${operatorClass} w-full`}
+      >
+        {operators.map((item) => (
+          <option key={item} value={item}>
+            {operatorLabels[item]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+};
+
 const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => void }) => {
-  const selected = typeof filter.value === "string" ? filter.value : "";
+  const { operator, value } = resolveFilterState(filter);
+  const selected = typeof value === "string" ? value : "";
   const format = filter.formatOption ?? formatOptionLabel;
   const choose = (value: string) => {
-    filter.onChange(value || undefined);
+    commitFilterValue(filter, operator, value || undefined);
     onClose();
   };
+  if (isUnaryOperator(operator)) {
+    return null;
+  }
   return (
     <div role="listbox" aria-label={`${filter.label} options`} className="max-h-64 w-56 overflow-auto">
       <button
@@ -51,14 +153,18 @@ const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => vo
 };
 
 const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
-  const selected = Array.isArray(filter.value) ? (filter.value as string[]) : [];
+  const { operator, value } = resolveFilterState(filter);
+  const selected = Array.isArray(value) ? (value as string[]) : [];
   const format = filter.formatOption ?? formatOptionLabel;
   const toggle = (option: string) => {
     const next = selected.includes(option)
       ? selected.filter((value) => value !== option)
       : [...selected, option];
-    filter.onChange(next.length ? next : undefined);
+    commitFilterValue(filter, operator, next.length ? next : undefined);
   };
+  if (isUnaryOperator(operator)) {
+    return null;
+  }
   return (
     <div className="max-h-64 w-48 overflow-auto">
       {filter.options.map((option) => (
@@ -81,15 +187,38 @@ const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
 };
 
 const RangeBody = ({ filter }: { filter: GridFilter }) => {
+  const { operator, value: clauseValue } = resolveFilterState(filter);
   const value =
-    filter.value && typeof filter.value === "object" && !Array.isArray(filter.value)
-      ? (filter.value as { min?: number; max?: number })
+    clauseValue && typeof clauseValue === "object" && !Array.isArray(clauseValue)
+      ? (clauseValue as { min?: number; max?: number })
       : {};
   const parse = (raw: string) => (raw === "" ? undefined : Number(raw));
   const update = (patch: { min?: number; max?: number }) => {
     const next = { min: value.min, max: value.max, ...patch };
-    filter.onChange(next.min == null && next.max == null ? undefined : next);
+    commitFilterValue(filter, operator, next.min == null && next.max == null ? undefined : next);
   };
+  const singleValue =
+    typeof clauseValue === "number" || typeof clauseValue === "string" ? clauseValue : value.min ?? "";
+  const updateSingle = (raw: string) => commitFilterValue(filter, operator, parse(raw));
+  if (isUnaryOperator(operator)) {
+    return null;
+  }
+  if (operator !== "between") {
+    return (
+      <input
+        type="number"
+        inputMode="numeric"
+        placeholder="Value"
+        aria-label={`${filter.label} value`}
+        value={singleValue ?? ""}
+        min={filter.min}
+        max={filter.max}
+        step={filter.step}
+        onChange={(event) => updateSingle(event.target.value)}
+        className={`${inputClass} w-full`}
+      />
+    );
+  }
   return (
     <div className="flex items-center gap-1">
       <input
@@ -124,14 +253,18 @@ const RangeBody = ({ filter }: { filter: GridFilter }) => {
 };
 
 const TextBody = ({ filter }: { filter: GridFilter }) => {
-  const value = typeof filter.value === "string" ? filter.value : "";
+  const { operator, value: clauseValue } = resolveFilterState(filter);
+  const value = typeof clauseValue === "string" ? clauseValue : "";
+  if (isUnaryOperator(operator)) {
+    return null;
+  }
   return (
     <input
       type="text"
       aria-label={`${filter.label} contains`}
       placeholder={filter.placeholder ?? "Contains…"}
       value={value}
-      onChange={(event) => filter.onChange(event.target.value || undefined)}
+      onChange={(event) => commitFilterValue(filter, operator, event.target.value || undefined)}
       className={`${inputClass} w-48`}
     />
   );
@@ -145,16 +278,19 @@ const toIsoDay = (date: Date) => {
 };
 
 const DateBody = ({ filter }: { filter: GridFilter }) => {
+  const { operator, value: clauseValue } = resolveFilterState(filter);
   const value =
-    filter.value && typeof filter.value === "object" && !Array.isArray(filter.value)
-      ? (filter.value as { from?: string; to?: string })
+    clauseValue && typeof clauseValue === "object" && !Array.isArray(clauseValue)
+      ? (clauseValue as { from?: string; to?: string })
       : {};
   const update = (patch: { from?: string; to?: string }) => {
     const next = { from: value.from, to: value.to, ...patch };
     const from = next.from || undefined;
     const to = next.to || undefined;
-    filter.onChange(from || to ? { from, to } : undefined);
+    commitFilterValue(filter, operator, from || to ? { from, to } : undefined);
   };
+  const singleValue = typeof clauseValue === "string" ? clauseValue : value.from ?? "";
+  const updateSingle = (raw: string) => commitFilterValue(filter, operator, raw || undefined);
   // Presets resolve to concrete {from,to} bounds when applied (they do not stay
   // relative — a saved view captures the resolved bounds).
   const applyPreset = (preset: "today" | "7d" | "30d" | "month") => {
@@ -162,16 +298,30 @@ const DateBody = ({ filter }: { filter: GridFilter }) => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const to = toIsoDay(today);
     if (preset === "today") {
-      filter.onChange({ from: to, to });
+      commitFilterValue(filter, operator, { from: to, to });
     } else if (preset === "7d") {
-      filter.onChange({ from: toIsoDay(new Date(today.getTime() - 6 * 86_400_000)), to });
+      commitFilterValue(filter, operator, { from: toIsoDay(new Date(today.getTime() - 6 * 86_400_000)), to });
     } else if (preset === "30d") {
-      filter.onChange({ from: toIsoDay(new Date(today.getTime() - 29 * 86_400_000)), to });
+      commitFilterValue(filter, operator, { from: toIsoDay(new Date(today.getTime() - 29 * 86_400_000)), to });
     } else {
-      filter.onChange({ from: toIsoDay(new Date(now.getFullYear(), now.getMonth(), 1)), to });
+      commitFilterValue(filter, operator, { from: toIsoDay(new Date(now.getFullYear(), now.getMonth(), 1)), to });
     }
   };
   const showPresets = filter.presets !== false;
+  if (isUnaryOperator(operator)) {
+    return null;
+  }
+  if (operator !== "between") {
+    return (
+      <input
+        type="date"
+        aria-label={`${filter.label} value`}
+        value={singleValue}
+        onChange={(event) => updateSingle(event.target.value)}
+        className={`${inputClass} w-full`}
+      />
+    );
+  }
   return (
     <div className="flex w-56 flex-col gap-2">
       <div className="flex items-center gap-1">
@@ -224,17 +374,36 @@ const DateBody = ({ filter }: { filter: GridFilter }) => {
 };
 
 export const FilterBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => void }) => {
-  if (filter.filterType === "multiSelect") {
-    return <MultiSelectBody filter={filter} />;
-  }
-  if (filter.filterType === "range") {
-    return <RangeBody filter={filter} />;
-  }
-  if (filter.filterType === "text") {
-    return <TextBody filter={filter} />;
-  }
-  if (filter.filterType === "date") {
-    return <DateBody filter={filter} />;
-  }
-  return <SelectBody filter={filter} onClose={onClose} />;
+  const body =
+    filter.filterType === "multiSelect" ? (
+      <MultiSelectBody filter={filter} />
+    ) : filter.filterType === "range" ? (
+      <RangeBody filter={filter} />
+    ) : filter.filterType === "text" ? (
+      <TextBody filter={filter} />
+    ) : filter.filterType === "date" ? (
+      <DateBody filter={filter} />
+    ) : (
+      <SelectBody filter={filter} onClose={onClose} />
+    );
+
+  return (
+    <div className="flex min-w-56 flex-col gap-3">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Filter</div>
+          <div className="text-sm font-semibold text-slate-900">{filter.label}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => filter.onChange(undefined)}
+          className="h-7 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]"
+        >
+          Clear
+        </button>
+      </div>
+      <OperatorSelect filter={filter} />
+      {body ? <div>{body}</div> : null}
+    </div>
+  );
 };

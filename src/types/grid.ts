@@ -67,11 +67,43 @@ export type GridColumnConfig<TData> = {
 
 export type GridFilterType = "select" | "multiSelect" | "range" | "text" | "date";
 
+export type GridFilterOperator =
+  | "is"
+  | "isNot"
+  | "isAnyOf"
+  | "isNoneOf"
+  | "contains"
+  | "notContains"
+  | "startsWith"
+  | "endsWith"
+  | "equals"
+  | "notEquals"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "before"
+  | "onOrBefore"
+  | "after"
+  | "onOrAfter"
+  | "isEmpty"
+  | "isNotEmpty";
+
+export type GridFilterValue = {
+  operator: GridFilterOperator;
+  value?: unknown;
+};
+
 export type GridFilterConfig<TData> = {
   accessorKey: Extract<keyof TData, string>;
   label: string;
   /** Defaults to "select". */
   filterType?: GridFilterType;
+  /** Default operator for this filter. If omitted, the filter type chooses one. */
+  operator?: GridFilterOperator;
+  /** Restrict which operators appear in the filter UI. */
+  operators?: GridFilterOperator[];
   options?: string[];
   formatOption?: (value: string) => string;
   /** Range-filter bounds (filterType: "range"). */

@@ -1,20 +1,95 @@
 import type { SortingFn } from "@tanstack/react-table";
-import type { GridFilterType } from "../../types/grid";
+import type { GridFilterOperator, GridFilterType, GridFilterValue } from "../../types/grid";
 import { toDate } from "../../utils/formatters";
 
 const hasDateBounds = (value: object): value is { from?: unknown; to?: unknown } =>
   "from" in value || "to" in value;
 
+const isOperatorFilterValue = (value: unknown): value is GridFilterValue =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      "operator" in value &&
+      typeof (value as { operator?: unknown }).operator === "string",
+  );
+
 export type MatchOptions = {
   filterType?: GridFilterType;
+  operator?: GridFilterOperator;
   /** Precomputed formatted text, used by the "text" (contains) filter. */
   searchText?: string;
 };
 
+export const defaultOperatorForFilterType = (filterType: GridFilterType = "select"): GridFilterOperator => {
+  if (filterType === "multiSelect") return "isAnyOf";
+  if (filterType === "range" || filterType === "date") return "between";
+  if (filterType === "text") return "contains";
+  return "is";
+};
+
+export const resolveFilterClause = (
+  filterValue: unknown,
+  options?: Pick<MatchOptions, "filterType" | "operator">,
+): { operator: GridFilterOperator; value: unknown; wrapped: boolean } => {
+  if (isOperatorFilterValue(filterValue)) {
+    return {
+      operator: filterValue.operator,
+      value: filterValue.value,
+      wrapped: true,
+    };
+  }
+  return {
+    operator: options?.operator ?? defaultOperatorForFilterType(options?.filterType),
+    value: filterValue,
+    wrapped: false,
+  };
+};
+
+export const isFilterValueActive = (filterValue: unknown, options?: Pick<MatchOptions, "filterType" | "operator">) => {
+  const { operator, value } = resolveFilterClause(filterValue, options);
+  if (operator === "isEmpty" || operator === "isNotEmpty") {
+    return true;
+  }
+  if (value == null || value === "") {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((bound) => bound != null && bound !== "");
+  }
+  return true;
+};
+
+const isEmptyCell = (raw: unknown) => raw == null || raw === "";
+
+const compareText = (raw: unknown, value: unknown, searchText?: string) => {
+  const haystack = (searchText ?? String(raw ?? "")).toLowerCase();
+  const needle = String(value ?? "").toLowerCase();
+  return { haystack, needle };
+};
+
+const compareNumber = (raw: unknown) => {
+  const numericValue = Number(raw);
+  return Number.isFinite(numericValue) ? numericValue : null;
+};
+
+const getRange = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as { min?: number | null; max?: number | null })
+    : {};
+
+const getDateRange = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as { from?: unknown; to?: unknown })
+    : {};
+
 // Unified column-filter predicate, shared by the grid filterFn and the pivot
 // source-row loop so both paths stay in lockstep. Dispatches by filter-value
-// shape, with `filterType` disambiguating the two string cases (text contains
-// vs select exact):
+// shape/operator, preserving the older raw value shapes while supporting the
+// newer `{ operator, value }` filter clause:
 //   - date {from,to}: normalized via toDate (checked BEFORE the {min,max}
 //     range branch); null/unparseable cell is excluded.
 //   - array: multi-select membership.
@@ -23,7 +98,16 @@ export type MatchOptions = {
 //     formatted text (searchText), avoiding leakage into the raw value.
 //   - string otherwise: exact match (select; "Men" != "Women").
 export const matchesFilterValue = (raw: unknown, filterValue: unknown, options?: MatchOptions) => {
-  if (filterValue == null || filterValue === "") {
+  const { operator, value } = resolveFilterClause(filterValue, options);
+
+  if (operator === "isEmpty") {
+    return isEmptyCell(raw);
+  }
+  if (operator === "isNotEmpty") {
+    return !isEmptyCell(raw);
+  }
+
+  if (!isFilterValueActive(filterValue, options)) {
     return true;
   }
 
@@ -31,21 +115,46 @@ export const matchesFilterValue = (raw: unknown, filterValue: unknown, options?:
   // stale/programmatic controlled value never routes into the numeric range
   // branch and excludes every row.
   if (
-    typeof filterValue === "object" &&
-    !Array.isArray(filterValue) &&
-    Object.keys(filterValue).length === 0
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
   ) {
     return true;
   }
 
-  if (typeof filterValue === "object" && !Array.isArray(filterValue) && hasDateBounds(filterValue)) {
-    const { from, to } = filterValue;
-    const cell = toDate(raw)?.getTime();
+  if (
+    options?.filterType === "date" ||
+    (value !== null && typeof value === "object" && !Array.isArray(value) && hasDateBounds(value))
+  ) {
+    const cell = toDate(raw)?.getTime() ?? null;
     if (cell == null) {
       return false;
     }
-    const fromTime = toDate(from)?.getTime();
-    const toTime = toDate(to)?.getTime();
+    if (operator === "equals" || operator === "is") {
+      const target = toDate(value)?.getTime();
+      return target != null && cell === target;
+    }
+    if (operator === "notEquals" || operator === "isNot") {
+      const target = toDate(value)?.getTime();
+      return target == null || cell !== target;
+    }
+    const { from, to } = getDateRange(value);
+    const single = toDate(value)?.getTime();
+    const fromTime = toDate(from)?.getTime() ?? single;
+    const toTime = toDate(to)?.getTime() ?? single;
+    if (operator === "before") {
+      return fromTime != null && cell < fromTime;
+    }
+    if (operator === "onOrBefore") {
+      return fromTime != null && cell <= fromTime;
+    }
+    if (operator === "after") {
+      return fromTime != null && cell > fromTime;
+    }
+    if (operator === "onOrAfter") {
+      return fromTime != null && cell >= fromTime;
+    }
     if (fromTime != null && cell < fromTime) {
       return false;
     }
@@ -55,15 +164,38 @@ export const matchesFilterValue = (raw: unknown, filterValue: unknown, options?:
     return true;
   }
 
-  if (Array.isArray(filterValue)) {
-    return filterValue.length === 0 || filterValue.map(String).includes(String(raw ?? ""));
+  if (Array.isArray(value)) {
+    const selected = value.map(String);
+    const included = selected.includes(String(raw ?? ""));
+    return operator === "isNoneOf" ? !included : selected.length === 0 || included;
   }
 
-  if (typeof filterValue === "object") {
-    const { min, max } = filterValue as { min?: number | null; max?: number | null };
-    const numericValue = Number(raw);
-    if (!Number.isFinite(numericValue)) {
+  if (options?.filterType === "range" || typeof value === "object") {
+    const numericValue = compareNumber(raw);
+    if (numericValue == null) {
       return false;
+    }
+    if (operator === "equals" || operator === "is") {
+      const target = Number(value);
+      return Number.isFinite(target) && numericValue === target;
+    }
+    if (operator === "notEquals" || operator === "isNot") {
+      const target = Number(value);
+      return !Number.isFinite(target) || numericValue !== target;
+    }
+    const { min, max } = getRange(value);
+    const lower = min ?? (Number.isFinite(Number(value)) ? Number(value) : undefined);
+    if (operator === "gt") {
+      return lower != null && numericValue > lower;
+    }
+    if (operator === "gte") {
+      return lower != null && numericValue >= lower;
+    }
+    if (operator === "lt") {
+      return lower != null && numericValue < lower;
+    }
+    if (operator === "lte") {
+      return lower != null && numericValue <= lower;
     }
     if (min != null && numericValue < min) {
       return false;
@@ -75,11 +207,30 @@ export const matchesFilterValue = (raw: unknown, filterValue: unknown, options?:
   }
 
   if (options?.filterType === "text") {
-    const haystack = (options.searchText ?? String(raw ?? "")).toLowerCase();
-    return haystack.includes(String(filterValue).toLowerCase());
+    const { haystack, needle } = compareText(raw, value, options.searchText);
+    if (operator === "notContains") {
+      return !haystack.includes(needle);
+    }
+    if (operator === "startsWith") {
+      return haystack.startsWith(needle);
+    }
+    if (operator === "endsWith") {
+      return haystack.endsWith(needle);
+    }
+    if (operator === "equals" || operator === "is") {
+      return haystack === needle;
+    }
+    if (operator === "notEquals" || operator === "isNot") {
+      return haystack !== needle;
+    }
+    return haystack.includes(needle);
   }
 
-  return String(raw ?? "") === String(filterValue);
+  if (operator === "isNot" || operator === "notEquals") {
+    return String(raw ?? "") !== String(value);
+  }
+
+  return String(raw ?? "") === String(value);
 };
 
 // Sorts date columns chronologically across mixed representations (Date / ISO
