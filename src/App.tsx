@@ -72,10 +72,10 @@ function App() {
   }, [isServer, sorting, columnFilters, globalFilter, pagination, refreshToken]);
 
   return (
-    <main className="flex h-screen flex-col bg-slate-100 text-slate-900">
-      <header className="border-b border-slate-200 bg-white px-5 py-3">
+    <main className="flex min-h-dvh flex-col bg-slate-100 text-slate-900">
+      <header className="border-b border-slate-200 bg-white px-3 py-3 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-base font-semibold text-slate-950">
               Retail Recommendation Workbench
             </h1>
@@ -87,7 +87,7 @@ function App() {
                   : "Grid view — expand a group to see items, or click a row for detail."}
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
+          <div className="flex w-full flex-wrap items-center gap-2 text-xs text-slate-500 sm:w-auto">
             <div
               role="group"
               aria-label="Data source"
@@ -143,7 +143,7 @@ function App() {
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 p-4">
+      <section className="flex min-h-0 flex-1 p-3 sm:p-4">
         <DataGrid
           data={isServer ? serverRows : rows}
           columns={retailColumns}

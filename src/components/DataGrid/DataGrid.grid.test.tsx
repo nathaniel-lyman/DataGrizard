@@ -86,6 +86,23 @@ describe("DataGrid column header groups", () => {
       "descending",
     );
   });
+
+  it("disambiguates resize handles for band and leaf headers with matching labels", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        columnGroups={[{ groupId: "revenue-band", header: "Revenue", children: ["revenue", "units"] }]}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Resize Revenue" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Resize Revenue group (Revenue, Units)" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("DataGrid grid layout — grouping + pagination (bug #1)", () => {

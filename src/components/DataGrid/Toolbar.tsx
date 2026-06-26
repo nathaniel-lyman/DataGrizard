@@ -96,9 +96,9 @@ export function Toolbar({
   }
 
   return (
-    <div className="border-b border-slate-200 bg-white px-4 py-3">
+    <div className="border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
       {showFilterControls ? (
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex min-w-0 flex-wrap items-end gap-3">
           {enableGlobalSearch ? (
             <ToolbarSearch
               search={search}
@@ -123,7 +123,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onExportCsv}
-              className="ml-auto h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              className="h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:ml-auto"
             >
               Export CSV
             </button>
@@ -132,7 +132,7 @@ export function Toolbar({
       ) : null}
 
       {showSecondaryControls ? (
-        <div className={`${showFilterControls ? "mt-3 " : ""}flex flex-wrap items-end gap-3`}>
+        <div className={`${showFilterControls ? "mt-3 " : ""}flex min-w-0 flex-wrap items-end gap-3`}>
           <button
             type="button"
             onClick={onResetView}
@@ -144,7 +144,7 @@ export function Toolbar({
       ) : null}
 
       {showSecondaryControls ? (
-        <div className="mt-3 flex flex-wrap items-end gap-4 border-t border-slate-100 pt-3">
+        <div className="mt-3 flex min-w-0 flex-wrap items-end gap-3 border-t border-slate-100 pt-3 sm:gap-4">
           {showGroupingControls ? (
             <ToolbarGrouping
               groupableColumns={groupableColumns}

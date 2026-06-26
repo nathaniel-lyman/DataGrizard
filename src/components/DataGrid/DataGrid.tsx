@@ -302,6 +302,21 @@ const getColumnControlLabel = <TData extends object>(
   return label;
 };
 
+const getHeaderResizeLabel = <TData extends object>(
+  column: Column<TData | PivotRow<TData>, unknown>,
+) => {
+  const label = getColumnControlLabel(column);
+  const leafColumns = column.getLeafColumns();
+  const isLeafColumn = leafColumns.length === 1 && leafColumns[0]?.id === column.id;
+
+  if (isLeafColumn) {
+    return `Resize ${label}`;
+  }
+
+  const leafLabelSummary = leafColumns.map(getColumnControlLabel).filter(Boolean).join(", ");
+  return `Resize ${label} group${leafLabelSummary ? ` (${leafLabelSummary})` : ""}`;
+};
+
 // The DataGrid engine. This one function is long; it runs top-to-bottom through
 // these phases, each marked below with a `// ----- Phase -----` banner you can
 // jump between. Pure logic lives in siblings (see the file map in CLAUDE.md):
@@ -2101,7 +2116,10 @@ export function DataGrid<TData extends object>({
           </div>
         ) : null}
 
-        <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto">
+        <div
+          ref={scrollRef}
+          className="relative h-[min(68dvh,640px)] min-h-72 overflow-auto md:h-auto md:min-h-0 md:flex-1"
+        >
           {overlay ? (
             <div
               role={error ? "alert" : "status"}
@@ -2207,7 +2225,7 @@ export function DataGrid<TData extends object>({
                         {features.columnResizing && header.column.getCanResize() ? (
                           <button
                             type="button"
-                            aria-label={`Resize ${String(header.column.columnDef.header)}`}
+                            aria-label={getHeaderResizeLabel(header.column)}
                             onDoubleClick={() => header.column.resetSize()}
                             onMouseDown={header.getResizeHandler()}
                             onTouchStart={header.getResizeHandler()}
