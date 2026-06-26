@@ -48,6 +48,8 @@ Use PascalCase for components and component files, such as `DataGrid.tsx` and `R
 
 Styling is Tailwind-first. Keep classes compact, neutral, and aligned with the internal-tool visual direction already present.
 
+Use `lucide-react` for UI icon chrome. Keep icon usage routed through small local wrapper modules such as `src/components/DataGrid/icons.tsx` when that preserves a stable internal component boundary. Icons should be decorative by default (`aria-hidden`) when the surrounding button, input, or text already provides the accessible name; do not add one-off inline SVG icons for ordinary controls when a Lucide icon exists.
+
 ## Testing Guidelines
 
 Tests use Vitest with React Testing Library in a jsdom environment (`@testing-library/jest-dom` matchers). Prefer focused component tests for table behavior and pure unit tests for data/formatting helpers. Suggested coverage targets: filtering, sorting, selection, detail-panel opening, conditional formatting, and formatter output.
