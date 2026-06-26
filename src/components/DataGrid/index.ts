@@ -35,12 +35,19 @@ export type {
   PivotRowKind,
 } from "./pivot";
 export type {
+  GridColorScale,
   GridColumnConfig,
   GridConditionalFormat,
+  GridDataBar,
   GridDataType,
   GridEditCellProps,
   GridFilterConfig,
   GridFilterOperator,
   GridFilterType,
   GridFilterValue,
+  GridFlashOnChange,
+  GridIconSet,
+  GridIconSetRule,
+  GridProgressBar,
 } from "../../types/grid";
+export { trendIconSet, type TrendIconSetOptions } from "./trendIconSet";

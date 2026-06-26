@@ -7,6 +7,74 @@ export type GridConditionalFormat<TValue = unknown, TData = unknown> = {
   className: string;
 };
 
+/**
+ * Continuous background shading across the column's numeric domain. Two colors
+ * interpolate min→max; three colors give a diverging scale through a midpoint.
+ * The domain defaults to the column's min/max over the filtered rows; pass an
+ * explicit `domain` to pin it (required for a stable scale in server mode).
+ */
+export type GridColorScale = {
+  colors: [string, string] | [string, string, string];
+  domain?: [number, number] | { min?: number; mid?: number; max?: number };
+  /** Pick a readable (black/white) text color per cell background. Default true. */
+  autoTextColor?: boolean;
+};
+
+/**
+ * In-cell horizontal bar drawn behind the value, proportional to the value's
+ * position in the domain. When the domain spans zero the bar grows from a center
+ * baseline (positive right, negative left). Domain defaults to filtered min/max.
+ */
+export type GridDataBar = {
+  /** Fill color for non-negative values. */
+  color?: string;
+  /** Fill color for negative values. Defaults to a red token. */
+  negativeColor?: string;
+  domain?: [number, number];
+  /** Render the formatted value over the bar. Default true. */
+  showValue?: boolean;
+};
+
+export type GridIconSetRule<TValue = unknown, TData = unknown> = {
+  when: (value: TValue, row: TData) => boolean;
+  icon: ReactNode;
+  className?: string;
+};
+
+/**
+ * Renders an icon alongside (or instead of) the value, chosen by the first
+ * matching rule. Domain-neutral: the consumer supplies the icon node. See the
+ * shipped `trendIconSet` helper for the common up/down/flat case.
+ */
+export type GridIconSet<TValue = unknown, TData = unknown> = {
+  rules: GridIconSetRule<TValue, TData>[];
+  /** Where the icon sits relative to the value. Default "before". */
+  position?: "before" | "after" | "only";
+};
+
+/**
+ * Renders a `percent`-type cell as a 0–100% progress bar. Domain defaults to
+ * [0, 1] (the percent convention used by the formatters). Ignored on other types.
+ */
+export type GridProgressBar = {
+  color?: string;
+  domain?: [number, number];
+  /** Show the formatted percent inside the bar. Default true. */
+  showLabel?: boolean;
+};
+
+/**
+ * Flashes the cell when its value changes (inline edit or live `dataMode="server"`
+ * refresh): green-up / red-down for numerics, neutral for other types. Seeded
+ * silently on mount, so only changes that happen while the grid is mounted flash.
+ */
+export type GridFlashOnChange = {
+  upClassName?: string;
+  downClassName?: string;
+  /** Animation/clear duration in ms. Default 1200. */
+  duration?: number;
+};
+
 /** Props handed to a custom cell editor via `column.renderEditCell`. */
 export type GridEditCellProps<TData, K extends Extract<keyof TData, string>> = {
   value: TData[K];
@@ -45,6 +113,16 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
    * matches contributes its className. Composes with getCellClassName.
    */
   conditionalFormats?: GridConditionalFormat<TData[K], TData>[];
+  /** Continuous value→background shading. See {@link GridColorScale}. */
+  colorScale?: GridColorScale;
+  /** In-cell bar proportional to value. See {@link GridDataBar}. */
+  dataBar?: GridDataBar;
+  /** Icon chosen by value. See {@link GridIconSet}. */
+  iconSet?: GridIconSet<TData[K], TData>;
+  /** Render a `percent` cell as a progress bar. See {@link GridProgressBar}. */
+  progressBar?: boolean | GridProgressBar;
+  /** Flash the cell on value change. See {@link GridFlashOnChange}. */
+  flashOnChange?: boolean | GridFlashOnChange;
   /** Whether this column's cells can be edited (static or per-row). */
   editable?: boolean | ((row: TData) => boolean);
   /** Returns an error message (non-null blocks commit). When provided, it fully

@@ -69,6 +69,15 @@ import {
   type AnyColumnConfig,
 } from "./cells";
 import {
+  colorScaleStyle,
+  computeBarGeometry,
+  computeColumnDomain,
+  flashDirection,
+  type FlashDirection,
+  type NumericDomain,
+} from "./cellEffects";
+import { DataBarFill, FlashOverlay } from "./cellEffectsRender";
+import {
   collectExpandableGroupIds,
   flattenExpandedRows,
   getSelectionStatus,
@@ -2082,6 +2091,132 @@ export function DataGrid<TData extends object>({
     }
   };
 
+  // ----- Value-driven cell visual effects (grid mode) -----
+  // Per-column numeric domain (min/max) over the filtered rows, computed only for
+  // colorScale/dataBar columns that did not pin an explicit domain. In server mode
+  // the filtered model is the loaded page, so the domain is page-scoped.
+  const effectColumns = useMemo(
+    () => columnList.filter((column) => column.colorScale || column.dataBar),
+    [columnList],
+  );
+  const filteredRowModel = table.getFilteredRowModel();
+  const columnDomains = useMemo(() => {
+    const domains = new Map<string, NumericDomain>();
+    if (effectColumns.length === 0) {
+      return domains;
+    }
+    const leafRows = filteredRowModel.flatRows
+      .filter((row) => row.subRows.length === 0 && !isPivotRow(row.original))
+      .map((row) => row.original as TData);
+    for (const column of effectColumns) {
+      const needsAutoDomain =
+        (column.colorScale && !column.colorScale.domain) || (column.dataBar && !column.dataBar.domain);
+      if (!needsAutoDomain) {
+        continue;
+      }
+      const domain = computeColumnDomain(leafRows, column.accessorKey as keyof TData);
+      if (domain) {
+        domains.set(column.accessorKey, domain);
+      }
+    }
+    return domains;
+  }, [effectColumns, filteredRowModel]);
+
+  // Flash-on-change: a grid-level previous-value map (survives cell unmount under
+  // virtualization), diffed in an effect keyed on `data` to avoid render-time
+  // hazards. The first run seeds silently so nothing flashes on mount.
+  const flashColumns = useMemo(
+    () => columnList.filter((column) => column.flashOnChange),
+    [columnList],
+  );
+  const flashEnabled = flashColumns.length > 0;
+  type FlashEntry = { direction: FlashDirection; token: number; className?: string; duration: number };
+  const [flashMap, setFlashMap] = useState<Map<string, FlashEntry>>(() => new Map());
+  const flashPrevRef = useRef<Map<string, unknown>>(new Map());
+  const flashSeededRef = useRef(false);
+  const flashTokenRef = useRef(0);
+  const flashTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    if (!flashEnabled) {
+      return;
+    }
+    const leaves = table
+      .getCoreRowModel()
+      .flatRows.filter((row) => row.subRows.length === 0 && !isPivotRow(row.original));
+    const previous = flashPrevRef.current;
+    const next = new Map(previous);
+    const changes: Array<{ key: string; direction: FlashDirection; className?: string; duration: number }> = [];
+    for (const row of leaves) {
+      for (const column of flashColumns) {
+        const key = `${row.id}:${column.accessorKey}`;
+        const value = (row.original as Record<string, unknown>)[column.accessorKey];
+        if (previous.has(key) && !Object.is(previous.get(key), value)) {
+          const config = typeof column.flashOnChange === "object" ? column.flashOnChange : {};
+          const direction = flashDirection(previous.get(key), value);
+          changes.push({
+            key,
+            direction,
+            className:
+              direction === "up"
+                ? config.upClassName
+                : direction === "down"
+                  ? config.downClassName
+                  : undefined,
+            duration: config.duration ?? 1200,
+          });
+        }
+        next.set(key, value);
+      }
+    }
+    flashPrevRef.current = next;
+    if (!flashSeededRef.current) {
+      flashSeededRef.current = true;
+      return;
+    }
+    if (changes.length === 0) {
+      return;
+    }
+    const entries = changes.map((change) => ({ ...change, token: ++flashTokenRef.current }));
+    setFlashMap((current) => {
+      const updated = new Map(current);
+      for (const entry of entries) {
+        updated.set(entry.key, {
+          direction: entry.direction,
+          token: entry.token,
+          className: entry.className,
+          duration: entry.duration,
+        });
+      }
+      return updated;
+    });
+    for (const entry of entries) {
+      const timer = setTimeout(() => {
+        flashTimersRef.current.delete(timer);
+        setFlashMap((current) => {
+          const existing = current.get(entry.key);
+          if (!existing || existing.token !== entry.token) {
+            return current;
+          }
+          const updated = new Map(current);
+          updated.delete(entry.key);
+          return updated;
+        });
+      }, entry.duration);
+      flashTimersRef.current.add(timer);
+    }
+  }, [data, flashEnabled, flashColumns, table]);
+
+  useEffect(() => {
+    const timers = flashTimersRef.current;
+    return () => {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+    };
+  }, []);
+
   const getPinnedColumnStyle = (
     column: Column<TData | PivotRow<TData>, unknown>,
     options: { header?: boolean; backgroundColor?: string } = {},
@@ -2185,6 +2320,24 @@ export function DataGrid<TData extends object>({
           const selectedCellKey = cellKey(row.id, cell.column.id);
           const isCellRangeSelected = selectedCellKeys.has(selectedCellKey);
 
+          // Value-driven visual effects (grid data cells only; suppressed while editing).
+          const cellValue = cell.getValue();
+          const effectDomain = columnConfig ? columnDomains.get(cell.column.id) : undefined;
+          const cellColorScale =
+            columnConfig?.colorScale && !isEditingCell
+              ? colorScaleStyle(cellValue, columnConfig.colorScale, effectDomain)
+              : null;
+          const barGeometry =
+            columnConfig?.dataBar && !isEditingCell
+              ? computeBarGeometry(cellValue, columnConfig.dataBar, effectDomain)
+              : null;
+          const flashEntry =
+            flashEnabled && columnConfig?.flashOnChange && !isEditingCell
+              ? flashMap.get(`${row.id}:${cell.column.id}`)
+              : undefined;
+          const hasCellOverlay = Boolean(barGeometry || flashEntry);
+          const useScaleStyle = Boolean(cellColorScale) && !isCellRangeSelected && !row.getIsSelected();
+
           return (
             <td
               key={cell.id}
@@ -2251,12 +2404,17 @@ export function DataGrid<TData extends object>({
               data-cell-selected={isCellRangeSelected ? "true" : undefined}
               style={{
                 width: cell.column.getSize(),
+                ...(useScaleStyle
+                  ? { backgroundColor: cellColorScale?.backgroundColor, color: cellColorScale?.color }
+                  : {}),
                 ...getPinnedColumnStyle(cell.column, {
                   backgroundColor: isCellRangeSelected
                     ? "#dbeafe"
                     : row.getIsSelected()
                       ? "#eff6ff"
-                      : rowBackground,
+                      : useScaleStyle
+                        ? cellColorScale?.backgroundColor
+                        : rowBackground,
                 }),
               }}
               className={`border-b border-r px-3 py-2 align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
@@ -2269,8 +2427,23 @@ export function DataGrid<TData extends object>({
                     : "text-left text-slate-950"
               } ${isCellRangeSelected ? "shadow-[inset_0_0_0_1px_rgb(37_99_235)]" : ""} ${
                 cellSelectionEnabled ? "select-none" : ""
-              }`}
+              } ${hasCellOverlay ? "relative overflow-hidden" : ""}`}
             >
+              {barGeometry ? (
+                <DataBarFill
+                  geometry={barGeometry}
+                  color={columnConfig?.dataBar?.color}
+                  negativeColor={columnConfig?.dataBar?.negativeColor}
+                />
+              ) : null}
+              {flashEntry ? (
+                <FlashOverlay
+                  key={flashEntry.token}
+                  direction={flashEntry.direction}
+                  className={flashEntry.className}
+                  duration={flashEntry.duration}
+                />
+              ) : null}
               {isEditingCell && columnConfig ? (
                 <CellEditor<TData>
                   column={columnConfig as unknown as EditCellColumn<TData>}
@@ -2280,6 +2453,14 @@ export function DataGrid<TData extends object>({
                   onCommit={(value, advance) => commitEdit(row, cell.column.id, value, advance)}
                   onCancel={() => cancelEdit(row.id, cell.column.id)}
                 />
+              ) : hasCellOverlay ? (
+                <span
+                  className={`relative z-[1] ${
+                    columnConfig?.dataBar?.showValue === false ? "text-transparent" : ""
+                  }`}
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </span>
               ) : (
                 flexRender(cell.column.columnDef.cell, cell.getContext())
               )}

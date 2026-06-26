@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import type { GridDataType } from "../../types/grid";
+import type {
+  GridColorScale,
+  GridDataBar,
+  GridDataType,
+  GridFlashOnChange,
+  GridIconSet,
+  GridProgressBar,
+} from "../../types/grid";
 import {
   formatCurrency,
   formatDate,
@@ -8,6 +15,7 @@ import {
   formatStatusLabel,
   type FormatOptions,
 } from "../../utils/formatters";
+import { renderIconSet, renderProgressBar } from "./cellEffectsRender";
 
 // Widened, value-erased view of a column config used internally by the engine.
 // The public GridColumnConfig is a per-key union (value: TData[K]); the engine
@@ -31,6 +39,11 @@ export type AnyColumnConfig<TData> = {
   getStatusClassName?: (value: unknown, row: TData) => string;
   statusStyles?: Record<string, string>;
   conditionalFormats?: { when: (value: unknown, row: TData) => boolean; className: string }[];
+  colorScale?: GridColorScale;
+  dataBar?: GridDataBar;
+  iconSet?: GridIconSet<unknown, TData>;
+  progressBar?: boolean | GridProgressBar;
+  flashOnChange?: boolean | GridFlashOnChange;
   editable?: boolean | ((row: TData) => boolean);
   validate?: (value: unknown, row: TData) => string | null;
   parseValue?: (input: string) => unknown;
@@ -68,7 +81,7 @@ const formatNumericValue = (dataType: GridDataType, value: unknown, formatOption
   return formatPercent(numericValue, formatOptions);
 };
 
-export const renderCellValue = <TData extends object>(
+const renderBaseCellValue = <TData extends object>(
   column: AnyColumnConfig<TData>,
   value: unknown,
   row: TData,
@@ -109,6 +122,27 @@ export const renderCellValue = <TData extends object>(
   }
 
   return String(value);
+};
+
+export const renderCellValue = <TData extends object>(
+  column: AnyColumnConfig<TData>,
+  value: unknown,
+  row: TData,
+  formatOptions: FormatOptions,
+): ReactNode => {
+  // A progress bar fully replaces the percent rendering.
+  if (column.progressBar && column.dataType === "percent") {
+    return renderProgressBar(value, column.progressBar, formatOptions);
+  }
+
+  const base = renderBaseCellValue(column, value, row, formatOptions);
+
+  // Icon sets adorn the formatted value (skip blank cells).
+  if (column.iconSet && value != null && value !== "") {
+    return renderIconSet(base, value, row, column.iconSet);
+  }
+
+  return base;
 };
 
 export const renderGroupingValue = <TData extends object>(

@@ -1,4 +1,4 @@
-import type { DataGridSummaryItem } from "../components/DataGrid";
+import { trendIconSet, type DataGridSummaryItem } from "../components/DataGrid";
 import type { GridColumnConfig, GridFilterConfig } from "../types/grid";
 import {
   formatCurrency,
@@ -102,29 +102,38 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     width: 150,
     enableGrouping: true,
   },
-  { accessorKey: "sales", header: "Sales", dataType: "currency", width: 128 },
+  {
+    accessorKey: "sales",
+    header: "Sales",
+    dataType: "currency",
+    width: 128,
+    colorScale: { colors: ["#ecfdf5", "#10b981", "#065f46"] },
+  },
   {
     accessorKey: "units",
     header: "Units",
     dataType: "number",
-    width: 104,
+    width: 140,
     editable: true,
     validate: (value) => (Number(value) < 0 ? "Units cannot be negative" : null),
+    dataBar: { color: "#93c5fd" },
+    flashOnChange: true,
   },
   {
     accessorKey: "margin_rate",
     header: "Margin",
     dataType: "percent",
-    width: 112,
-    getCellClassName: (value) => (Number(value) < 0.2 ? "font-semibold text-amber-700" : ""),
+    width: 128,
+    progressBar: { color: "#10b981" },
   },
   {
     accessorKey: "price_gap",
     header: "Price Gap",
     dataType: "percent",
-    width: 116,
+    width: 130,
     formatValue: (value) => formatSignedPercent(Number(value)),
     getCellClassName: (value) => (Number(value) < 0 ? "font-semibold text-rose-700" : ""),
+    iconSet: trendIconSet<RetailItem>(),
   },
   {
     accessorKey: "recommendation_status",
