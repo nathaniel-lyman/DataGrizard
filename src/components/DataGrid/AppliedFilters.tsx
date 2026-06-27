@@ -4,6 +4,9 @@
 // Domain-neutral; reads runtime GridFilter descriptors built by DataGrid.
 import { isFilterActive, summarizeFilter, type GridFilter } from "./filters";
 
+const chipClass =
+  "inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700";
+
 export const AppliedFilters = ({
   filters,
   globalSearch,
@@ -20,12 +23,12 @@ export const AppliedFilters = ({
   if (active.length === 0 && !hasGlobal) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
+    <div
+      aria-label="Active filters"
+      className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2"
+    >
       {hasGlobal ? (
-        <span
-          data-testid="applied-filter-search"
-          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700"
-        >
+        <span data-testid="applied-filter-search" className={chipClass}>
           <span className="truncate">Search: “{globalSearch}”</span>
           <button
             type="button"
@@ -38,11 +41,7 @@ export const AppliedFilters = ({
         </span>
       ) : null}
       {active.map((filter) => (
-        <span
-          key={filter.id}
-          data-testid={`applied-filter-${filter.id}`}
-          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700"
-        >
+        <span key={filter.id} data-testid={`applied-filter-${filter.id}`} className={chipClass}>
           <span className="truncate">
             {filter.label}: {summarizeFilter(filter)}
           </span>

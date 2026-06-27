@@ -647,7 +647,7 @@ describe("type-aware filter predicate coverage", () => {
 });
 
 describe("DataGrid applied-filter chip bar", () => {
-  it("shows a removable chip per active filter and a clear-all", () => {
+  it("shows a removable chip for each active filter", () => {
     render(
       <DataGrid
         data={[
