@@ -62,7 +62,7 @@ const useDismiss = (
   }, [open, close, containerRef, triggerRef]);
 };
 
-const summarize = (filter: GridFilter) => {
+export const summarizeFilter = (filter: GridFilter): string => {
   const format = filter.formatOption ?? formatOptionLabel;
   const value = filter.value;
   if (!isFilterActive(filter)) {
@@ -155,7 +155,7 @@ export const FilterPopover = ({
           <FilterIcon className="h-3.5 w-3.5" />
         ) : (
           <>
-            <span className="truncate">{summarize(filter)}</span>
+            <span className="truncate">{summarizeFilter(filter)}</span>
             <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
           </>
         )}
