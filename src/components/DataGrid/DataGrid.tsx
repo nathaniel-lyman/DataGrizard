@@ -50,6 +50,7 @@ type RowMeasureProps = {
 import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, isFilterActive, type GridFilter } from "./filters";
+import { AppliedFilters } from "./AppliedFilters";
 import { DEFAULT_FACET_THRESHOLD, resolveFilterType } from "./filterDefaults";
 import { HeaderColumnMenu } from "./HeaderColumnMenu";
 import {
@@ -3112,6 +3113,15 @@ export function DataGrid<TData extends object>({
             {features.rowSelection ? <span>{selectedRowCount} selected</span> : null}
           </div>
         </div>
+
+        {features.filterSummary ? (
+          <AppliedFilters
+            filters={toolbarFilters}
+            globalSearch={String(currentGlobalFilter ?? "")}
+            onClearGlobalSearch={() => emitGlobalFilterChangeWithServerReset("")}
+            onClearAll={clearFilters}
+          />
+        ) : null}
 
         {showSelectAllBanner ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-800">

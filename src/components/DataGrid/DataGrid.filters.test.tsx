@@ -82,7 +82,9 @@ describe("DataGrid column filters", () => {
     expect(screen.getByText("$500")).toBeInTheDocument();
     expect(screen.getByText("$1,500")).toBeInTheDocument();
     expect(screen.queryByText("$1,000")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Dept filter/i })).toHaveAttribute("data-active");
+    // Exact name (not the /Dept filter/i regex) so the chip bar's
+    // "Remove Dept filter" button doesn't also match this query.
+    expect(screen.getByRole("button", { name: "Dept filter" })).toHaveAttribute("data-active");
   });
 
   it("lets text filters use a starts-with operator from the header popover", () => {
@@ -641,5 +643,102 @@ describe("type-aware filter predicate coverage", () => {
     expect(screen.getByText("no2")).toBeInTheDocument();
     expect(screen.queryByText("yes1")).not.toBeInTheDocument();
     expect(screen.queryByText("yes2")).not.toBeInTheDocument();
+  });
+});
+
+describe("DataGrid applied-filter chip bar", () => {
+  it("shows a removable chip per active filter and a clear-all", () => {
+    render(
+      <DataGrid
+        data={[
+          { id: "a", dept: "Grocery", price: 5 },
+          { id: "b", dept: "Home", price: 50 },
+        ]}
+        columns={[
+          { accessorKey: "dept", header: "Dept", dataType: "text" },
+          { accessorKey: "price", header: "Price", dataType: "number" },
+        ]}
+        getRowId={(r) => r.id}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Grocery" }));
+    const chip = screen.getByTestId("applied-filter-dept");
+    expect(chip).toHaveTextContent(/Dept/);
+    fireEvent.click(within(chip).getByRole("button", { name: /Remove Dept filter/i }));
+    expect(screen.queryByTestId("applied-filter-dept")).not.toBeInTheDocument();
+  });
+
+  it("hides the applied-filter bar when features.filterSummary is false", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", dept: "Grocery" }, { id: "b", dept: "Home" }]}
+        columns={[{ accessorKey: "dept", header: "Dept", dataType: "text" }]}
+        getRowId={(r) => r.id}
+        features={{ filterSummary: false }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Grocery" }));
+    expect(screen.queryByTestId("applied-filter-dept")).not.toBeInTheDocument();
+  });
+
+  it("status bar reflects the filtered row count", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", dept: "Grocery" }, { id: "b", dept: "Home" }]}
+        columns={[{ accessorKey: "dept", header: "Dept", dataType: "text" }]}
+        getRowId={(r) => r.id}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Grocery" }));
+    expect(screen.getByText(/1 of 2 rows/i)).toBeInTheDocument();
+  });
+
+  it("keeps the chip for a filtered column even when that column is hidden", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", dept: "Grocery" }, { id: "b", dept: "Home" }]}
+        columns={[
+          { accessorKey: "id", header: "ID", dataType: "text" },
+          { accessorKey: "dept", header: "Dept", dataType: "text" },
+        ]}
+        getRowId={(r) => r.id}
+        state={{ columnVisibility: { dept: false }, columnFilters: [{ id: "dept", value: ["Grocery"] }] }}
+      />,
+    );
+    const chip = screen.getByTestId("applied-filter-dept");
+    expect(chip).toHaveTextContent(/Dept/);
+    expect(within(chip).getByRole("button", { name: /Remove Dept filter/i })).toBeInTheDocument();
+  });
+
+  it("renders an applied-filter chip in pivot mode for an active filter", () => {
+    type PivotRow = { id: string; dept: string; revenue: number };
+    const pivotData: PivotRow[] = [
+      { id: "1", dept: "Grocery", revenue: 100 },
+      { id: "2", dept: "Home", revenue: 200 },
+    ];
+    const pivotColumns: GridColumnConfig<PivotRow>[] = [
+      { accessorKey: "dept", header: "Dept", dataType: "text", enableGrouping: true },
+      { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+    ];
+    render(
+      <DataGrid
+        data={pivotData}
+        columns={pivotColumns}
+        layoutMode="pivot"
+        getRowId={(r) => r.id}
+        pivot={{
+          rows: ["dept"],
+          measures: [
+            { id: "revenue", label: "Revenue", columnId: "revenue", aggregation: "sum" },
+          ],
+        }}
+        state={{ columnFilters: [{ id: "dept", value: ["Grocery"] }] }}
+      />,
+    );
+    const chip = screen.getByTestId("applied-filter-dept");
+    expect(chip).toHaveTextContent(/Dept/);
   });
 });
