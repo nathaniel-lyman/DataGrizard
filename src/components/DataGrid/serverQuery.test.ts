@@ -63,10 +63,13 @@ describe("requestToQuerySpec", () => {
     ]);
   });
 
-  it("defaults a config-less filter type to select/is", () => {
+  it("infers a config-less filter type from the column dataType (text → contains)", () => {
+    // `region` is a text column with no explicit filterType in the config, so it
+    // resolves to the dataType-inferred control (free-text contains in server
+    // mode) — in lockstep with the auto-provisioned grid filter.
     const { filters: f } = spec({ columnFilters: [{ id: "region", value: "West" }] });
     expect(f).toEqual([
-      { column: "region", filterType: "select", operator: "is", value: "West" },
+      { column: "region", filterType: "text", operator: "contains", value: "West" },
     ]);
   });
 

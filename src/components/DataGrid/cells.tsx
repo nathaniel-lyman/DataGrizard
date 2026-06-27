@@ -31,6 +31,7 @@ export type AnyColumnConfig<TData> = {
   pinned?: "left" | "right";
   enablePinning?: boolean;
   enableGrouping?: boolean;
+  enableFiltering?: boolean;
   dateFormat?: Intl.DateTimeFormatOptions;
   formatValue?: (value: unknown, row: TData) => ReactNode;
   formatGroupingValue?: (value: unknown, rows: TData[]) => ReactNode;

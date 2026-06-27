@@ -26,6 +26,7 @@ export type RetailItem = {
   price_gap: number;
   recommendation_status: RecommendationStatus;
   last_restocked_at: string;
+  on_promotion: boolean;
 };
 
 const departments = ["Grocery", "Apparel", "Home", "Electronics", "Beauty", "Sporting Goods"] as const;
@@ -147,15 +148,19 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     getStatusClassName: (value) => statusStyles[value as RecommendationStatus],
   },
   { accessorKey: "last_restocked_at", header: "Last Restocked", dataType: "date", width: 140, editable: true },
+  { accessorKey: "on_promotion", header: "On Promotion", dataType: "boolean", width: 130 },
 ];
 
 export const retailFilters: GridFilterConfig<RetailItem>[] = [
-  { accessorKey: "item_name", label: "Item Name", filterType: "text", placeholder: "Search names…" },
-  { accessorKey: "department", label: "Department", filterType: "multiSelect" },
-  { accessorKey: "category", label: "Category" },
-  { accessorKey: "recommendation_status", label: "Status", filterType: "multiSelect" },
-  { accessorKey: "sales", label: "Sales", filterType: "range", min: 0, step: 1000 },
-  { accessorKey: "last_restocked_at", label: "Last Restocked", filterType: "date" },
+  // High-cardinality text: keep the friendlier placeholder; inference already
+  // picks free-text contains.
+  { accessorKey: "item_name", placeholder: "Search names…" },
+  // Provide canonical option lists so these facet identically in client AND
+  // server mode (server mode cannot derive options from one page).
+  { accessorKey: "department", options: [...departments] },
+  { accessorKey: "recommendation_status", options: [...statuses] },
+  // Range bounds/step are a presentation choice, not inferable.
+  { accessorKey: "sales", min: 0, step: 1000 },
 ];
 
 const sum = (rows: RetailItem[], key: "sales" | "units") =>
@@ -278,5 +283,6 @@ export const mockRetailData: RetailItem[] = Array.from({ length: 500 }, (_, inde
     price_gap: priceGap,
     recommendation_status: status,
     last_restocked_at: lastRestockedAt,
+    on_promotion: seededRandom(rowNumber * 43) > 0.6,
   };
 });

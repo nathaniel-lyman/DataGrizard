@@ -29,6 +29,25 @@ export const uniqueColumnValues = <TData extends object>(
   key: Extract<keyof TData, string>,
 ) => Array.from(new Set(data.map((row) => String(row[key] ?? "")))).filter(Boolean).sort();
 
+// Min/max over a column's finite numeric cells, for range-filter input bounds.
+// Returns null when the column has no finite values (so callers can skip bounds).
+export const columnNumericExtent = <TData extends object>(
+  data: TData[],
+  key: Extract<keyof TData, string>,
+): { min: number; max: number } | null => {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const row of data) {
+    const raw = row[key];
+    if (raw == null || raw === "") continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return Number.isFinite(min) ? { min, max } : null;
+};
+
 export const isPivotRow = <TData extends object>(row: TData | PivotRow<TData>): row is PivotRow<TData> =>
   "__pivot" in row && row.__pivot === true;
 

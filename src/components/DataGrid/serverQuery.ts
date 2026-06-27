@@ -5,11 +5,13 @@ import type {
 } from "@tanstack/react-table";
 import type {
   GridColumnConfig,
+  GridDataType,
   GridFilterConfig,
   GridFilterOperator,
   GridFilterType,
 } from "../../types/grid";
 import { isFilterValueActive, resolveFilterClause } from "./filterMatch";
+import { resolveFilterType } from "./filterDefaults";
 
 /**
  * Dialect-neutral translation of a grid query (the `dataSource` request slices)
@@ -75,20 +77,39 @@ export function requestToQuerySpec<TData>(
   options: RequestToQuerySpecOptions<TData>,
 ): QuerySpec {
   const known = new Set(options.columns.map((column) => column.accessorKey as string));
+  const dataTypeById = new Map<string, GridDataType>(
+    options.columns.map((column) => [column.accessorKey as string, column.dataType]),
+  );
 
-  const filterTypeById = new Map<string, GridFilterType>();
-  const operatorById = new Map<string, GridFilterOperator | undefined>();
+  const overrideById = new Map<string, GridFilterConfig<TData>>();
   for (const filter of options.filters ?? []) {
-    const key = filter.accessorKey as string;
-    filterTypeById.set(key, filter.filterType ?? "select");
-    operatorById.set(key, filter.operator);
+    overrideById.set(filter.accessorKey as string, filter);
   }
+
+  // Resolve each column's filter type the SAME way the grid does in server mode:
+  // an explicit `filters` override wins, otherwise infer from the column's
+  // dataType (isServerMode so text never auto-facets from a single page). This
+  // keeps the server query path in lockstep with the grid's auto-provisioned
+  // filters — without it, a column the consumer didn't list in `filters` (or
+  // listed without a filterType) would fall back to exact "select" match and
+  // desync from what the grid emits.
+  const filterTypeFor = (id: string): GridFilterType => {
+    const override = overrideById.get(id);
+    if (override?.filterType) return override.filterType;
+    const dataType = dataTypeById.get(id);
+    if (!dataType) return "select";
+    return resolveFilterType({
+      dataType,
+      hasStaticOptions: Boolean(override?.options?.length),
+      isServerMode: true,
+    });
+  };
 
   const filters: QueryFilterClause[] = [];
   for (const columnFilter of request.columnFilters) {
     if (!known.has(columnFilter.id)) continue; // identifier whitelist
-    const filterType = filterTypeById.get(columnFilter.id) ?? "select";
-    const operator = operatorById.get(columnFilter.id);
+    const filterType = filterTypeFor(columnFilter.id);
+    const operator = overrideById.get(columnFilter.id)?.operator;
     if (!isFilterValueActive(columnFilter.value, { filterType, operator })) continue;
     const resolved = resolveFilterClause(columnFilter.value, { filterType, operator });
     filters.push({

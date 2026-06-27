@@ -55,13 +55,17 @@ describe("buildRetailQuery", () => {
     expect(sql).not.toContain("Grocery");
   });
 
-  it("builds an exact-match clause for select filters", () => {
+  it("builds an exact-match clause for boolean filters", () => {
+    // No retail column auto-infers to "select" (select is never inferred), so the
+    // exact-match SQL branch is exercised by a boolean column, which resolves to
+    // an equality clause. (Text columns like `category` now infer to contains —
+    // see the item_name test.)
     const { sql, params } = buildRetailQuery(
-      { ...baseQuery, columnFilters: [{ id: "category", value: "Frozen" }] },
+      { ...baseQuery, columnFilters: [{ id: "on_promotion", value: true }] },
       { table: TABLE },
     );
-    expect(sql).toContain("`category` = @p0");
-    expect(params.p0).toBe("Frozen");
+    expect(sql).toContain("`on_promotion` = @p0");
+    expect(params.p0).toBe(true);
   });
 
   it("builds a BETWEEN-style clause for range filters", () => {

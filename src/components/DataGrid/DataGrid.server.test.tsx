@@ -261,7 +261,7 @@ describe("DataGrid server mode — pagination", () => {
 describe("DataGrid server mode — filter options", () => {
   it("does not derive select options from the page, but honors static options", () => {
     const filtersNoOptions: GridFilterConfig<Row>[] = [
-      { accessorKey: "name", label: "Name" }, // select, no static options
+      { accessorKey: "name", label: "Name", filterType: "select" }, // select, no static options
     ];
     const { rerender } = render(
       <DataGrid
@@ -281,7 +281,7 @@ describe("DataGrid server mode — filter options", () => {
     fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
 
     const filtersWithOptions: GridFilterConfig<Row>[] = [
-      { accessorKey: "name", label: "Name", options: ["Alice", "Bob"] },
+      { accessorKey: "name", label: "Name", filterType: "select", options: ["Alice", "Bob"] },
     ];
     rerender(
       <DataGrid

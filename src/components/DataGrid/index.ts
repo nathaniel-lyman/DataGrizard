@@ -72,3 +72,9 @@ export {
   type QuerySpec,
   type RequestToQuerySpecOptions,
 } from "./serverQuery";
+export {
+  defaultFilterTypeForDataType,
+  resolveFilterType,
+  DEFAULT_FACET_THRESHOLD,
+  type ResolveFilterTypeArgs,
+} from "./filterDefaults";
