@@ -50,6 +50,7 @@ type RowMeasureProps = {
 import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, isFilterActive, type GridFilter } from "./filters";
+import { DEFAULT_FACET_THRESHOLD } from "./filterDefaults";
 import { HeaderColumnMenu } from "./HeaderColumnMenu";
 import {
   RowActionsMenu,
@@ -136,6 +137,12 @@ export type DataGridFeatures = {
   grouping: boolean;
   /** Grid mode: render an always-visible filter row under the headers. */
   floatingFilters: boolean;
+  /** Master toggle for per-column header filters (auto-provisioned by dataType). */
+  headerFilters: boolean;
+  /** When false, only columns named in `filters` are filterable (legacy opt-in). */
+  autoColumnFilters: boolean;
+  /** Show the applied-filter chip bar. */
+  filterSummary: boolean;
   /** Enable inline cell editing (inert until a column sets `editable`). */
   editing: boolean;
   /** Enable rectangular cell selection for spreadsheet-style copy/paste. */
@@ -278,6 +285,8 @@ export type DataGridProps<TData extends object> = {
   columnGroups?: DataGridColumnGroup[];
   pivot?: DataGridPivotConfig<TData>;
   filters?: GridFilterConfig<TData>[];
+  /** Text columns with <= this many distinct values auto-facet into multiSelect. Default 12. */
+  facetThreshold?: number;
   summaryItems?: DataGridSummaryItem<TData>[];
   groupSummaryItems?: DataGridSummaryItem<TData>[];
   /**
@@ -351,6 +360,9 @@ const defaultFeatures: DataGridFeatures = {
   summaries: true,
   grouping: true,
   floatingFilters: false,
+  headerFilters: true,
+  autoColumnFilters: true,
+  filterSummary: true,
   editing: true,
   cellSelection: true,
   export: true,
@@ -436,6 +448,7 @@ export function DataGrid<TData extends object>({
   columnGroups,
   pivot: pivotConfig,
   filters = [],
+  facetThreshold = DEFAULT_FACET_THRESHOLD,
   summaryItems = [],
   groupSummaryItems,
   groupSummaryDisplay = "inline",
@@ -1477,7 +1490,7 @@ export function DataGrid<TData extends object>({
     const pivotFilter = currentColumnFilters.find((item) => item.id === filter.accessorKey);
     return {
       id: filter.accessorKey,
-      label: filter.label,
+      label: filter.label ?? filter.accessorKey,
       filterType: filter.filterType ?? "select",
       operator: filter.operator,
       operators: filter.operators,

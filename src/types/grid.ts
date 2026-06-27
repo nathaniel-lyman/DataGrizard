@@ -102,6 +102,8 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
   pinned?: "left" | "right";
   enablePinning?: boolean;
   enableGrouping?: boolean;
+  /** Opt this column out of auto-provisioned filtering. Default true. */
+  enableFiltering?: boolean;
   /** Date columns: Intl options for this column's display, overriding the grid-level `dateFormat`. */
   dateFormat?: Intl.DateTimeFormatOptions;
   /** Cell value is typed as the field's own type, e.g. `TData["revenue"]`. */
@@ -182,8 +184,11 @@ export type GridFilterValue = {
 
 export type GridFilterConfig<TData> = {
   accessorKey: Extract<keyof TData, string>;
-  label: string;
-  /** Defaults to "select". */
+  /** Defaults to the column's `header`. */
+  label?: string;
+  /** Set false to opt this column out of filtering even under auto-provision. */
+  filterable?: boolean;
+  /** Defaults to a control inferred from the column's dataType. */
   filterType?: GridFilterType;
   /** Default operator for this filter. If omitted, the filter type chooses one. */
   operator?: GridFilterOperator;

@@ -60,3 +60,9 @@ export type {
   GridProgressBar,
 } from "../../types/grid";
 export { trendIconSet, type TrendIconSetOptions } from "./trendIconSet";
+export {
+  defaultFilterTypeForDataType,
+  resolveFilterType,
+  DEFAULT_FACET_THRESHOLD,
+  type ResolveFilterTypeArgs,
+} from "./filterDefaults";
