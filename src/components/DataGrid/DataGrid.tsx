@@ -229,9 +229,36 @@ export type DataGridControlledState = {
   activeViewName?: string;
 };
 
+export type DataGridDataSourceRequest = {
+  sorting: SortingState;
+  globalFilter: string;
+  columnFilters: ColumnFiltersState;
+  pagination: PaginationState;
+  signal: AbortSignal;
+  requestId: number;
+};
+
+export type DataGridDataSourceResult<TData extends object> = {
+  rows: TData[];
+  rowCount?: number;
+};
+
+export type DataGridDataSource<TData extends object> = (
+  request: DataGridDataSourceRequest,
+) => DataGridDataSourceResult<TData> | Promise<DataGridDataSourceResult<TData>>;
+
 export type DataGridProps<TData extends object> = {
-  data: TData[];
+  /** Client rows, or initial rows shown until `dataSource` resolves. */
+  data?: TData[];
   columns: GridColumnConfig<TData>[];
+  /**
+   * Convenience server adapter. When provided in grid layout, the grid owns the
+   * server query slices, calls this function on sort/filter/search/page changes,
+   * and renders in `dataMode="server"`. The low-level controlled API still works
+   * by omitting this prop and passing `dataMode`, `rowCount`, `state`, and
+   * on*Change callbacks yourself.
+   */
+  dataSource?: DataGridDataSource<TData>;
   layoutMode?: DataGridLayoutMode;
   /**
    * Whether the grid sorts/filters/paginates locally ("client", default) or
@@ -305,6 +332,8 @@ export type DataGridProps<TData extends object> = {
   onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
   onCellEdit?: (edit: DataGridCellEdit<TData>) => void;
   getExportFileName?: (context: { rowCount: number; selectedCount: number }) => string;
+  renderDataSourceError?: (error: unknown) => ReactNode;
+  onDataSourceError?: (error: unknown) => void;
 };
 
 const defaultFeatures: DataGridFeatures = {
@@ -398,11 +427,12 @@ const getHeaderResizeLabel = <TData extends object>(
 //  10. Export + clipboard     — CSV download + TSV copy (src/utils/export.ts)
 //  11. Render                — renderBodyRows + the returned JSX (toolbar → table → pager)
 export function DataGrid<TData extends object>({
-  data,
+  data: externalData = [],
   columns,
+  dataSource,
   layoutMode = "grid",
   dataMode = "client",
-  rowCount,
+  rowCount: externalRowCount,
   columnGroups,
   pivot: pivotConfig,
   filters = [],
@@ -411,19 +441,19 @@ export function DataGrid<TData extends object>({
   groupSummaryDisplay = "inline",
   summarySelectionMode = "auto",
   features: featureOverrides,
-  isLoading = false,
-  error,
+  isLoading: externalIsLoading = false,
+  error: externalError,
   emptyState,
   loadingState,
-  state: controlledState,
-  onSortingChange,
-  onGlobalFilterChange,
-  onColumnFiltersChange,
+  state: externalControlledState,
+  onSortingChange: externalOnSortingChange,
+  onGlobalFilterChange: externalOnGlobalFilterChange,
+  onColumnFiltersChange: externalOnColumnFiltersChange,
   onColumnVisibilityChange,
   onColumnSizingChange,
   onColumnOrderChange,
   onColumnPinningChange,
-  onPaginationChange,
+  onPaginationChange: externalOnPaginationChange,
   onRowSelectionChange,
   onGroupingChange,
   onExpandedChange,
@@ -454,10 +484,180 @@ export function DataGrid<TData extends object>({
   onFocusedCellChange,
   onCellEdit,
   getExportFileName,
+  renderDataSourceError,
+  onDataSourceError,
 }: DataGridProps<TData>) {
   // ----- 1. Feature resolution -----
   const isPivotLayout = layoutMode === "pivot";
-  const isServerMode = dataMode === "server" && !isPivotLayout;
+  const isDataSourceMode = Boolean(dataSource) && !isPivotLayout;
+  const [dataSourceRows, setDataSourceRows] = useState<TData[]>(() => externalData);
+  const [dataSourceRowCount, setDataSourceRowCount] = useState<number | undefined>(
+    externalRowCount,
+  );
+  const [dataSourceLoading, setDataSourceLoading] = useState(() => isDataSourceMode);
+  const [dataSourceError, setDataSourceError] = useState<ReactNode>(null);
+  const [dataSourceSorting, setDataSourceSorting] = useState<SortingState>(
+    externalControlledState?.sorting ?? [],
+  );
+  const [dataSourceGlobalFilter, setDataSourceGlobalFilter] = useState(
+    externalControlledState?.globalFilter ?? "",
+  );
+  const [dataSourceColumnFilters, setDataSourceColumnFilters] = useState<ColumnFiltersState>(
+    externalControlledState?.columnFilters ?? [],
+  );
+  const [dataSourcePagination, setDataSourcePagination] = useState<PaginationState>(
+    externalControlledState?.pagination ?? {
+      pageIndex: 0,
+      pageSize: pageSizeOptions[1] ?? pageSizeOptions[0] ?? 50,
+    },
+  );
+  const dataSourceRequestIdRef = useRef(0);
+  const renderDataSourceErrorRef = useRef(renderDataSourceError);
+  const onDataSourceErrorRef = useRef(onDataSourceError);
+  useEffect(() => {
+    renderDataSourceErrorRef.current = renderDataSourceError;
+    onDataSourceErrorRef.current = onDataSourceError;
+  }, [onDataSourceError, renderDataSourceError]);
+  const dataSourceSortingState = externalControlledState?.sorting ?? dataSourceSorting;
+  const dataSourceGlobalFilterState =
+    externalControlledState?.globalFilter ?? dataSourceGlobalFilter;
+  const dataSourceColumnFiltersState =
+    externalControlledState?.columnFilters ?? dataSourceColumnFilters;
+  const dataSourcePaginationState =
+    externalControlledState?.pagination ?? dataSourcePagination;
+  const resetDataSourcePageIndex = () => {
+    if (dataSourcePaginationState.pageIndex === 0) {
+      return;
+    }
+    const next = { ...dataSourcePaginationState, pageIndex: 0 };
+    if (externalControlledState?.pagination === undefined) {
+      setDataSourcePagination(next);
+    }
+    externalOnPaginationChange?.(next);
+  };
+  const handleDataSourceSortingChange = (next: SortingState) => {
+    if (externalControlledState?.sorting === undefined) {
+      setDataSourceSorting(next);
+    }
+    externalOnSortingChange?.(next);
+    resetDataSourcePageIndex();
+  };
+  const handleDataSourceGlobalFilterChange = (next: string) => {
+    if (externalControlledState?.globalFilter === undefined) {
+      setDataSourceGlobalFilter(next);
+    }
+    externalOnGlobalFilterChange?.(next);
+    resetDataSourcePageIndex();
+  };
+  const handleDataSourceColumnFiltersChange = (next: ColumnFiltersState) => {
+    if (externalControlledState?.columnFilters === undefined) {
+      setDataSourceColumnFilters(next);
+    }
+    externalOnColumnFiltersChange?.(next);
+    resetDataSourcePageIndex();
+  };
+  const handleDataSourcePaginationChange = (next: PaginationState) => {
+    if (externalControlledState?.pagination === undefined) {
+      setDataSourcePagination(next);
+    }
+    externalOnPaginationChange?.(next);
+  };
+
+  useEffect(() => {
+    if (!isDataSourceMode || !dataSource) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = dataSourceRequestIdRef.current + 1;
+    dataSourceRequestIdRef.current = requestId;
+    setDataSourceLoading(true);
+    setDataSourceError(null);
+
+    Promise.resolve(
+      dataSource({
+        sorting: dataSourceSortingState,
+        globalFilter: dataSourceGlobalFilterState,
+        columnFilters: dataSourceColumnFiltersState,
+        pagination: dataSourcePaginationState,
+        signal: controller.signal,
+        requestId,
+      }),
+    )
+      .then((result) => {
+        if (controller.signal.aborted || requestId !== dataSourceRequestIdRef.current) {
+          return;
+        }
+        if (!Array.isArray(result.rows)) {
+          throw new Error("DataGrid dataSource must return a rows array.");
+        }
+        const nextRowCount =
+          typeof result.rowCount === "number" && Number.isFinite(result.rowCount)
+            ? Math.max(result.rowCount, 0)
+            : undefined;
+        setDataSourceRows(result.rows);
+        setDataSourceRowCount(nextRowCount);
+        setDataSourceLoading(false);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || requestId !== dataSourceRequestIdRef.current) {
+          return;
+        }
+        onDataSourceErrorRef.current?.(error);
+        setDataSourceError(
+          renderDataSourceErrorRef.current
+            ? renderDataSourceErrorRef.current(error)
+            : "Unable to load rows.",
+        );
+        setDataSourceLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    dataSource,
+    dataSourceColumnFiltersState,
+    dataSourceGlobalFilterState,
+    dataSourcePaginationState,
+    dataSourceSortingState,
+    isDataSourceMode,
+  ]);
+
+  const data = isDataSourceMode ? dataSourceRows : externalData;
+  const rowCount = isDataSourceMode ? dataSourceRowCount : externalRowCount;
+  const effectiveDataMode = isDataSourceMode ? "server" : dataMode;
+  const isLoading = isDataSourceMode
+    ? externalIsLoading || dataSourceLoading
+    : externalIsLoading;
+  const error =
+    externalError !== undefined && externalError !== null
+      ? externalError
+      : isDataSourceMode
+        ? dataSourceError
+        : externalError;
+  const controlledState = isDataSourceMode
+    ? {
+        ...externalControlledState,
+        sorting: dataSourceSortingState,
+        globalFilter: dataSourceGlobalFilterState,
+        columnFilters: dataSourceColumnFiltersState,
+        pagination: dataSourcePaginationState,
+      }
+    : externalControlledState;
+  const onSortingChange = isDataSourceMode
+    ? handleDataSourceSortingChange
+    : externalOnSortingChange;
+  const onGlobalFilterChange = isDataSourceMode
+    ? handleDataSourceGlobalFilterChange
+    : externalOnGlobalFilterChange;
+  const onColumnFiltersChange = isDataSourceMode
+    ? handleDataSourceColumnFiltersChange
+    : externalOnColumnFiltersChange;
+  const onPaginationChange = isDataSourceMode
+    ? handleDataSourcePaginationChange
+    : externalOnPaginationChange;
+  const isServerMode = effectiveDataMode === "server" && !isPivotLayout;
   const layoutFeatureDefaults: Partial<DataGridFeatures> =
     isPivotLayout
       ? {

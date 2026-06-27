@@ -264,6 +264,48 @@ Controllable slices: `sorting`, `globalFilter`, `columnFilters`,
 `activeViewName`. When a slice is controlled, the grid never writes it to
 `localStorage` — persistence is yours.
 
+## Server data
+
+For the common server-backed table, pass `dataSource`. The grid owns sorting,
+search, column filters, and pagination, calls your adapter with those slices, and
+renders in server mode:
+
+```tsx
+<DataGrid
+  columns={columns}
+  getRowId={(row) => row.id}
+  dataSource={async ({ sorting, columnFilters, globalFilter, pagination, signal }) => {
+    const response = await fetch("/api/products/query", {
+      method: "POST",
+      signal,
+      body: JSON.stringify({ sorting, columnFilters, globalFilter, pagination }),
+    });
+    return response.json() as Promise<{ rows: Product[]; rowCount: number }>;
+  }}
+/>
+```
+
+`dataSource` receives an `AbortSignal` and a monotonic `requestId`; stale
+responses are ignored. Sort/filter/search changes reset pagination to page 1.
+Throw from the adapter to show the error overlay, or customize it with
+`renderDataSourceError`.
+
+For custom orchestration, keep using the lower-level controlled API:
+
+```tsx
+<DataGrid
+  data={rows}
+  columns={columns}
+  dataMode="server"
+  rowCount={rowCount}
+  state={{ sorting, columnFilters, globalFilter, pagination }}
+  onSortingChange={setSorting}
+  onColumnFiltersChange={setColumnFilters}
+  onGlobalFilterChange={setGlobalFilter}
+  onPaginationChange={setPagination}
+/>
+```
+
 ## Persistence
 
 Pass `storageKey` to persist exactly four slices under scoped keys:
