@@ -60,3 +60,15 @@ export type {
   GridProgressBar,
 } from "../../types/grid";
 export { trendIconSet, type TrendIconSetOptions } from "./trendIconSet";
+// Optional server-data helper: turns the dataSource request + the grid's own
+// column/filter config into a dialect-neutral query spec. SQL/transport stay
+// consumer-side (see server/README.md).
+export {
+  requestToQuerySpec,
+  type QueryFilterClause,
+  type QueryRequestSlices,
+  type QuerySearchClause,
+  type QuerySortClause,
+  type QuerySpec,
+  type RequestToQuerySpecOptions,
+} from "./serverQuery";
