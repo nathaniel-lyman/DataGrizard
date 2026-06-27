@@ -36,6 +36,11 @@ export type {
   PivotRowKind,
 } from "./pivot";
 export type {
+  DataGridRowAction,
+  DataGridRowActionContext,
+  DataGridRowActions,
+} from "./RowActionsMenu";
+export type {
   GridColorScale,
   GridColumnConfig,
   GridConditionalFormat,

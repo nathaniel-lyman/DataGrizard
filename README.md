@@ -288,6 +288,39 @@ Defaults to `en-US` / `USD`. Applies to cell formatting and the searchable text.
 `density` accepts `"compact"`, `"standard"` (default), or `"comfortable"` and
 adjusts header/body cell padding plus the default virtual-row estimate.
 
+## Row actions
+
+Pass `rowActions` to add a domain-neutral actions menu at the end of each leaf
+row. Actions can be static or resolved per row, and each action can hide or
+disable itself from the current row.
+
+```tsx
+<DataGrid
+  data={rows}
+  columns={columns}
+  getRowId={(row) => row.id}
+  rowActions={(row) => [
+    {
+      id: "approve",
+      label: "Approve",
+      hidden: row.status === "approved",
+      onSelect: (selectedRow) => approve(selectedRow.id),
+    },
+    {
+      id: "archive",
+      label: "Archive",
+      destructive: true,
+      disabled: row.locked,
+      onSelect: (selectedRow) => archive(selectedRow.id),
+    },
+  ]}
+/>
+```
+
+The actions column is excluded from export, filtering, sorting, the Columns
+menu, and spreadsheet-style cell navigation. Disable the whole surface with
+`features={{ rowActions: false }}`.
+
 ## Accessibility
 
 - Sortable headers expose `aria-sort`; multi-sort via Shift-click with priority
@@ -328,6 +361,7 @@ For a bare table with only sortable, resizable columns:
     pagination: false,
     rowSelection: false,
     detailPanel: false,
+    rowActions: false,
     headerMenu: false,
   }}
 />
@@ -348,6 +382,7 @@ For a bare table with only sortable, resizable columns:
 | `pagination`      | ✅           | ✅            |
 | `rowSelection`    | ✅           | ✅            |
 | `detailPanel`     | ✅           | ✅            |
+| `rowActions`      | ✅           | ✅            |
 | `headerMenu`      | ✅           | ✅            |
 
 ## Building from source

@@ -12,10 +12,10 @@ import {
   retailFilters,
   retailGroupSummaryItems,
   retailSummaryItems,
+  type RecommendationStatus,
   type RetailItem,
 } from "./data/mockRetailData";
 import { applyEdit, queryRetail } from "./data/fakeServer";
-import { RetailDetailPanel } from "./demo/RetailDetailPanel";
 
 const layouts: { id: DataGridLayoutMode; label: string }[] = [
   { id: "pivot", label: "Pivot" },
@@ -59,6 +59,20 @@ function App() {
   // Server mode applies to grid layout only.
   const isServer = dataMode === "server" && layoutMode === "grid";
 
+  const updateRecommendationStatus = (item: RetailItem, status: RecommendationStatus) => {
+    if (isServer) {
+      applyEdit(item.item_id, "recommendation_status", status);
+      setRefreshToken((token) => token + 1);
+      return;
+    }
+
+    setRows((current) =>
+      current.map((row) =>
+        row.item_id === item.item_id ? { ...row, recommendation_status: status } : row,
+      ),
+    );
+  };
+
   useEffect(() => {
     if (!isServer) return;
     const requestId = ++requestIdRef.current;
@@ -84,7 +98,7 @@ function App() {
                 ? "Pivot view — grouped subtotals. Switch to Grid to drill to item level."
                 : isServer
                   ? "Grid view — server mode: sort/filter/paginate round-trip to a simulated backend."
-                  : "Grid view — expand a group to see items, or click a row for detail."}
+                  : "Grid view — expand a group to see item rows."}
             </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 text-xs text-slate-500 sm:w-auto">
@@ -178,6 +192,7 @@ function App() {
           groupSummaryDisplay="columns"
           defaultGrouping={["department", "category"]}
           pivot={{ showLeafRows: true }}
+          features={{ detailPanel: false }}
           storageKey="retail-recommendation-workbench"
           rowLabel="items"
           tableLabel="Retail recommendation analytics"
@@ -185,8 +200,28 @@ function App() {
           viewNamePlaceholder="Pricing review"
           getRowId={(row) => row.item_id}
           getRowLabel={(row) => row.item_id}
+          rowActions={(row) => [
+            {
+              id: "approve",
+              label: "Approve",
+              hidden: row.recommendation_status === "approved",
+              onSelect: () => updateRecommendationStatus(row, "approved"),
+            },
+            {
+              id: "investigate",
+              label: "Mark investigate",
+              disabled: row.recommendation_status === "investigate",
+              onSelect: () => updateRecommendationStatus(row, "investigate"),
+            },
+            {
+              id: "reject",
+              label: "Reject",
+              hidden: row.recommendation_status === "rejected",
+              destructive: true,
+              onSelect: () => updateRecommendationStatus(row, "rejected"),
+            },
+          ]}
           virtualizeRows
-          renderDetailPanel={(item) => <RetailDetailPanel item={item} />}
         />
       </section>
     </main>

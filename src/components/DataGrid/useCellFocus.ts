@@ -14,6 +14,7 @@ type UseCellFocusOptions<TData extends object> = {
   isPivotLayout: boolean;
   table: Table<TData | PivotRow<TData>>;
   floatingFiltersEnabled: boolean;
+  nonNavigableColumnIds?: string[];
   virtualizeRows: boolean;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
   onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
@@ -24,6 +25,7 @@ export function useCellFocus<TData extends object>({
   isPivotLayout,
   table,
   floatingFiltersEnabled,
+  nonNavigableColumnIds = ["select"],
   virtualizeRows,
   rowVirtualizer,
   onFocusedCellChange,
@@ -38,7 +40,7 @@ export function useCellFocus<TData extends object>({
   const navColumnIds = table
     .getVisibleLeafColumns()
     .map((column) => column.id)
-    .filter((id) => id !== "select");
+    .filter((id) => !nonNavigableColumnIds.includes(id));
   const navRowIds = visibleRows
     .filter((row) => isPivotLayout || !row.getIsGrouped())
     .map((row) => row.id);

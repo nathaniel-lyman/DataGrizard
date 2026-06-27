@@ -52,6 +52,10 @@ import { Toolbar } from "./Toolbar";
 import { FilterPopover, isFilterActive, type GridFilter } from "./filters";
 import { HeaderColumnMenu } from "./HeaderColumnMenu";
 import {
+  RowActionsMenu,
+  type DataGridRowActions,
+} from "./RowActionsMenu";
+import {
   CellEditor,
   computeEditError,
   parseEditValue,
@@ -113,6 +117,9 @@ type PivotMeasureColumnMeta = {
   totalLevel?: "subtotal" | "grandTotal";
 };
 
+const SELECT_COLUMN_ID = "select";
+const ROW_ACTIONS_COLUMN_ID = "__datagrid_row_actions";
+
 export type DataGridFeatures = {
   toolbar: boolean;
   globalSearch: boolean;
@@ -139,6 +146,8 @@ export type DataGridFeatures = {
   clipboard: boolean;
   /** Show the per-column header menu for sort/filter/hide/pin/width actions. */
   headerMenu: boolean;
+  /** Show a per-row actions menu when `rowActions` is supplied. */
+  rowActions: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -287,6 +296,7 @@ export type DataGridProps<TData extends object> = {
   /** Estimated row height in px used to seed the virtualizer. */
   estimatedRowHeight?: number;
   renderDetailPanel?: (row: TData | null, controls: { close: () => void }) => ReactNode;
+  rowActions?: DataGridRowActions<TData>;
   getRowId?: (row: TData, index: number, parent?: Row<TData>) => string;
   getRowLabel?: (row: TData) => string;
   getRowClassName?: (row: TData) => string;
@@ -317,6 +327,7 @@ const defaultFeatures: DataGridFeatures = {
   export: true,
   clipboard: true,
   headerMenu: true,
+  rowActions: true,
 };
 
 const densityStyles: Record<DataGridDensity, { header: string; cell: string; rowHeight: number }> = {
@@ -434,6 +445,7 @@ export function DataGrid<TData extends object>({
   virtualizeRows = false,
   estimatedRowHeight,
   renderDetailPanel,
+  rowActions,
   getRowId,
   getRowLabel,
   getRowClassName,
@@ -466,6 +478,9 @@ export function DataGrid<TData extends object>({
   };
   const densityStyle = densityStyles[density] ?? densityStyles.standard;
   const resolvedEstimatedRowHeight = estimatedRowHeight ?? densityStyle.rowHeight;
+  const showRowActions =
+    features.rowActions &&
+    (typeof rowActions === "function" || (Array.isArray(rowActions) && rowActions.length > 0));
   // ----- 2. Column config (value-erased) + storage keys + default order/pinning -----
   const columnList = columns as unknown as AnyColumnConfig<TData>[];
   const defaultExpanded = useMemo<ExpandedState>(
@@ -514,15 +529,16 @@ export function DataGrid<TData extends object>({
   );
   const defaultColumnOrder = useMemo<ColumnOrderState>(
     () => [
-      ...(features.rowSelection ? ["select"] : []),
+      ...(features.rowSelection ? [SELECT_COLUMN_ID] : []),
       ...(isPivotLayout
         ? [PIVOT_ROW_LABEL_COLUMN_ID, ...pivotMeasureIds.map((id) => `measure:${id}`)]
         : columnList.map((column) => column.accessorKey)),
+      ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
     ],
-    [columnList, features.rowSelection, isPivotLayout, pivotMeasureIds],
+    [columnList, features.rowSelection, isPivotLayout, pivotMeasureIds, showRowActions],
   );
   const lockedLeftColumnIds = useMemo(
-    () => (features.columnPinning && features.rowSelection ? ["select"] : []),
+    () => (features.columnPinning && features.rowSelection ? [SELECT_COLUMN_ID] : []),
     [features.columnPinning, features.rowSelection],
   );
   const defaultPinningState = useMemo<ColumnPinningState>(() => {
@@ -539,11 +555,12 @@ export function DataGrid<TData extends object>({
         ...columnList
           .filter((column) => column.pinned === "right")
           .map((column) => column.accessorKey),
+        ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
       ],
     };
 
     return normalizeColumnPinning(configured, lockedLeftColumnIds);
-  }, [columnList, defaultColumnPinning, isPivotLayout, lockedLeftColumnIds]);
+  }, [columnList, defaultColumnPinning, isPivotLayout, lockedLeftColumnIds, showRowActions]);
   const columnsById = useMemo<Map<string, AnyColumnConfig<TData>>>(
     () => new Map(columnList.map((column) => [column.accessorKey, column])),
     [columnList],
@@ -666,6 +683,12 @@ export function DataGrid<TData extends object>({
     onRowClick?.(row);
   };
 
+  const getSourceRowLabel = (row: TData) => {
+    const rowIndex = data.indexOf(row);
+    const rowId = getRowId?.(row, rowIndex < 0 ? 0 : rowIndex) ?? String(rowIndex);
+    return getRowLabel?.(row) ?? rowId;
+  };
+
   const adaptedPivotMeasures = useMemo<DataGridPivotMeasure<TData>[]>(
     () =>
       (pivotConfig?.measures?.length
@@ -696,7 +719,7 @@ export function DataGrid<TData extends object>({
       ...(features.rowSelection
         ? [
             {
-              id: "select",
+              id: SELECT_COLUMN_ID,
               header: ({ table }) => (
                 <input
                   type="checkbox"
@@ -765,6 +788,44 @@ export function DataGrid<TData extends object>({
       formatOptions,
       getRowLabel,
     ],
+  );
+
+  const rowActionsColumn = useMemo<ColumnDef<TData | PivotRow<TData>, unknown> | null>(
+    () =>
+      showRowActions && rowActions
+        ? {
+            id: ROW_ACTIONS_COLUMN_ID,
+            header: () => <span className="sr-only">Actions</span>,
+            cell: ({ row }) => {
+              const original = row.original;
+              const sourceRow = isPivotRow(original) ? original.__leafRow : original;
+
+              if (!sourceRow) {
+                return null;
+              }
+
+              const typedRow = sourceRow as TData;
+              const rowIndex = data.indexOf(typedRow);
+              const rowId = getRowId?.(typedRow, rowIndex < 0 ? 0 : rowIndex) ?? row.id;
+
+              return (
+                <RowActionsMenu<TData>
+                  row={typedRow}
+                  rowId={rowId}
+                  rowLabel={getSourceRowLabel(typedRow)}
+                  actions={rowActions}
+                />
+              );
+            },
+            enableSorting: false,
+            enableColumnFilter: false,
+            enableHiding: false,
+            enableResizing: false,
+            enablePinning: false,
+            size: 52,
+          }
+        : null,
+    [data, getRowId, getSourceRowLabel, rowActions, showRowActions],
   );
 
   const globalFilterFn = useMemo<FilterFn<TData>>(
@@ -934,7 +995,7 @@ export function DataGrid<TData extends object>({
   };
   const pivotSelectionColumn = useMemo<ColumnDef<PivotRow<TData>, unknown>>(
     () => ({
-      id: "select",
+      id: SELECT_COLUMN_ID,
       header: ({ table }) => {
         if (pivotSelectionMode !== "sourceRows") {
           return (
@@ -1037,17 +1098,22 @@ export function DataGrid<TData extends object>({
     ? [
         ...(features.rowSelection ? [pivotSelectionColumn] : []),
         ...pivotMaterialization.columns,
+        ...(rowActionsColumn ? [rowActionsColumn] : []),
       ]
-    : groupedColumnDefs) as ColumnDef<TData | PivotRow<TData>, unknown>[];
+    : [
+        ...groupedColumnDefs,
+        ...(rowActionsColumn ? [rowActionsColumn] : []),
+      ]) as ColumnDef<TData | PivotRow<TData>, unknown>[];
   const effectiveDefaultColumnOrder = useMemo<ColumnOrderState>(
     () =>
       pivotMaterialization
         ? [
-            ...(features.rowSelection ? ["select"] : []),
+            ...(features.rowSelection ? [SELECT_COLUMN_ID] : []),
             ...pivotMaterialization.metadata.generatedColumnIds,
+            ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
           ]
         : defaultColumnOrder,
-    [defaultColumnOrder, features.rowSelection, pivotMaterialization],
+    [defaultColumnOrder, features.rowSelection, pivotMaterialization, showRowActions],
   );
   const generatedPivotColumnIds = useMemo(
     () => new Set(pivotMaterialization?.metadata.generatedColumnIds ?? []),
@@ -1083,7 +1149,10 @@ export function DataGrid<TData extends object>({
   }, [currentColumnPinning, generatedPivotColumnIds, lockedLeftColumnIds, pivotMaterialization]);
   const effectiveColumnOrder = useMemo<ColumnOrderState>(() => {
     if (!pivotMaterialization) {
-      return currentColumnOrder;
+      const missingDefaultIds = effectiveDefaultColumnOrder.filter(
+        (columnId) => !currentColumnOrder.includes(columnId),
+      );
+      return [...currentColumnOrder, ...missingDefaultIds];
     }
 
     const generatedAxisIds = pivotMaterialization.metadata.generatedColumnIds.filter((columnId) =>
@@ -1307,7 +1376,7 @@ export function DataGrid<TData extends object>({
   const getOrderedDataColumnIds = () =>
     table
       .getAllLeafColumns()
-      .filter((column) => column.id !== "select")
+      .filter((column) => column.id !== SELECT_COLUMN_ID && column.id !== ROW_ACTIONS_COLUMN_ID)
       .map((column) => column.id);
 
   const moveColumn = (columnId: string, direction: "up" | "down") => {
@@ -1322,7 +1391,11 @@ export function DataGrid<TData extends object>({
     const nextIds = [...orderedIds];
     const [movedId] = nextIds.splice(fromIndex, 1);
     nextIds.splice(toIndex, 0, movedId);
-    setPersistedColumnOrder([...(features.rowSelection ? ["select"] : []), ...nextIds]);
+    setPersistedColumnOrder([
+      ...(features.rowSelection ? [SELECT_COLUMN_ID] : []),
+      ...nextIds,
+      ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
+    ]);
   };
 
   const dropColumn = (fromColumnId: string, toColumnId: string) => {
@@ -1337,7 +1410,11 @@ export function DataGrid<TData extends object>({
     const nextIds = [...orderedIds];
     const [movedId] = nextIds.splice(fromIndex, 1);
     nextIds.splice(toIndex, 0, movedId);
-    setPersistedColumnOrder([...(features.rowSelection ? ["select"] : []), ...nextIds]);
+    setPersistedColumnOrder([
+      ...(features.rowSelection ? [SELECT_COLUMN_ID] : []),
+      ...nextIds,
+      ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
+    ]);
   };
 
   const pinColumn = (columnId: string, position: false | "left" | "right") => {
@@ -1812,6 +1889,7 @@ export function DataGrid<TData extends object>({
     isPivotLayout,
     table,
     floatingFiltersEnabled: features.floatingFilters,
+    nonNavigableColumnIds: [SELECT_COLUMN_ID, ROW_ACTIONS_COLUMN_ID],
     virtualizeRows,
     rowVirtualizer,
     onFocusedCellChange,
@@ -2110,7 +2188,9 @@ export function DataGrid<TData extends object>({
 
   // ----- 10. Export + clipboard -----
   const exportLeafColumns = () =>
-    table.getVisibleLeafColumns().filter((column) => column.id !== "select");
+    table
+      .getVisibleLeafColumns()
+      .filter((column) => column.id !== SELECT_COLUMN_ID && column.id !== ROW_ACTIONS_COLUMN_ID);
   const getExportText = (
     row: Row<TData | PivotRow<TData>>,
     column: Column<TData | PivotRow<TData>, unknown>,
@@ -2396,7 +2476,10 @@ export function DataGrid<TData extends object>({
       >
         {row.getVisibleCells().map((cell) => {
           const columnConfig = !pivotRow ? columnsById.get(cell.column.id) : undefined;
-          const isPivotMeasure = Boolean(pivotRow) && cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID;
+          const isPivotMeasure =
+            Boolean(pivotRow) &&
+            cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID &&
+            cell.column.id !== ROW_ACTIONS_COLUMN_ID;
           const isNavCell = navColumnIds.includes(cell.column.id);
           const isTabStop =
             activeTabCell?.rowId === row.id && activeTabCell?.columnId === cell.column.id;
@@ -2432,7 +2515,9 @@ export function DataGrid<TData extends object>({
                 canEditCell ? () => beginEdit(row.id, cell.column.id) : undefined
               }
               onClick={
-                isNavCell
+                cell.column.id === ROW_ACTIONS_COLUMN_ID
+                  ? (event) => event.stopPropagation()
+                  : isNavCell
                   ? (event) => {
                       if (suppressNextCellClickRef.current) {
                         event.stopPropagation();
@@ -2650,7 +2735,7 @@ export function DataGrid<TData extends object>({
             enableGrouping={features.grouping}
             columns={table
               .getAllLeafColumns()
-              .filter((column) => column.id !== "select")
+              .filter((column) => column.id !== SELECT_COLUMN_ID && column.id !== ROW_ACTIONS_COLUMN_ID)
               .map((column) => ({
                 id: column.id,
                 label: getColumnControlLabel(column),

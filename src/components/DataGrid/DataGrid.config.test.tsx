@@ -128,6 +128,132 @@ describe("DataGrid feature flags", () => {
   });
 });
 
+describe("DataGrid row actions", () => {
+  it("renders a generic actions column and invokes the selected action with row context", () => {
+    const onApprove = vi.fn();
+
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false, pagination: false }}
+        rowActions={[
+          {
+            id: "approve",
+            label: "Approve",
+            onSelect: onApprove,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open actions for 1" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Approve" }));
+
+    expect(onApprove).toHaveBeenCalledWith(
+      data[0],
+      expect.objectContaining({ row: data[0], rowId: "1", closeMenu: expect.any(Function) }),
+    );
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("supports hidden and disabled row actions per row", () => {
+    const onHidden = vi.fn();
+    const onDisabled = vi.fn();
+
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false, pagination: false }}
+        rowActions={(row) => [
+          {
+            id: "hidden-for-active",
+            label: "Hidden active action",
+            hidden: row.status === "active",
+            onSelect: onHidden,
+          },
+          {
+            id: "disabled-for-churned",
+            label: "Disabled churned action",
+            disabled: row.status === "churned",
+            onSelect: onDisabled,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open actions for 1" }));
+    expect(screen.queryByRole("menuitem", { name: "Hidden active action" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disabled churned action" }));
+    expect(onDisabled).toHaveBeenCalledWith(
+      data[0],
+      expect.objectContaining({ rowId: "1" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open actions for 2" }));
+    const disabledAction = screen.getByRole("menuitem", { name: "Disabled churned action" });
+    expect(disabledAction).toBeDisabled();
+    fireEvent.click(disabledAction);
+    expect(onHidden).not.toHaveBeenCalled();
+    expect(onDisabled).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps action clicks from triggering row click behavior", () => {
+    const onRowClick = vi.fn();
+    const onAction = vi.fn();
+
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        onRowClick={onRowClick}
+        features={{ rowSelection: false, pagination: false }}
+        rowActions={[
+          {
+            id: "inspect",
+            label: "Inspect",
+            onSelect: onAction,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open actions for 1" }));
+    expect(onRowClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Inspect" }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("can disable the row actions column through feature flags", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false, pagination: false, rowActions: false }}
+        rowActions={[
+          {
+            id: "approve",
+            label: "Approve",
+            onSelect: vi.fn(),
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open actions for/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("DataGrid density", () => {
   it("uses standard density by default and exposes compact density", () => {
     const { rerender } = render(
