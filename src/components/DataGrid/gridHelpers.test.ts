@@ -16,4 +16,12 @@ describe("columnNumericExtent", () => {
     expect(columnNumericExtent([{ n: null }] as unknown as { n: number }[], "n")).toBeNull();
     expect(columnNumericExtent([], "n" as never)).toBeNull();
   });
+
+  it("preserves legitimate zero values", () => {
+    expect(columnNumericExtent([{ n: 0 }, { n: 5 }], "n")).toEqual({ min: 0, max: 5 });
+  });
+
+  it("ignores empty-string cells", () => {
+    expect(columnNumericExtent([{ n: "" }, { n: 4 }] as unknown as { n: number }[], "n")).toEqual({ min: 4, max: 4 });
+  });
 });
