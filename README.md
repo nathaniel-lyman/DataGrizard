@@ -405,27 +405,34 @@ For a bare table with only sortable, resizable columns:
     detailPanel: false,
     rowActions: false,
     headerMenu: false,
+    collapsibleToolbar: false,
   }}
 />
 ```
 
-| feature           | grid default | pivot default |
-| ----------------- | ------------ | ------------- |
-| `toolbar`         | ✅           | ✅            |
-| `globalSearch`    | ✅           | ✅            |
-| `sorting`         | ✅           | ✅            |
-| `columnVisibility`| ✅           | ✅            |
-| `columnResizing`  | ✅           | ✅            |
-| `columnOrdering`  | ✅           | ✅            |
-| `columnPinning`   | ✅           | ✅            |
-| `savedViews`      | ✅           | ✅            |
-| `grouping`        | ✅           | ✅ (forced)   |
-| `summaries`       | ✅           | ✅            |
-| `pagination`      | ✅           | ✅            |
-| `rowSelection`    | ✅           | ✅            |
-| `detailPanel`     | ✅           | ✅            |
-| `rowActions`      | ✅           | ✅            |
-| `headerMenu`      | ✅           | ✅            |
+| feature              | grid default | pivot default |
+| -------------------- | ------------ | ------------- |
+| `toolbar`            | ✅           | ✅            |
+| `globalSearch`       | ✅           | ✅            |
+| `sorting`            | ✅           | ✅            |
+| `columnVisibility`   | ✅           | ✅            |
+| `columnResizing`     | ✅           | ✅            |
+| `columnOrdering`     | ✅           | ✅            |
+| `columnPinning`      | ✅           | ✅            |
+| `savedViews`         | ✅           | ✅            |
+| `grouping`           | ✅           | ✅ (forced)   |
+| `summaries`          | ✅           | ✅            |
+| `pagination`         | ✅           | ✅            |
+| `rowSelection`       | ✅           | ✅            |
+| `detailPanel`        | ✅           | ✅            |
+| `rowActions`         | ✅           | ✅            |
+| `headerMenu`         | ✅           | ✅            |
+| `collapsibleToolbar` | ✅           | ✅            |
+
+`collapsibleToolbar` keeps search, filters, and export visible while placing
+advanced view setup controls (grouping, columns, saved views, reset view) behind
+the toolbar's **View controls** disclosure. Set it to `false` to render those
+controls expanded.
 
 ## Building from source
 

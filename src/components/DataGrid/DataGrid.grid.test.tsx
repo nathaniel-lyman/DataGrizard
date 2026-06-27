@@ -20,6 +20,10 @@ const columns: GridColumnConfig<Row>[] = [
   { accessorKey: "units", header: "Units", dataType: "number" },
 ];
 
+const openViewControls = () => {
+  fireEvent.click(screen.getByRole("button", { name: "View controls" }));
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -60,6 +64,7 @@ describe("DataGrid column header groups", () => {
       />,
     );
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByLabelText("Toggle Product column"));
 
@@ -242,6 +247,7 @@ describe("DataGrid persistence respects controlled slices (bug #2)", () => {
       />,
     );
 
+    openViewControls();
     fireEvent.change(screen.getByLabelText("View name"), { target: { value: "My view" } });
     fireEvent.click(screen.getByRole("button", { name: "Save view" }));
 
@@ -254,6 +260,7 @@ describe("DataGrid persistence respects controlled slices (bug #2)", () => {
       <DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="unctrl-test" />,
     );
 
+    openViewControls();
     fireEvent.change(screen.getByLabelText("View name"), { target: { value: "My view" } });
     fireEvent.click(screen.getByRole("button", { name: "Save view" }));
 
@@ -279,6 +286,7 @@ describe("DataGrid pivot pagination", () => {
       />,
     );
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: "Remove Dept grouping" }));
 
     expect(onPaginationChange).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 50 });

@@ -100,6 +100,10 @@ const summaryItems: DataGridSummaryItem<ProductRow>[] = [
 
 const groupSummaryItems: DataGridSummaryItem<ProductRow>[] = summaryItems;
 
+const openViewControls = () => {
+  fireEvent.click(screen.getByRole("button", { name: "View controls" }));
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -238,6 +242,7 @@ describe("DataGrid pivot layout mode", () => {
     expect(screen.getByRole("columnheader", { name: "Revenue" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Units" })).toBeInTheDocument();
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByLabelText("Toggle Units column"));
 
@@ -274,6 +279,7 @@ describe("DataGrid pivot layout mode", () => {
     });
     expect(revenueHeader.style.width).not.toBe(beforeWidth);
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByRole("button", { name: "Pin Revenue right" }));
     expect(revenueHeader).toHaveStyle({ position: "sticky" });
@@ -614,6 +620,7 @@ describe("DataGrid pivot layout mode", () => {
     expect(screen.queryByRole("columnheader", { name: "Home" })).not.toBeInTheDocument();
     expect(screen.getAllByText("2400").length).toBeGreaterThan(0);
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     screen
       .getAllByLabelText(/Toggle .* Units column/)
@@ -645,6 +652,7 @@ describe("DataGrid pivot layout mode", () => {
     const resizedRevenueWidth = screen.getByRole("columnheader", { name: "Revenue" }).style.width;
     expect(resizedRevenueWidth).not.toBe(initialRevenueWidth);
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByLabelText("Toggle Units column"));
     fireEvent.click(screen.getByRole("button", { name: "Pin Revenue right" }));
@@ -671,6 +679,7 @@ describe("DataGrid pivot layout mode", () => {
   it("persists grouping in saved views and reset restores the default grouping", () => {
     renderGrid();
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: "Remove Category grouping" }));
     expect(screen.queryByText("Nut Butter")).not.toBeInTheDocument();
     expect(screen.getByText("Grocery")).toBeInTheDocument();

@@ -157,6 +157,8 @@ export type DataGridFeatures = {
   headerMenu: boolean;
   /** Show a per-row actions menu when `rowActions` is supplied. */
   rowActions: boolean;
+  /** Collapse grouping, column, and saved-view controls behind a toolbar disclosure. */
+  collapsibleToolbar: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -371,6 +373,7 @@ const defaultFeatures: DataGridFeatures = {
   clipboard: true,
   headerMenu: true,
   rowActions: true,
+  collapsibleToolbar: true,
 };
 
 // Stable empty default so consumers that omit `filters` (the common case now
@@ -3066,6 +3069,7 @@ export function DataGrid<TData extends object>({
             enableColumnPinning={features.columnPinning}
             enableSavedViews={features.savedViews}
             enableGrouping={features.grouping}
+            enableCollapsibleControls={features.collapsibleToolbar}
             columns={table
               .getAllLeafColumns()
               .filter((column) => column.id !== SELECT_COLUMN_ID && column.id !== ROW_ACTIONS_COLUMN_ID)

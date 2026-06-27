@@ -24,6 +24,10 @@ const bodyNames = () =>
     .slice(1) // drop the header row
     .map((row) => within(row).getAllByRole("cell")[0]?.textContent ?? "");
 
+const openViewControls = () => {
+  fireEvent.click(screen.getByRole("button", { name: "View controls" }));
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -170,6 +174,7 @@ describe("DataGrid server mode — manual sorting/filtering", () => {
     );
     // Client mode: both the summary bar ("Count" item) and "Group by" are present.
     expect(screen.getByText("Count")).toBeInTheDocument();
+    openViewControls();
     expect(screen.getByText("Group by")).toBeInTheDocument();
 
     rerender(

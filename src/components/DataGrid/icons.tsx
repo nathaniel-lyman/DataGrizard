@@ -11,6 +11,7 @@ import {
   MoreVertical,
   Plus,
   Search,
+  SlidersHorizontal,
   X,
   type LucideProps,
 } from "lucide-react";
@@ -44,6 +45,8 @@ export const SearchIcon = (props: IconProps) => <Search {...decorativeProps(prop
 export const FilterIcon = (props: IconProps) => <Funnel {...decorativeProps(props)} />;
 
 export const GripIcon = (props: IconProps) => <GripVertical {...decorativeProps(props)} />;
+
+export const SlidersIcon = (props: IconProps) => <SlidersHorizontal {...decorativeProps(props)} />;
 
 export const SortIcon = ({ state }: { state: false | "asc" | "desc" }) => {
   const Icon = state === "asc" ? ArrowUp : state === "desc" ? ArrowDown : ArrowUpDown;

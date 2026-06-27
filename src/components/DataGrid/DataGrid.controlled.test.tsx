@@ -18,6 +18,10 @@ const columns: GridColumnConfig<Row>[] = [
   { accessorKey: "units", header: "Units", dataType: "number" },
 ];
 
+const openViewControls = () => {
+  fireEvent.click(screen.getByRole("button", { name: "View controls" }));
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -95,6 +99,7 @@ describe("DataGrid controlled/uncontrolled triad", () => {
       />,
     );
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByRole("button", { name: "Pin Product left" }));
 
@@ -121,6 +126,7 @@ describe("DataGrid scoped localStorage persistence", () => {
   it("writes only scoped keys and never an unscoped key", () => {
     render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-A" />);
 
+    openViewControls();
     fireEvent.change(screen.getByLabelText("View name"), { target: { value: "My view" } });
     fireEvent.click(screen.getByRole("button", { name: "Save view" }));
 
@@ -139,6 +145,7 @@ describe("DataGrid scoped localStorage persistence", () => {
       />,
     );
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByRole("button", { name: "Pin Product left" }));
 
@@ -152,11 +159,13 @@ describe("DataGrid scoped localStorage persistence", () => {
     const { unmount } = render(
       <DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-A" />,
     );
+    openViewControls();
     fireEvent.change(screen.getByLabelText("View name"), { target: { value: "My view" } });
     fireEvent.click(screen.getByRole("button", { name: "Save view" }));
     unmount();
 
     render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-A" />);
+    openViewControls();
     expect(screen.getByRole("option", { name: "My view" })).toBeInTheDocument();
   });
 
@@ -164,6 +173,7 @@ describe("DataGrid scoped localStorage persistence", () => {
     const { unmount } = render(
       <DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-1" />,
     );
+    openViewControls();
     fireEvent.change(screen.getByLabelText("View name"), { target: { value: "V1" } });
     fireEvent.click(screen.getByRole("button", { name: "Save view" }));
     unmount();
@@ -189,6 +199,7 @@ describe("DataGrid scoped localStorage persistence", () => {
         />,
       );
 
+      openViewControls();
       fireEvent.change(screen.getByLabelText("View name"), { target: { value: "No storage" } });
       fireEvent.click(screen.getByRole("button", { name: "Save view" }));
 

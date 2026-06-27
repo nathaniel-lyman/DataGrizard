@@ -1,4 +1,5 @@
 import { FiltersPopover, type GridFilter } from "./filters";
+import { ToolbarAdvancedControls } from "./ToolbarAdvancedControls";
 import { ToolbarColumns } from "./ToolbarColumns";
 import { ToolbarGrouping } from "./ToolbarGrouping";
 import { ToolbarSavedViews } from "./ToolbarSavedViews";
@@ -18,6 +19,7 @@ type ToolbarProps = {
   enableColumnPinning: boolean;
   enableSavedViews: boolean;
   enableGrouping: boolean;
+  enableCollapsibleControls: boolean;
   columns: Array<{
     id: string;
     label: string;
@@ -62,6 +64,7 @@ export function Toolbar({
   enableColumnPinning,
   enableSavedViews,
   enableGrouping,
+  enableCollapsibleControls,
   columns,
   groupableColumns,
   grouping,
@@ -132,56 +135,101 @@ export function Toolbar({
       ) : null}
 
       {showSecondaryControls ? (
-        <div className={`${showFilterControls ? "mt-3 " : ""}flex min-w-0 flex-wrap items-end gap-3`}>
-          <button
-            type="button"
-            onClick={onResetView}
-            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+        enableCollapsibleControls ? (
+          <ToolbarAdvancedControls
+            columnCount={columns.filter((column) => column.visible).length}
+            groupingCount={grouping.length}
+            savedViewCount={savedViews.length}
+            onResetView={onResetView}
           >
-            Reset view
-          </button>
-        </div>
-      ) : null}
+            {showGroupingControls ? (
+              <ToolbarGrouping
+                groupableColumns={groupableColumns}
+                grouping={grouping}
+                onGroupingAdd={onGroupingAdd}
+                onGroupingRemove={onGroupingRemove}
+                onGroupingMove={onGroupingMove}
+                onClearGrouping={onClearGrouping}
+              />
+            ) : null}
 
-      {showSecondaryControls ? (
-        <div className="mt-3 flex min-w-0 flex-wrap items-end gap-3 border-t border-slate-100 pt-3 sm:gap-4">
-          {showGroupingControls ? (
-            <ToolbarGrouping
-              groupableColumns={groupableColumns}
-              grouping={grouping}
-              onGroupingAdd={onGroupingAdd}
-              onGroupingRemove={onGroupingRemove}
-              onGroupingMove={onGroupingMove}
-              onClearGrouping={onClearGrouping}
-            />
-          ) : null}
+            {showColumnControls ? (
+              <ToolbarColumns
+                columns={columns}
+                enableColumnVisibility={enableColumnVisibility}
+                enableColumnOrdering={enableColumnOrdering}
+                enableColumnPinning={enableColumnPinning}
+                onColumnVisibilityChange={onColumnVisibilityChange}
+                onColumnMove={onColumnMove}
+                onColumnDrop={onColumnDrop}
+                onColumnPin={onColumnPin}
+                onResetColumns={onResetColumns}
+              />
+            ) : null}
 
-          {showColumnControls ? (
-            <ToolbarColumns
-              columns={columns}
-              enableColumnVisibility={enableColumnVisibility}
-              enableColumnOrdering={enableColumnOrdering}
-              enableColumnPinning={enableColumnPinning}
-              onColumnVisibilityChange={onColumnVisibilityChange}
-              onColumnMove={onColumnMove}
-              onColumnDrop={onColumnDrop}
-              onColumnPin={onColumnPin}
-              onResetColumns={onResetColumns}
-            />
-          ) : null}
+            {enableSavedViews ? (
+              <ToolbarSavedViews
+                savedViews={savedViews}
+                activeViewName={activeViewName}
+                viewNamePlaceholder={viewNamePlaceholder}
+                onSaveView={onSaveView}
+                onApplyView={onApplyView}
+                onDeleteView={onDeleteView}
+                onActiveViewNameChange={onActiveViewNameChange}
+              />
+            ) : null}
+          </ToolbarAdvancedControls>
+        ) : (
+          <>
+            <div className={`${showFilterControls ? "mt-3 " : ""}flex min-w-0 flex-wrap items-end gap-3`}>
+              <button
+                type="button"
+                onClick={onResetView}
+                className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              >
+                Reset view
+              </button>
+            </div>
+            <div className="mt-3 flex min-w-0 flex-wrap items-end gap-3 border-t border-slate-100 pt-3 sm:gap-4">
+              {showGroupingControls ? (
+                <ToolbarGrouping
+                  groupableColumns={groupableColumns}
+                  grouping={grouping}
+                  onGroupingAdd={onGroupingAdd}
+                  onGroupingRemove={onGroupingRemove}
+                  onGroupingMove={onGroupingMove}
+                  onClearGrouping={onClearGrouping}
+                />
+              ) : null}
 
-          {enableSavedViews ? (
-            <ToolbarSavedViews
-              savedViews={savedViews}
-              activeViewName={activeViewName}
-              viewNamePlaceholder={viewNamePlaceholder}
-              onSaveView={onSaveView}
-              onApplyView={onApplyView}
-              onDeleteView={onDeleteView}
-              onActiveViewNameChange={onActiveViewNameChange}
-            />
-          ) : null}
-        </div>
+              {showColumnControls ? (
+                <ToolbarColumns
+                  columns={columns}
+                  enableColumnVisibility={enableColumnVisibility}
+                  enableColumnOrdering={enableColumnOrdering}
+                  enableColumnPinning={enableColumnPinning}
+                  onColumnVisibilityChange={onColumnVisibilityChange}
+                  onColumnMove={onColumnMove}
+                  onColumnDrop={onColumnDrop}
+                  onColumnPin={onColumnPin}
+                  onResetColumns={onResetColumns}
+                />
+              ) : null}
+
+              {enableSavedViews ? (
+                <ToolbarSavedViews
+                  savedViews={savedViews}
+                  activeViewName={activeViewName}
+                  viewNamePlaceholder={viewNamePlaceholder}
+                  onSaveView={onSaveView}
+                  onApplyView={onApplyView}
+                  onDeleteView={onDeleteView}
+                  onActiveViewNameChange={onActiveViewNameChange}
+                />
+              ) : null}
+            </div>
+          </>
+        )
       ) : null}
     </div>
   );

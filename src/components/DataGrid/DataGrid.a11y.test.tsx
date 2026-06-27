@@ -18,6 +18,10 @@ const columns: GridColumnConfig<Row>[] = [
   { accessorKey: "units", header: "Units", dataType: "number" },
 ];
 
+const openViewControls = () => {
+  fireEvent.click(screen.getByRole("button", { name: "View controls" }));
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -57,6 +61,7 @@ describe("DataGrid accessibility", () => {
 
   it("closes the Columns popover on Escape and restores focus to the trigger", () => {
     render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} />);
+    openViewControls();
     const trigger = screen.getByRole("button", { name: /visible/ });
 
     fireEvent.click(trigger);
@@ -68,6 +73,7 @@ describe("DataGrid accessibility", () => {
   it("closes the Columns popover when clicking outside it", () => {
     render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} />);
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     expect(screen.getByRole("button", { name: "Reset columns" })).toBeInTheDocument();
     fireEvent.mouseDown(document.body);

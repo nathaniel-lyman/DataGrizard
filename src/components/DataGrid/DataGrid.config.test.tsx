@@ -27,6 +27,10 @@ const columns: GridColumnConfig<Row>[] = [
   },
 ];
 
+const openViewControls = () => {
+  fireEvent.click(screen.getByRole("button", { name: "View controls" }));
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -89,6 +93,36 @@ describe("DataGrid declarative formatting", () => {
 });
 
 describe("DataGrid feature flags", () => {
+  it("collapses advanced toolbar controls behind the view controls disclosure by default", () => {
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} />);
+
+    const trigger = screen.getByRole("button", { name: "View controls" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Advanced view setup")).not.toBeInTheDocument();
+    expect(screen.queryByText("View name")).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Advanced view setup")).toBeInTheDocument();
+    expect(screen.getByText("View name")).toBeInTheDocument();
+  });
+
+  it("can render advanced toolbar controls expanded for legacy consumers", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ collapsibleToolbar: false }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "View controls" })).not.toBeInTheDocument();
+    expect(screen.getByText("View name")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
+  });
+
   it("can render a bare table with sorting and resizing but no analytical chrome", () => {
     render(
       <DataGrid
@@ -559,6 +593,7 @@ describe("DataGrid column pinning configuration", () => {
       />,
     );
 
+    openViewControls();
     fireEvent.click(screen.getByRole("button", { name: /visible/ }));
     fireEvent.click(screen.getByRole("button", { name: "Pin Revenue left" }));
 
