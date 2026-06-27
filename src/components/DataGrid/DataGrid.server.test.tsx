@@ -54,6 +54,29 @@ describe("DataGrid server mode — manual sorting/filtering", () => {
     expect(bodyNames()).toEqual(["Charlie", "Alice", "Bob"]);
   });
 
+  it("resets server pagination when sorting changes", () => {
+    const onSortingChange = vi.fn();
+    const onPaginationChange = vi.fn();
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        dataMode="server"
+        rowCount={100}
+        state={{ pagination: { pageIndex: 1, pageSize: 25 } }}
+        onSortingChange={onSortingChange}
+        onPaginationChange={onPaginationChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(onSortingChange).toHaveBeenCalledTimes(1);
+    expect(onPaginationChange).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 25 });
+  });
+
   it("does not filter locally and emits onColumnFiltersChange", () => {
     const onColumnFiltersChange = vi.fn();
     const filters: GridFilterConfig<Row>[] = [
@@ -101,6 +124,29 @@ describe("DataGrid server mode — manual sorting/filtering", () => {
     expect(onGlobalFilterChange).toHaveBeenCalledWith("alice");
     // All rows still render — search is the server's job under manualFiltering.
     expect(bodyNames()).toEqual(["Charlie", "Alice", "Bob"]);
+  });
+
+  it("resets server pagination when global search changes", () => {
+    const onGlobalFilterChange = vi.fn();
+    const onPaginationChange = vi.fn();
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        dataMode="server"
+        rowCount={100}
+        state={{ pagination: { pageIndex: 1, pageSize: 25 } }}
+        onGlobalFilterChange={onGlobalFilterChange}
+        onPaginationChange={onPaginationChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Search/i), { target: { value: "alice" } });
+
+    expect(onGlobalFilterChange).toHaveBeenCalledWith("alice");
+    expect(onPaginationChange).toHaveBeenCalledWith({ pageIndex: 0, pageSize: 25 });
   });
 
   it("turns summaries and grid grouping off by default in server mode", () => {

@@ -86,6 +86,35 @@ const getDateRange = (value: unknown) =>
     ? (value as { from?: unknown; to?: unknown })
     : {};
 
+const isDateOnlyInput = (value: unknown) =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const localDayStart = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+const localDayEnd = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime() - 1;
+
+const toDateTime = (value: unknown, boundary: "start" | "end" = "start") => {
+  const date = toDate(value);
+  if (!date) {
+    return null;
+  }
+  if (!isDateOnlyInput(value)) {
+    return date.getTime();
+  }
+  return boundary === "end" ? localDayEnd(date) : localDayStart(date);
+};
+
+const dateEquals = (cell: number, value: unknown) => {
+  const start = toDateTime(value, "start");
+  const end = toDateTime(value, "end");
+  if (start == null || end == null) {
+    return false;
+  }
+  return isDateOnlyInput(value) ? cell >= start && cell <= end : cell === start;
+};
+
 const toBoolean = (value: unknown) => {
   if (value === true || String(value).toLowerCase() === "true") {
     return true;
@@ -142,25 +171,24 @@ export const matchesFilterValue = (raw: unknown, filterValue: unknown, options?:
       return false;
     }
     if (operator === "equals" || operator === "is") {
-      const target = toDate(value)?.getTime();
-      return target != null && cell === target;
+      return dateEquals(cell, value);
     }
     if (operator === "notEquals" || operator === "isNot") {
-      const target = toDate(value)?.getTime();
-      return target == null || cell !== target;
+      return !dateEquals(cell, value);
     }
     const { from, to } = getDateRange(value);
-    const single = toDate(value)?.getTime();
-    const fromTime = toDate(from)?.getTime() ?? single;
-    const toTime = toDate(to)?.getTime() ?? single;
+    const singleFromTime = toDateTime(value, "start");
+    const singleToTime = toDateTime(value, "end");
+    const fromTime = toDateTime(from, "start") ?? singleFromTime;
+    const toTime = toDateTime(to, "end") ?? singleToTime;
     if (operator === "before") {
       return fromTime != null && cell < fromTime;
     }
     if (operator === "onOrBefore") {
-      return fromTime != null && cell <= fromTime;
+      return toTime != null && cell <= toTime;
     }
     if (operator === "after") {
-      return fromTime != null && cell > fromTime;
+      return toTime != null && cell > toTime;
     }
     if (operator === "onOrAfter") {
       return fromTime != null && cell >= fromTime;

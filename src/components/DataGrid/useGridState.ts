@@ -56,6 +56,34 @@ type UseGridStateOptions = {
   onActiveViewNameChange?: (activeViewName: string) => void;
 };
 
+type EmitChangeOptions<TValue> = {
+  isControlled: boolean;
+  setValue: (next: TValue) => void;
+  storageKey?: string;
+  onChange?: (next: TValue) => void;
+};
+
+const emitResolvedChange = <TValue,>(
+  next: TValue,
+  { isControlled, setValue, storageKey, onChange }: EmitChangeOptions<TValue>,
+) => {
+  if (!isControlled) {
+    setValue(next);
+    saveJson(storageKey, next);
+  }
+  onChange?.(next);
+};
+
+const emitUpdaterChange = <TValue,>(
+  updater: Updater<TValue>,
+  current: TValue,
+  options: EmitChangeOptions<TValue>,
+  normalize?: (next: TValue) => TValue,
+) => {
+  const resolved = resolveUpdater(updater, current);
+  emitResolvedChange(normalize ? normalize(resolved) : resolved, options);
+};
+
 export function useGridState({
   controlledState,
   storageKeys,
@@ -130,107 +158,111 @@ export function useGridState({
   const currentSavedViews = controlledState?.savedViews ?? savedViews;
   const currentActiveViewName = controlledState?.activeViewName ?? activeViewName;
   const emitSortingChange = (updater: Updater<SortingState>) => {
-    const next = resolveUpdater(updater, currentSorting);
-    if (controlledState?.sorting === undefined) {
-      setSorting(next);
-    }
-    onSortingChange?.(next);
+    emitUpdaterChange(updater, currentSorting, {
+      isControlled: controlledState?.sorting !== undefined,
+      setValue: setSorting,
+      onChange: onSortingChange,
+    });
   };
   const emitGlobalFilterChange = (updater: Updater<string>) => {
-    const next = resolveUpdater(updater, currentGlobalFilter);
-    if (controlledState?.globalFilter === undefined) {
-      setGlobalFilter(next);
-    }
-    onGlobalFilterChange?.(next);
+    emitUpdaterChange(updater, currentGlobalFilter, {
+      isControlled: controlledState?.globalFilter !== undefined,
+      setValue: setGlobalFilter,
+      onChange: onGlobalFilterChange,
+    });
   };
   const emitColumnFiltersChange = (updater: Updater<ColumnFiltersState>) => {
-    const next = resolveUpdater(updater, currentColumnFilters);
-    if (controlledState?.columnFilters === undefined) {
-      setColumnFilters(next);
-    }
-    onColumnFiltersChange?.(next);
+    emitUpdaterChange(updater, currentColumnFilters, {
+      isControlled: controlledState?.columnFilters !== undefined,
+      setValue: setColumnFilters,
+      onChange: onColumnFiltersChange,
+    });
   };
   const emitColumnVisibilityChange = (updater: Updater<VisibilityState>) => {
-    const next = resolveUpdater(updater, currentColumnVisibility);
-    if (controlledState?.columnVisibility === undefined) {
-      setColumnVisibility(next);
-    }
-    onColumnVisibilityChange?.(next);
+    emitUpdaterChange(updater, currentColumnVisibility, {
+      isControlled: controlledState?.columnVisibility !== undefined,
+      setValue: setColumnVisibility,
+      onChange: onColumnVisibilityChange,
+    });
   };
   const emitColumnSizingChange = (updater: Updater<ColumnSizingState>) => {
-    const next = resolveUpdater(updater, currentColumnSizing);
-    if (controlledState?.columnSizing === undefined) {
-      setColumnSizing(next);
-      saveJson(storageKeys?.columnSizing, next);
-    }
-    onColumnSizingChange?.(next);
+    emitUpdaterChange(updater, currentColumnSizing, {
+      isControlled: controlledState?.columnSizing !== undefined,
+      setValue: setColumnSizing,
+      storageKey: storageKeys?.columnSizing,
+      onChange: onColumnSizingChange,
+    });
   };
   const emitColumnOrderChange = (updater: Updater<ColumnOrderState>) => {
-    const next = resolveUpdater(updater, currentColumnOrder);
-    if (controlledState?.columnOrder === undefined) {
-      setColumnOrder(next);
-      saveJson(storageKeys?.columnOrder, next);
-    }
-    onColumnOrderChange?.(next);
+    emitUpdaterChange(updater, currentColumnOrder, {
+      isControlled: controlledState?.columnOrder !== undefined,
+      setValue: setColumnOrder,
+      storageKey: storageKeys?.columnOrder,
+      onChange: onColumnOrderChange,
+    });
   };
   const emitColumnPinningChange = (updater: Updater<ColumnPinningState>) => {
-    const next = normalizeColumnPinning(
-      resolveUpdater(updater, currentColumnPinning),
-      lockedLeftColumnIds,
+    emitUpdaterChange(
+      updater,
+      currentColumnPinning,
+      {
+        isControlled: controlledState?.columnPinning !== undefined,
+        setValue: setColumnPinning,
+        storageKey: storageKeys?.columnPinning,
+        onChange: onColumnPinningChange,
+      },
+      (next) => normalizeColumnPinning(next, lockedLeftColumnIds),
     );
-    if (controlledState?.columnPinning === undefined) {
-      setColumnPinning(next);
-      saveJson(storageKeys?.columnPinning, next);
-    }
-    onColumnPinningChange?.(next);
   };
   const emitPaginationChange = (updater: Updater<PaginationState>) => {
-    const next = resolveUpdater(updater, currentPagination);
-    if (controlledState?.pagination === undefined) {
-      setPagination(next);
-    }
-    onPaginationChange?.(next);
+    emitUpdaterChange(updater, currentPagination, {
+      isControlled: controlledState?.pagination !== undefined,
+      setValue: setPagination,
+      onChange: onPaginationChange,
+    });
   };
   const emitRowSelectionChange = (updater: Updater<RowSelectionState>) => {
-    const next = resolveUpdater(updater, currentRowSelection);
-    if (controlledState?.rowSelection === undefined) {
-      setRowSelection(next);
-    }
-    onRowSelectionChange?.(next);
+    emitUpdaterChange(updater, currentRowSelection, {
+      isControlled: controlledState?.rowSelection !== undefined,
+      setValue: setRowSelection,
+      onChange: onRowSelectionChange,
+    });
   };
   const emitGroupingChange = (updater: Updater<GroupingState>) => {
-    const next = resolveUpdater(updater, currentGrouping);
-    if (controlledState?.grouping === undefined) {
-      setGrouping(next);
-    }
-    onGroupingChange?.(next);
+    emitUpdaterChange(updater, currentGrouping, {
+      isControlled: controlledState?.grouping !== undefined,
+      setValue: setGrouping,
+      onChange: onGroupingChange,
+    });
   };
   const emitExpandedChange = (updater: Updater<ExpandedState>) => {
-    const next = resolveUpdater(updater, currentExpanded);
-    if (controlledState?.expanded === undefined) {
-      setExpanded(next);
-    }
-    onExpandedChange?.(next);
+    emitUpdaterChange(updater, currentExpanded, {
+      isControlled: controlledState?.expanded !== undefined,
+      setValue: setExpanded,
+      onChange: onExpandedChange,
+    });
   };
   const emitPivotChange = (updater: Updater<DataGridPivotState>) => {
-    const next = resolveUpdater(updater, currentPivot);
-    if (controlledState?.pivot === undefined) {
-      setPivot(next);
-    }
-    onPivotChange?.(next);
+    emitUpdaterChange(updater, currentPivot, {
+      isControlled: controlledState?.pivot !== undefined,
+      setValue: setPivot,
+      onChange: onPivotChange,
+    });
   };
   const emitSavedViewsChange = (next: DataGridSavedViews) => {
-    if (controlledState?.savedViews === undefined) {
-      setSavedViews(next);
-      saveJson(storageKeys?.savedViews, next);
-    }
-    onSavedViewsChange?.(next);
+    emitResolvedChange(next, {
+      isControlled: controlledState?.savedViews !== undefined,
+      setValue: setSavedViews,
+      storageKey: storageKeys?.savedViews,
+      onChange: onSavedViewsChange,
+    });
   };
   const emitActiveViewNameChange = (next: string) => {
-    if (controlledState?.activeViewName === undefined) {
-      setActiveViewName(next);
-    }
-    onActiveViewNameChange?.(next);
+    emitResolvedChange(next, {
+      isControlled: controlledState?.activeViewName !== undefined,
+      setValue: setActiveViewName,
+      onChange: onActiveViewNameChange,
+    });
   };
 
   return {

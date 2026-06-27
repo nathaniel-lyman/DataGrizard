@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import type {
   GridColorScale,
   GridDataBar,
@@ -57,9 +57,15 @@ export type AnyColumnConfig<TData> = {
   }) => ReactNode;
 };
 
-export const reactNodeToText = (value: ReactNode) => {
+export const reactNodeToText = (value: ReactNode): string => {
   if (typeof value === "string" || typeof value === "number") {
     return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(reactNodeToText).join("");
+  }
+  if (isValidElement(value)) {
+    return reactNodeToText((value.props as { children?: ReactNode }).children);
   }
   return "";
 };
@@ -188,10 +194,7 @@ export const getColumnSearchText = <TData extends object>(
     return "";
   }
   if (column.formatValue) {
-    const formatted = column.formatValue(value, row);
-    if (typeof formatted === "string" || typeof formatted === "number") {
-      return String(formatted);
-    }
+    return reactNodeToText(column.formatValue(value, row));
   }
   if (column.dataType === "status") {
     return formatStatusLabel(String(value));

@@ -23,11 +23,27 @@ export type PivotSourceColumn<TData extends object> = {
 };
 
 export const stableValueKey = (value: unknown) => {
-  if (value == null || value === "") {
-    return "blank";
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === "") {
+    return "empty-string";
+  }
+  if (value instanceof Date) {
+    return `date:${encodeURIComponent(value.toISOString())}`;
+  }
+  if (typeof value === "object") {
+    try {
+      return `object:${encodeURIComponent(JSON.stringify(value) ?? String(value))}`;
+    } catch {
+      return `object:${encodeURIComponent(String(value))}`;
+    }
   }
 
-  return encodeURIComponent(String(value));
+  return `${typeof value}:${encodeURIComponent(String(value))}`;
 };
 
 export const segmentId = (segment: PivotGroupPathSegment) =>
@@ -47,11 +63,8 @@ export const measureColumnId = (
     ...(totalLevel ? [`total:${totalLevel}`] : []),
   ].join("|");
 
-export const leafId = <TData extends object>(
-  row: TData,
-  index: number,
-  getRowId: ((row: TData, index: number) => string) | undefined,
-) => `pivot:leaf|source=${encodeURIComponent(getRowId?.(row, index) ?? String(index))}`;
+export const leafId = (sourceRowId: string) =>
+  `pivot:leaf|source=${encodeURIComponent(sourceRowId)}`;
 
 export const isExpanded = (expanded: ExpandedState | undefined, rowId: string) =>
   expanded === true || Boolean(expanded && typeof expanded === "object" && expanded[rowId]);

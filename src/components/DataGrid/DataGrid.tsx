@@ -842,6 +842,22 @@ export function DataGrid<TData extends object>({
   const [activeRow, setActiveRow] = useState<TData | null>(null);
   const [horizontalScrollLeft, setHorizontalScrollLeft] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const resetServerPaginationForQueryChange = () => {
+    if (!isServerMode || isDataSourceMode || currentPagination.pageIndex === 0) {
+      return;
+    }
+    emitPaginationChange({ ...currentPagination, pageIndex: 0 });
+  };
+  const emitSortingChangeWithServerReset = (updater: Parameters<typeof emitSortingChange>[0]) => {
+    emitSortingChange(updater);
+    resetServerPaginationForQueryChange();
+  };
+  const emitGlobalFilterChangeWithServerReset = (
+    updater: Parameters<typeof emitGlobalFilterChange>[0],
+  ) => {
+    emitGlobalFilterChange(updater);
+    resetServerPaginationForQueryChange();
+  };
 
   const formatOptions = useMemo<FormatOptions>(
     () => ({ locale, currency, dateFormat }),
@@ -1420,8 +1436,8 @@ export function DataGrid<TData extends object>({
     // TanStack derives the page count from it; pivot keeps its own pageCount.
     pageCount: isServerMode && rowCount == null ? -1 : pivotPageCount,
     rowCount: isServerMode ? rowCount : undefined,
-    onSortingChange: emitSortingChange,
-    onGlobalFilterChange: emitGlobalFilterChange,
+    onSortingChange: emitSortingChangeWithServerReset,
+    onGlobalFilterChange: emitGlobalFilterChangeWithServerReset,
     onColumnFiltersChange: emitColumnFiltersChange,
     onColumnVisibilityChange: emitColumnVisibilityChange,
     onColumnOrderChange: emitColumnOrderChange,
@@ -1569,10 +1585,6 @@ export function DataGrid<TData extends object>({
     resetPageIndex();
   };
 
-  const setPersistedColumnOrder = (nextOrder: ColumnOrderState) => {
-    emitColumnOrderChange(nextOrder);
-  };
-
   const getOrderedDataColumnIds = () =>
     table
       .getAllLeafColumns()
@@ -1591,7 +1603,7 @@ export function DataGrid<TData extends object>({
     const nextIds = [...orderedIds];
     const [movedId] = nextIds.splice(fromIndex, 1);
     nextIds.splice(toIndex, 0, movedId);
-    setPersistedColumnOrder([
+    emitColumnOrderChange([
       ...(features.rowSelection ? [SELECT_COLUMN_ID] : []),
       ...nextIds,
       ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
@@ -1610,7 +1622,7 @@ export function DataGrid<TData extends object>({
     const nextIds = [...orderedIds];
     const [movedId] = nextIds.splice(fromIndex, 1);
     nextIds.splice(toIndex, 0, movedId);
-    setPersistedColumnOrder([
+    emitColumnOrderChange([
       ...(features.rowSelection ? [SELECT_COLUMN_ID] : []),
       ...nextIds,
       ...(showRowActions ? [ROW_ACTIONS_COLUMN_ID] : []),
@@ -1624,7 +1636,7 @@ export function DataGrid<TData extends object>({
   const resetColumns = () => {
     emitColumnVisibilityChange({});
     emitColumnSizingChange({});
-    setPersistedColumnOrder(effectiveDefaultColumnOrder);
+    emitColumnOrderChange(effectiveDefaultColumnOrder);
     emitColumnPinningChange(defaultPinningState);
     if (controlledState?.columnSizing === undefined) {
       removeJson(storageKeys?.columnSizing);
@@ -1686,7 +1698,7 @@ export function DataGrid<TData extends object>({
     emitColumnFiltersChange(view.columnFilters);
     emitColumnVisibilityChange(view.columnVisibility);
     emitColumnSizingChange(view.columnSizing);
-    setPersistedColumnOrder(view.columnOrder ?? effectiveDefaultColumnOrder);
+    emitColumnOrderChange(view.columnOrder ?? effectiveDefaultColumnOrder);
     emitColumnPinningChange(view.columnPinning ?? defaultPinningState);
     emitGroupingChange(view.grouping ?? []);
     emitPivotChange(
@@ -2949,7 +2961,7 @@ export function DataGrid<TData extends object>({
             savedViews={Object.keys(currentSavedViews).sort()}
             activeViewName={currentActiveViewName}
             viewNamePlaceholder={viewNamePlaceholder}
-            onSearchChange={emitGlobalFilterChange}
+            onSearchChange={emitGlobalFilterChangeWithServerReset}
             onColumnVisibilityChange={(columnId, visible) =>
               table.getColumn(columnId)?.toggleVisibility(visible)
             }
@@ -2980,7 +2992,7 @@ export function DataGrid<TData extends object>({
             {features.sorting && currentSorting.length > 0 ? (
               <button
                 type="button"
-                onClick={() => emitSortingChange([])}
+                onClick={() => emitSortingChangeWithServerReset([])}
                 className="font-medium text-slate-600 underline underline-offset-2 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
               >
                 Clear sort
@@ -3171,8 +3183,12 @@ export function DataGrid<TData extends object>({
                                 canPin={header.column.getCanPin()}
                                 pinState={header.column.getIsPinned()}
                                 canResize={features.columnResizing && header.column.getCanResize()}
-                                onSortAsc={() => emitSortingChange([{ id: header.column.id, desc: false }])}
-                                onSortDesc={() => emitSortingChange([{ id: header.column.id, desc: true }])}
+                                onSortAsc={() =>
+                                  emitSortingChangeWithServerReset([{ id: header.column.id, desc: false }])
+                                }
+                                onSortDesc={() =>
+                                  emitSortingChangeWithServerReset([{ id: header.column.id, desc: true }])
+                                }
                                 onClearSort={() => header.column.clearSorting()}
                                 onClearFilter={() => {
                                   header.column.setFilterValue(undefined);

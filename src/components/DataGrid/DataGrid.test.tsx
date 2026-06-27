@@ -7,6 +7,7 @@ import {
   type DataGridSavedViews,
   type DataGridSummaryItem,
 } from "./DataGrid";
+import { materializePivot } from "./pivot";
 import type { GridColumnConfig } from "../../types/grid";
 
 type ProductRow = {
@@ -123,6 +124,84 @@ const renderGrid = () =>
   );
 
 describe("DataGrid pivot layout mode", () => {
+  it("keeps pivot bucket ids distinct for blank, literal, and typed values", () => {
+    type MixedRow = { id: string; bucket: string | number; value: number };
+    const mixedRows: MixedRow[] = [
+      { id: "empty", bucket: "", value: 1 },
+      { id: "literal-blank", bucket: "blank", value: 2 },
+      { id: "number-one", bucket: 1, value: 3 },
+      { id: "string-one", bucket: "1", value: 4 },
+    ];
+    const result = materializePivot({
+      sourceRows: mixedRows,
+      sourceColumns: [
+        { accessorKey: "bucket", header: "Bucket" },
+        { accessorKey: "value", header: "Value" },
+      ],
+      pivot: {
+        rows: ["bucket"],
+        measures: ["value"],
+        expanded: true,
+        showGrandTotals: false,
+        showSubtotals: true,
+        paginationMode: "topLevelGroups",
+      },
+      pagination: { pageIndex: 0, pageSize: 25 },
+      sorting: [],
+      measures: [{ id: "value", label: "Value", columnId: "value", aggregation: "sum" }],
+      onToggleRow: () => {},
+      hasLeafRowAction: false,
+      enableSorting: true,
+      enableColumnVisibility: true,
+      enableColumnResizing: true,
+      enableColumnPinning: true,
+    });
+
+    const groupRows = result.data.filter((row) => row.__kind === "group");
+
+    expect(groupRows).toHaveLength(4);
+    expect(new Set(groupRows.map((row) => row.__id)).size).toBe(4);
+    expect(groupRows.map((row) => row.__sourceRows)).toEqual(mixedRows.map((row) => [row]));
+  });
+
+  it("generates unique pivot leaf ids from original source-row positions", () => {
+    const result = materializePivot({
+      sourceRows: rows,
+      sourceColumns: [
+        { accessorKey: "department", header: "Department" },
+        { accessorKey: "revenue", header: "Revenue" },
+      ],
+      pivot: {
+        rows: ["department"],
+        measures: ["revenue"],
+        expanded: true,
+        showGrandTotals: false,
+        showSubtotals: true,
+        paginationMode: "topLevelGroups",
+      },
+      pagination: { pageIndex: 0, pageSize: 25 },
+      sorting: [],
+      measures: [{ id: "revenue", label: "Revenue", columnId: "revenue", aggregation: "sum" }],
+      showLeafRows: true,
+      onToggleRow: () => {},
+      hasLeafRowAction: false,
+      enableSorting: true,
+      enableColumnVisibility: true,
+      enableColumnResizing: true,
+      enableColumnPinning: true,
+    });
+
+    const leafIds = result.data
+      .filter((row) => row.__kind === "leaf")
+      .map((row) => row.__id);
+
+    expect(leafIds).toHaveLength(rows.length);
+    expect(new Set(leafIds).size).toBe(rows.length);
+    expect(new Set(leafIds)).toEqual(
+      new Set(rows.map((_, index) => `pivot:leaf|source=${index}`)),
+    );
+  });
+
   it("renders a compact pivot table and lets group rows toggle expansion", () => {
     renderGrid();
 

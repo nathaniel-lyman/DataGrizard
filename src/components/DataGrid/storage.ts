@@ -19,7 +19,12 @@ export const saveJson = (key: string | undefined, value: unknown) => {
     return;
   }
 
-  window.localStorage.setItem(key, JSON.stringify(value));
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Persistence is best-effort; state callbacks must still fire if storage is
+    // unavailable or full.
+  }
 };
 
 export const removeJson = (key: string | undefined) => {
@@ -27,5 +32,9 @@ export const removeJson = (key: string | undefined) => {
     return;
   }
 
-  window.localStorage.removeItem(key);
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Same best-effort contract as saveJson.
+  }
 };

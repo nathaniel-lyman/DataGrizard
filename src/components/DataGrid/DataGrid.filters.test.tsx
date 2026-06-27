@@ -158,6 +158,7 @@ describe("DataGrid filter engine (text + date)", () => {
   const engineData: EngineRow[] = [
     { id: "1", name: "Red Shirt", when: "2026-01-10" },
     { id: "2", name: "Blue Shirt", when: "2026-06-24" },
+    { id: "4", name: "Timed Shirt", when: "2026-06-24T15:30:00" },
     { id: "3", name: "Green Hat", when: "" },
   ];
   const engineFilters: GridFilterConfig<EngineRow>[] = [
@@ -192,9 +193,31 @@ describe("DataGrid filter engine (text + date)", () => {
       />,
     );
 
-    // Only Blue Shirt (Jun 24) is in range; Red Shirt (Jan 10) is before, and
-    // Green Hat has a blank date so it is excluded.
+    // The Jun 24 date-only and timestamp rows are both in range; Red Shirt
+    // (Jan 10) is before, and Green Hat has a blank date so it is excluded.
     expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.getByText("Timed Shirt")).toBeInTheDocument();
+    expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
+    expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
+  });
+
+  it("treats date-only filters as full local calendar days", () => {
+    render(
+      <DataGrid
+        data={engineData}
+        columns={engineColumns}
+        filters={engineFilters}
+        getRowId={(r) => r.id}
+        state={{
+          columnFilters: [
+            { id: "when", value: { operator: "equals", value: "2026-06-24" } },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
+    expect(screen.getByText("Timed Shirt")).toBeInTheDocument();
     expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
     expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
   });

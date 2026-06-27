@@ -54,6 +54,38 @@ describe("DataGrid declarative formatting", () => {
     expect(lowCell).toHaveClass("text-rose-600");
     expect(highCell).not.toHaveClass("text-rose-600");
   });
+
+  it("searches text rendered by custom React formatters", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={[
+          {
+            accessorKey: "name",
+            header: "Name",
+            dataType: "text",
+            formatValue: (value) =>
+              value === "Acme" ? (
+                <span>
+                  <strong>VIP</strong> customer
+                </span>
+              ) : (
+                <span>standard customer</span>
+              ),
+          },
+          { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+          { accessorKey: "status", header: "Status", dataType: "status" },
+        ]}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "VIP customer" } });
+
+    expect(screen.getByText("VIP")).toBeInTheDocument();
+    expect(screen.queryByText("standard customer")).not.toBeInTheDocument();
+  });
 });
 
 describe("DataGrid feature flags", () => {

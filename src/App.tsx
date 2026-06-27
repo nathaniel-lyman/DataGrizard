@@ -57,7 +57,8 @@ function App() {
   const requestIdRef = useRef(0);
 
   // Server mode applies to grid layout only.
-  const isServer = dataMode === "server" && layoutMode === "grid";
+  const effectiveDataMode: DataGridDataMode = layoutMode === "pivot" ? "client" : dataMode;
+  const isServer = effectiveDataMode === "server";
 
   const updateRecommendationStatus = (item: RetailItem, status: RecommendationStatus) => {
     if (isServer) {
@@ -112,7 +113,7 @@ function App() {
                   key={mode.id}
                   type="button"
                   onClick={() => setDataMode(mode.id)}
-                  aria-pressed={dataMode === mode.id}
+                  aria-pressed={effectiveDataMode === mode.id}
                   disabled={mode.id === "server" && layoutMode === "pivot"}
                   title={
                     mode.id === "server" && layoutMode === "pivot"
@@ -120,7 +121,7 @@ function App() {
                       : undefined
                   }
                   className={`h-7 rounded px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40 ${
-                    dataMode === mode.id
+                    effectiveDataMode === mode.id
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
                   }`}

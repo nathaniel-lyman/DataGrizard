@@ -171,4 +171,32 @@ describe("DataGrid scoped localStorage persistence", () => {
     expect(window.localStorage.getItem("grid-1.savedViews")).toContain("V1");
     expect(window.localStorage.getItem("grid-2.savedViews")).toBeNull();
   });
+
+  it("keeps firing callbacks when localStorage writes fail", () => {
+    const onSavedViewsChange = vi.fn();
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    });
+
+    try {
+      render(
+        <DataGrid
+          data={rows}
+          columns={columns}
+          getRowId={(r) => r.id}
+          storageKey="quota-test"
+          onSavedViewsChange={onSavedViewsChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("View name"), { target: { value: "No storage" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save view" }));
+
+      expect(onSavedViewsChange).toHaveBeenCalledWith(
+        expect.objectContaining({ "No storage": expect.any(Object) }),
+      );
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
 });

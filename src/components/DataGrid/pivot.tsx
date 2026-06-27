@@ -204,6 +204,12 @@ export function materializePivot<TData extends object>({
   const allValueColumnBuckets = pivot.columns?.length
     ? collectValueBuckets(columnBucketTree, pivot.showGrandTotals ?? true, sourceRows)
     : [{ path: [], rows: sourceRows }];
+  const sourceRowIdByRow = new Map<TData, string>();
+  sourceRows.forEach((row, index) => {
+    sourceRowIdByRow.set(row, getRowId?.(row, index) ?? String(index));
+  });
+  const getPivotLeafId = (row: TData, fallbackIndex: number) =>
+    leafId(sourceRowIdByRow.get(row) ?? getRowId?.(row, fallbackIndex) ?? String(fallbackIndex));
 
   let topLevelGroupCount = 0;
   const buildGroupRows = (
@@ -218,18 +224,19 @@ export function materializePivot<TData extends object>({
         return [];
       }
       return rows.map((row, index) => {
-        const label = rowLabelColumn?.formatLeafLabel?.(row) ?? getRowLabel?.(row) ?? leafId(row, index, getRowId);
+        const rowId = getPivotLeafId(row, index);
+        const label = rowLabelColumn?.formatLeafLabel?.(row) ?? getRowLabel?.(row) ?? rowId;
         return {
           __pivot: true,
           __kind: "leaf",
-          __id: leafId(row, index, getRowId),
+          __id: rowId,
           __depth: depth,
           __sourceRows: [row],
           __leafRow: row,
           __groupPath: path,
           __values: computeValues([row], visibleMeasures, path, allValueColumnBuckets),
           __label: label,
-          __labelText: asText(label) || leafId(row, index, getRowId),
+          __labelText: asText(label) || rowId,
         };
       });
     }
