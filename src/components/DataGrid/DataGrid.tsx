@@ -372,6 +372,11 @@ const defaultFeatures: DataGridFeatures = {
   rowActions: true,
 };
 
+// Stable empty default so consumers that omit `filters` (the common case now
+// that filtering is auto-provisioned) don't get a fresh array identity each
+// render, which would re-run the per-column facet/extent scans every render.
+const EMPTY_FILTERS: never[] = [];
+
 const densityStyles: Record<DataGridDensity, { header: string; cell: string; rowHeight: number }> = {
   compact: { header: "px-2 py-1", cell: "px-2 py-1", rowHeight: 28 },
   standard: { header: "px-3 py-2", cell: "px-3 py-2", rowHeight: 36 },
@@ -448,7 +453,7 @@ export function DataGrid<TData extends object>({
   rowCount: externalRowCount,
   columnGroups,
   pivot: pivotConfig,
-  filters = [],
+  filters = EMPTY_FILTERS as unknown as GridFilterConfig<TData>[],
   facetThreshold = DEFAULT_FACET_THRESHOLD,
   summaryItems = [],
   groupSummaryItems,
@@ -783,6 +788,9 @@ export function DataGrid<TData extends object>({
   // are not in `columnList`), minus explicit opt-outs. Independent of column
   // visibility so chip metadata survives hiding a filtered column. When
   // auto-provision is off, fall back to exactly the columns named in `filters`.
+  // `enableFiltering: false` is a HARD opt-out: it removes the column from
+  // `eligible` before the autoColumnFilters opt-in check, so a column stays
+  // unfilterable even if it is also named in `filters`.
   const overridesByKey = useMemo(
     () => new Map(filters.map((filter) => [filter.accessorKey as string, filter])),
     [filters],
