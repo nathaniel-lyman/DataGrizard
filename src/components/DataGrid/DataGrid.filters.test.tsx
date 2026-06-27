@@ -519,12 +519,16 @@ describe("type-aware filter predicate coverage", () => {
     expect(screen.queryByText("blank")).not.toBeInTheDocument();
   });
 
-  it("number: between {min:0, max:3.5} includes the zero row (zero is not blank)", () => {
+  it("number: between {min:-1, max:0} keeps only the zero row among finite values (zero is not blank)", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "0" } });
-    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "3.5" } });
+    // [-1, 0]: only 0 qualifies; -2 is below, 3.5 and 10 are above, NaN excluded
+    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "-1" } });
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "0" } });
     expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
     expect(screen.queryByText("blank")).not.toBeInTheDocument();
   });
 
