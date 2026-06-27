@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
+import { useCellFocus } from "./useCellFocus";
 import type { GridColumnConfig } from "../../types/grid";
 
 type Row = { id: string; dept: string; product: string; revenue: number; units: number };
@@ -95,6 +96,115 @@ describe("DataGrid accessibility", () => {
       <DataGrid data={rows} columns={columns} getRowId={(r) => r.id} tableLabel="Product analytics" />,
     );
     expect(screen.getByRole("table", { name: "Product analytics" })).toBeInTheDocument();
+  });
+
+  // WCAG 2.1 AA / ARIA grid: rows revealed by expanding a group must join the
+  // roving-tabindex cell grid and renumber aria-rowindex over the new visual
+  // order (rows below the expanded group shift down — no stale indices).
+  it("integrates revealed rows into the cell grid with contiguous aria-rowindex after expansion", () => {
+    const grouped: Row[] = [
+      { id: "1", dept: "Grocery", product: "Almond Butter", revenue: 1200, units: 24 },
+      { id: "2", dept: "Grocery", product: "Apples", revenue: 900, units: 42 },
+      { id: "3", dept: "Bakery", product: "Bagels", revenue: 500, units: 10 },
+    ];
+    render(
+      <DataGrid
+        data={grouped}
+        columns={columns}
+        getRowId={(r) => r.id}
+        defaultGrouping={["dept"]}
+        features={{ pagination: false }}
+      />,
+    );
+
+    const rowIndexes = () =>
+      Array.from(document.querySelectorAll("tbody tr[aria-rowindex]")).map((row) =>
+        Number(row.getAttribute("aria-rowindex")),
+      );
+
+    // Collapsed: only the two group rows are present (header row is index 1), and
+    // no data cell is yet a tab stop.
+    expect(rowIndexes()).toEqual([2, 3]);
+    expect(screen.queryByText("Almond Butter")).not.toBeInTheDocument();
+    expect(document.querySelector('td[tabindex="0"]')).toBeNull();
+
+    // Expand Grocery: its two leaves are revealed and the Bakery group below
+    // shifts from index 3 to index 5 — aria-rowindex stays contiguous.
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Dept Grocery group" }));
+    expect(screen.getByText("Almond Butter")).toBeInTheDocument();
+    expect(rowIndexes()).toEqual([2, 3, 4, 5]);
+
+    // Revealed cells join the roving-tabindex grid (a tab stop now exists) and
+    // arrow navigation flows through them in visual order.
+    const firstLeaf = screen.getByText("Almond Butter").closest("td") as HTMLElement;
+    expect(document.querySelector('td[tabindex="0"]')).not.toBeNull();
+    firstLeaf.focus();
+    fireEvent.keyDown(firstLeaf, { key: "ArrowDown" });
+    expect(screen.getByText("Apples").closest("td")).toHaveFocus();
+  });
+
+  // WCAG 2.1 AA / ARIA grid: under row virtualization only a window of rows is in
+  // the DOM, so the table must still advertise the FULL row count (a screen
+  // reader announces "row 500 of 1000", never "of <window size>").
+  it("advertises the full dataset via aria-rowcount under virtualization", () => {
+    type VRow = { id: string; name: string; revenue: number };
+    const vcolumns: GridColumnConfig<VRow>[] = [
+      { accessorKey: "name", header: "Name", dataType: "text" },
+      { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+    ];
+    const vdata: VRow[] = Array.from({ length: 1000 }, (_, i) => ({
+      id: String(i),
+      name: `Item ${i}`,
+      revenue: i,
+    }));
+
+    render(
+      <DataGrid
+        data={vdata}
+        columns={vcolumns}
+        getRowId={(r) => r.id}
+        virtualizeRows
+        features={{ pagination: false }}
+      />,
+    );
+
+    // Derived from visibleRows.length (the full set), not the rendered window:
+    // 1 header row + 1000 data rows. A window-scoped count would be ~1.
+    expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "1001");
+  });
+
+  // WCAG 2.1 AA / ARIA grid: the per-row aria-rowindex (DataGrid.tsx renderVisibleRow)
+  // is headerRowCount + rowVisibleIndexById.get(row.id) + 1. Its correctness under
+  // virtualization hinges on rowVisibleIndexById being the row's position in the
+  // FULL visibleRows list — not the rendered window — so a windowed row carries the
+  // same index it would have when fully rendered. jsdom can't lay out the virtual
+  // window (no ResizeObserver), so we pin the index source directly and assert it is
+  // identical whether or not rows are virtualized.
+  it("derives aria-rowindex from the global row position, unaffected by virtualization", () => {
+    const visibleRows = ["a", "b", "c", "d"].map((id) => ({ id, getIsGrouped: () => false }));
+    const table = {
+      getVisibleLeafColumns: () => [{ id: "name" }, { id: "revenue" }],
+      getHeaderGroups: () => [{ id: "h" }],
+    };
+    const rowVirtualizer = { scrollToIndex: () => {} };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const options = (virtualizeRows: boolean): any => ({
+      visibleRows,
+      isPivotLayout: false,
+      table,
+      floatingFiltersEnabled: false,
+      virtualizeRows,
+      rowVirtualizer,
+    });
+
+    const virtual = renderHook(() => useCellFocus(options(true)));
+    const plain = renderHook(() => useCellFocus(options(false)));
+
+    const globalIndex = { a: 0, b: 1, c: 2, d: 3 };
+    expect(Object.fromEntries(virtual.result.current.rowVisibleIndexById)).toEqual(globalIndex);
+    // Same global index source with virtualization off — windowing never shifts it.
+    expect(Object.fromEntries(plain.result.current.rowVisibleIndexById)).toEqual(globalIndex);
+    expect(virtual.result.current.headerRowCount).toBe(1);
   });
 
   it("preserves pivot table accessibility through generated headers and controls", () => {
