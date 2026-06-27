@@ -454,7 +454,7 @@ export function DataGrid<TData extends object>({
   rowCount: externalRowCount,
   columnGroups,
   pivot: pivotConfig,
-  filters = EMPTY_FILTERS as unknown as GridFilterConfig<TData>[],
+  filters = EMPTY_FILTERS as GridFilterConfig<TData>[],
   facetThreshold = DEFAULT_FACET_THRESHOLD,
   summaryItems = [],
   groupSummaryItems,
@@ -811,17 +811,26 @@ export function DataGrid<TData extends object>({
     );
   }, [features.headerFilters, features.autoColumnFilters, columnList, overridesByKey]);
 
-  // Distinct values (for select/multiSelect options + facet cardinality) and
-  // numeric extents (for range input bounds). Page-scoped is meaningless in
-  // server mode, so skip the scans there.
+  // Distinct values feed two things: the facet-cardinality decision for `text`
+  // columns and the option lists for select/multiSelect controls. Numeric/date/
+  // boolean controls never consume them, so scope the scan to the columns that
+  // do (text/status, or a categorical override) to avoid wasted per-column work.
+  // Page-scoped is meaningless in server mode, so skip the scans there.
   const columnFacets = useMemo(() => {
     const map = new Map<string, string[]>();
     if (isServerMode) return map;
     filterableColumnConfigs.forEach((column) => {
+      const overrideType = overridesByKey.get(column.accessorKey as string)?.filterType;
+      const needsFacets =
+        overrideType === "select" ||
+        overrideType === "multiSelect" ||
+        column.dataType === "text" ||
+        column.dataType === "status";
+      if (!needsFacets) return;
       map.set(column.accessorKey as string, uniqueColumnValues(data, column.accessorKey));
     });
     return map;
-  }, [filterableColumnConfigs, data, isServerMode]);
+  }, [filterableColumnConfigs, overridesByKey, data, isServerMode]);
 
   const columnRangeBounds = useMemo(() => {
     const map = new Map<string, { min: number; max: number }>();
