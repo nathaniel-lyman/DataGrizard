@@ -591,7 +591,7 @@ describe("DataGrid pivot layout mode", () => {
         layoutMode="pivot"
         rowLabel="products"
         getRowId={(row) => row.id}
-        filters={[{ accessorKey: "department", label: "Department" }]}
+        filters={[{ accessorKey: "department", label: "Department", filterType: "select" }]}
         features={{ rowSelection: false, pagination: false, detailPanel: false }}
         pivot={{
           rows: ["category"],

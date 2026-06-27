@@ -349,7 +349,7 @@ describe("DataGrid header column menu", () => {
         data={data}
         columns={columns}
         getRowId={(r) => r.id}
-        filters={[{ accessorKey: "status", label: "Status" }]}
+        filters={[{ accessorKey: "status", label: "Status", filterType: "select" }]}
         features={{ rowSelection: false, pagination: false }}
       />,
     );

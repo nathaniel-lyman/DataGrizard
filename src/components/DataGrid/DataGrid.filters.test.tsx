@@ -24,7 +24,9 @@ afterEach(() => {
 
 describe("DataGrid column filters", () => {
   it("filters select columns by exact match (no substring leakage)", () => {
-    const filters: GridFilterConfig<Row>[] = [{ accessorKey: "dept", label: "Dept" }];
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "dept", label: "Dept", filterType: "select" },
+    ];
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
@@ -251,5 +253,94 @@ describe("DataGrid filter engine (text + date)", () => {
     expect(screen.getByText("Blue Shirt")).toBeInTheDocument();
     expect(screen.queryByText("Red Shirt")).not.toBeInTheDocument();
     expect(screen.queryByText("Green Hat")).not.toBeInTheDocument();
+  });
+});
+
+describe("DataGrid auto-provisioned filters", () => {
+  it("auto-provisions a range filter for an unlisted numeric column", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", price: 5 }, { id: "b", price: 50 }]}
+        columns={[
+          { accessorKey: "id", header: "ID", dataType: "text" },
+          { accessorKey: "price", header: "Price", dataType: "currency" },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Price filter/i }));
+    expect(screen.getByLabelText("Price minimum")).toBeInTheDocument();
+    expect(screen.getByLabelText("Price maximum")).toBeInTheDocument();
+  });
+
+  it("infers multiSelect for a low-cardinality text column (auto-facet)", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", dept: "Grocery" }, { id: "b", dept: "Home" }]}
+        columns={[
+          { accessorKey: "id", header: "ID", dataType: "text" },
+          { accessorKey: "dept", header: "Dept", dataType: "text" },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    expect(screen.getByRole("checkbox", { name: "Grocery" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Home" })).toBeInTheDocument();
+  });
+
+  it("keeps free-text contains for high-cardinality text under facetThreshold", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", name: "Alpha" }, { id: "b", name: "Beta" }]}
+        columns={[{ accessorKey: "name", header: "Name", dataType: "text" }]}
+        facetThreshold={1}
+        // Disable row selection so the only checkboxes that could appear are
+        // facet checkboxes — which a free-text "contains" filter must not render.
+        features={{ rowSelection: false }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Name filter/i }));
+    expect(screen.getByLabelText("Name contains")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("respects enableFiltering: false (no funnel)", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", note: "x" }]}
+        columns={[
+          { accessorKey: "id", header: "ID", dataType: "text" },
+          { accessorKey: "note", header: "Note", dataType: "text", enableFiltering: false },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Note filter/i })).not.toBeInTheDocument();
+  });
+
+  it("reverts to opt-in when features.autoColumnFilters is false", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", price: 1 }]}
+        columns={[
+          { accessorKey: "id", header: "ID", dataType: "text" },
+          { accessorKey: "price", header: "Price", dataType: "number" },
+        ]}
+        filters={[{ accessorKey: "price" }]}
+        features={{ autoColumnFilters: false }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Price filter/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ID filter/i })).not.toBeInTheDocument();
+  });
+
+  it("infers from dataType when a filters entry omits filterType (regression for the old select default)", () => {
+    render(
+      <DataGrid
+        data={[{ id: "a", price: 5 }, { id: "b", price: 9 }]}
+        columns={[{ accessorKey: "price", header: "Price", dataType: "number" }]}
+        filters={[{ accessorKey: "price" }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Price filter/i }));
+    expect(screen.getByLabelText("Price minimum")).toBeInTheDocument();
   });
 });

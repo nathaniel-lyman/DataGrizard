@@ -50,7 +50,7 @@ type RowMeasureProps = {
 import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
 import { FilterPopover, isFilterActive, type GridFilter } from "./filters";
-import { DEFAULT_FACET_THRESHOLD } from "./filterDefaults";
+import { DEFAULT_FACET_THRESHOLD, resolveFilterType } from "./filterDefaults";
 import { HeaderColumnMenu } from "./HeaderColumnMenu";
 import {
   RowActionsMenu,
@@ -90,6 +90,7 @@ import {
 import { DataBarFill, FlashOverlay } from "./cellEffectsRender";
 import {
   collectExpandableGroupIds,
+  columnNumericExtent,
   flattenExpandedRows,
   getSelectionStatus,
   isGeneratedPivotColumnId,
@@ -778,13 +779,101 @@ export function DataGrid<TData extends object>({
     () => new Map(columnList.map((column) => [column.accessorKey, column])),
     [columnList],
   );
-  const filterTypeByColumnId = useMemo<Map<string, GridFilterType>>(
-    () => new Map(filters.map((filter) => [filter.accessorKey, filter.filterType ?? "select"])),
+  // Columns eligible for a filter. Non-synthetic leaves only (select/rowActions
+  // are not in `columnList`), minus explicit opt-outs. Independent of column
+  // visibility so chip metadata survives hiding a filtered column. When
+  // auto-provision is off, fall back to exactly the columns named in `filters`.
+  const overridesByKey = useMemo(
+    () => new Map(filters.map((filter) => [filter.accessorKey as string, filter])),
     [filters],
   );
+  const filterableColumnConfigs = useMemo<AnyColumnConfig<TData>[]>(() => {
+    if (!features.headerFilters) return [];
+    const eligible = columnList.filter((column) => column.enableFiltering !== false);
+    if (features.autoColumnFilters) {
+      return eligible.filter(
+        (column) => overridesByKey.get(column.accessorKey as string)?.filterable !== false,
+      );
+    }
+    return eligible.filter(
+      (column) =>
+        overridesByKey.has(column.accessorKey as string) &&
+        overridesByKey.get(column.accessorKey as string)?.filterable !== false,
+    );
+  }, [features.headerFilters, features.autoColumnFilters, columnList, overridesByKey]);
+
+  // Distinct values (for select/multiSelect options + facet cardinality) and
+  // numeric extents (for range input bounds). Page-scoped is meaningless in
+  // server mode, so skip the scans there.
+  const columnFacets = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (isServerMode) return map;
+    filterableColumnConfigs.forEach((column) => {
+      map.set(column.accessorKey as string, uniqueColumnValues(data, column.accessorKey));
+    });
+    return map;
+  }, [filterableColumnConfigs, data, isServerMode]);
+
+  const columnRangeBounds = useMemo(() => {
+    const map = new Map<string, { min: number; max: number }>();
+    if (isServerMode) return map;
+    filterableColumnConfigs.forEach((column) => {
+      if (
+        column.dataType === "number" ||
+        column.dataType === "currency" ||
+        column.dataType === "percent"
+      ) {
+        const extent = columnNumericExtent(data, column.accessorKey);
+        if (extent) map.set(column.accessorKey as string, extent);
+      }
+    });
+    return map;
+  }, [filterableColumnConfigs, data, isServerMode]);
+
+  // The single source of truth. One descriptor per filterable column, merging
+  // dataType inference with optional `filters` overrides. Every consumer below
+  // (filterType/operator maps, header funnels, pivot popover, chip bar) reads
+  // this — so grid and pivot stay in lockstep by construction.
+  const resolvedFilters = useMemo(() => {
+    return filterableColumnConfigs.map((column) => {
+      const key = column.accessorKey as string;
+      const override = overridesByKey.get(key);
+      const hasStaticOptions = Boolean(override?.options?.length);
+      const filterType =
+        override?.filterType ??
+        resolveFilterType({
+          dataType: column.dataType,
+          distinctCount: columnFacets.get(key)?.length,
+          hasStaticOptions,
+          isServerMode,
+          facetThreshold,
+        });
+      const bounds = columnRangeBounds.get(key);
+      return {
+        accessorKey: key,
+        label: override?.label ?? column.header,
+        filterType,
+        operator: override?.operator,
+        operators: override?.operators,
+        options: override?.options,
+        formatOption: override?.formatOption,
+        min: override?.min ?? bounds?.min,
+        max: override?.max ?? bounds?.max,
+        step: override?.step,
+        placeholder: override?.placeholder,
+        dateFormat: override?.dateFormat,
+        presets: override?.presets,
+      };
+    });
+  }, [filterableColumnConfigs, overridesByKey, columnFacets, columnRangeBounds, isServerMode, facetThreshold]);
+
+  const filterTypeByColumnId = useMemo<Map<string, GridFilterType>>(
+    () => new Map(resolvedFilters.map((filter) => [filter.accessorKey, filter.filterType])),
+    [resolvedFilters],
+  );
   const filterOperatorByColumnId = useMemo<Map<string, GridFilterOperator | undefined>>(
-    () => new Map(filters.map((filter) => [filter.accessorKey, filter.operator])),
-    [filters],
+    () => new Map(resolvedFilters.map((filter) => [filter.accessorKey, filter.operator])),
+    [resolvedFilters],
   );
   const groupableColumns = useMemo(
     () =>
@@ -1476,22 +1565,23 @@ export function DataGrid<TData extends object>({
   // data/filters change instead of on every render (e.g. each keystroke).
   const filterOptionsById = useMemo(() => {
     const map: Record<string, string[]> = {};
-    filters.forEach((filter) => {
+    resolvedFilters.forEach((filter) => {
       map[filter.accessorKey] =
         filter.options ??
         (filter.filterType === "boolean" ? ["true", "false"] : undefined) ??
-        (isServerMode ? [] : uniqueColumnValues(data, filter.accessorKey));
+        columnFacets.get(filter.accessorKey) ??
+        [];
     });
     return map;
-  }, [data, filters, isServerMode]);
+  }, [resolvedFilters, columnFacets]);
 
-  const toolbarFilters: GridFilter[] = filters.map((filter) => {
+  const toolbarFilters: GridFilter[] = resolvedFilters.map((filter) => {
     const column = isPivotLayout ? undefined : table.getColumn(filter.accessorKey);
     const pivotFilter = currentColumnFilters.find((item) => item.id === filter.accessorKey);
     return {
       id: filter.accessorKey,
-      label: filter.label ?? filter.accessorKey,
-      filterType: filter.filterType ?? "select",
+      label: filter.label,
+      filterType: filter.filterType,
       operator: filter.operator,
       operators: filter.operators,
       value: isPivotLayout ? pivotFilter?.value : column?.getFilterValue(),
@@ -1520,7 +1610,7 @@ export function DataGrid<TData extends object>({
           if (
             !keepsInactiveOperator &&
             !isFilterValueActive(value, {
-              filterType: filter.filterType ?? "select",
+              filterType: filter.filterType,
               operator: filter.operator,
             })
           ) {
