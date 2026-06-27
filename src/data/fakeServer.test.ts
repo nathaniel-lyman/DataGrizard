@@ -57,18 +57,18 @@ describe("queryRetail", () => {
   });
 
   it("filters text columns by contains, not exact match", async () => {
-    // Derive a brand substring that recurs across many rows (robust across data changes).
-    const brand = mockRetailData[0].item_name.split(" ")[0];
+    // Derive a prefix from the first word of an item name that recurs across many rows.
+    const namePrefix = mockRetailData[0].item_name.split(" ")[0];
     const result = await resolveQuery({
       ...baseQuery,
       pagination: { pageIndex: 0, pageSize: 500 },
-      columnFilters: [{ id: "item_name", value: brand }],
+      columnFilters: [{ id: "item_name", value: namePrefix }],
     });
     // Under exact-match ("select") this would be 0 rows; contains must return many.
     expect(result.rowCount).toBeGreaterThan(1);
     expect(
       result.rows.every((row) =>
-        row.item_name.toLowerCase().includes(brand.toLowerCase()),
+        row.item_name.toLowerCase().includes(namePrefix.toLowerCase()),
       ),
     ).toBe(true);
   });
