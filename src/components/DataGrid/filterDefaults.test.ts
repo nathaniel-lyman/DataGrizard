@@ -52,7 +52,15 @@ describe("resolveFilterType", () => {
 
   it("uses the dataType default for non-text/status types", () => {
     expect(resolveFilterType({ ...base, dataType: "number", distinctCount: 3 })).toBe("range");
+    expect(resolveFilterType({ ...base, dataType: "currency" })).toBe("range");
+    expect(resolveFilterType({ ...base, dataType: "percent" })).toBe("range");
     expect(resolveFilterType({ ...base, dataType: "date" })).toBe("date");
     expect(resolveFilterType({ ...base, dataType: "boolean" })).toBe("boolean");
+  });
+
+  it("honors a custom facetThreshold", () => {
+    // distinctCount 6 would facet at the default 12, but not at a threshold of 5
+    expect(resolveFilterType({ ...base, dataType: "text", distinctCount: 6, facetThreshold: 5 })).toBe("text");
+    expect(resolveFilterType({ ...base, dataType: "text", distinctCount: 5, facetThreshold: 5 })).toBe("multiSelect");
   });
 });
