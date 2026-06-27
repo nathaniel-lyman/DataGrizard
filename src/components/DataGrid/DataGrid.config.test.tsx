@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
 
@@ -125,6 +125,130 @@ describe("DataGrid feature flags", () => {
     expect(screen.getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
     expect(screen.queryByRole("button", { name: "Name" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resize Name" })).toBeInTheDocument();
+  });
+});
+
+describe("DataGrid density", () => {
+  it("uses standard density by default and exposes compact density", () => {
+    const { rerender } = render(
+      <DataGrid data={data} columns={columns} getRowId={(r) => r.id} features={{ rowSelection: false }} />,
+    );
+
+    const table = screen.getByRole("table");
+    expect(table).toHaveAttribute("data-density", "standard");
+    expect(screen.getByText("Acme").closest("td")).toHaveClass("px-3", "py-2");
+
+    rerender(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        density="compact"
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    expect(screen.getByRole("table")).toHaveAttribute("data-density", "compact");
+    expect(screen.getByText("Acme").closest("td")).toHaveClass("px-2", "py-1");
+  });
+});
+
+describe("DataGrid header column menu", () => {
+  it("sorts, clears sort, and hides a column", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Sort descending/i }));
+
+    expect(bodyRowNames()).toEqual(["Globex", "Acme"]);
+    expect(screen.getByRole("columnheader", { name: /Revenue/ })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
+    expect(screen.getByRole("columnheader", { name: /Revenue/ })).toHaveAttribute(
+      "aria-sort",
+      "none",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Status column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide column" }));
+    expect(screen.queryByRole("columnheader", { name: /Status/ })).not.toBeInTheDocument();
+  });
+
+  it("clears a column filter from the header menu", () => {
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        filters={[{ accessorKey: "status", label: "Status" }]}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Status filter/i }));
+    fireEvent.click(screen.getByRole("option", { name: "Active" }));
+    expect(screen.queryByText("Globex")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Status column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear filter" }));
+
+    expect(screen.getByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText("Globex")).toBeInTheDocument();
+  });
+
+  it("pins columns and emits autosize, fit, and reset width changes", () => {
+    const onColumnSizingChange = vi.fn();
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        state={{ columnSizing: { revenue: 320 } }}
+        onColumnSizingChange={onColumnSizingChange}
+        features={{ rowSelection: false, pagination: false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pin left" }));
+    expect(screen.getByRole("columnheader", { name: /Revenue/ })).toHaveStyle({
+      position: "sticky",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Unpin column" }));
+    expect(screen.getByRole("columnheader", { name: /Revenue/ }).style.position).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Autosize column" }));
+    expect(onColumnSizingChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ revenue: expect.any(Number) }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Fit visible columns" }));
+    expect(onColumnSizingChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        name: expect.any(Number),
+        revenue: expect.any(Number),
+        status: expect.any(Number),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Revenue column menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reset width" }));
+    expect(onColumnSizingChange).toHaveBeenLastCalledWith({});
   });
 });
 

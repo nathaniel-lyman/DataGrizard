@@ -49,7 +49,8 @@ type RowMeasureProps = {
 };
 import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
-import { FilterPopover, type GridFilter } from "./filters";
+import { FilterPopover, isFilterActive, type GridFilter } from "./filters";
+import { HeaderColumnMenu } from "./HeaderColumnMenu";
 import {
   CellEditor,
   computeEditError,
@@ -58,7 +59,12 @@ import {
 } from "./cellEditor";
 import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
 import { removeJson } from "./storage";
-import { dateSortingFn, isFilterValueActive, matchesFilterValue } from "./filterMatch";
+import {
+  booleanSortingFn,
+  dateSortingFn,
+  isFilterValueActive,
+  matchesFilterValue,
+} from "./filterMatch";
 import { buildGroupedColumnDefs, type DataGridColumnGroup } from "./columnGroups";
 import {
   getCellClasses,
@@ -131,6 +137,8 @@ export type DataGridFeatures = {
   export: boolean;
   /** Enable Ctrl/Cmd-C copy and Ctrl/Cmd-V paste for grid cells as TSV. */
   clipboard: boolean;
+  /** Show the per-column header menu for sort/filter/hide/pin/width actions. */
+  headerMenu: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -146,6 +154,7 @@ export type DataGridColumnPinningState = ColumnPinningState;
 export type DataGridLayoutMode = "grid" | "pivot";
 export type DataGridDataMode = "client" | "server";
 export type DataGridGroupSummaryDisplay = "inline" | "columns";
+export type DataGridDensity = "compact" | "standard" | "comfortable";
 
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
 
@@ -269,6 +278,7 @@ export type DataGridProps<TData extends object> = {
   locale?: string;
   currency?: string;
   dateFormat?: Intl.DateTimeFormatOptions;
+  density?: DataGridDensity;
   searchPlaceholder?: string;
   viewNamePlaceholder?: string;
   pageSizeOptions?: number[];
@@ -306,6 +316,13 @@ const defaultFeatures: DataGridFeatures = {
   cellSelection: true,
   export: true,
   clipboard: true,
+  headerMenu: true,
+};
+
+const densityStyles: Record<DataGridDensity, { header: string; cell: string; rowHeight: number }> = {
+  compact: { header: "px-2 py-1", cell: "px-2 py-1", rowHeight: 28 },
+  standard: { header: "px-3 py-2", cell: "px-3 py-2", rowHeight: 36 },
+  comfortable: { header: "px-3 py-3", cell: "px-3 py-3", rowHeight: 44 },
 };
 
 const parseClipboardTsv = (text: string): string[][] => {
@@ -410,11 +427,12 @@ export function DataGrid<TData extends object>({
   locale,
   currency,
   dateFormat,
+  density = "standard",
   searchPlaceholder = "Search rows...",
   viewNamePlaceholder = "Analysis view",
   pageSizeOptions = [25, 50, 100, 250],
   virtualizeRows = false,
-  estimatedRowHeight = 36,
+  estimatedRowHeight,
   renderDetailPanel,
   getRowId,
   getRowLabel,
@@ -446,6 +464,8 @@ export function DataGrid<TData extends object>({
     ...dataModeFeatureDefaults,
     ...featureOverrides,
   };
+  const densityStyle = densityStyles[density] ?? densityStyles.standard;
+  const resolvedEstimatedRowHeight = estimatedRowHeight ?? densityStyle.rowHeight;
   // ----- 2. Column config (value-erased) + storage keys + default order/pinning -----
   const columnList = columns as unknown as AnyColumnConfig<TData>[];
   const defaultExpanded = useMemo<ExpandedState>(
@@ -724,7 +744,11 @@ export function DataGrid<TData extends object>({
         enableGrouping: features.grouping && Boolean(column.enableGrouping),
         enableGlobalFilter: true,
         filterFn: columnFilterFn,
-        ...(column.dataType === "date" ? { sortingFn: dateSortingFn as SortingFn<TData> } : {}),
+        ...(column.dataType === "date"
+          ? { sortingFn: dateSortingFn as SortingFn<TData> }
+          : column.dataType === "boolean"
+            ? { sortingFn: booleanSortingFn as SortingFn<TData>, sortDescFirst: false }
+            : {}),
         getGroupingValue: column.getGroupingValue,
         cell: ({ getValue, row }) => renderCellValue(column, getValue(), row.original, formatOptions),
       })),
@@ -1113,6 +1137,7 @@ export function DataGrid<TData extends object>({
     enableRowSelection: features.rowSelection,
     enableGrouping: features.grouping && !isPivotLayout,
     enableColumnPinning: features.columnPinning,
+    getColumnCanGlobalFilter: () => true,
     enableExpanding: features.grouping && !isPivotLayout,
     columnResizeMode: "onChange",
     groupedColumnMode: "remove",
@@ -1156,6 +1181,7 @@ export function DataGrid<TData extends object>({
     filters.forEach((filter) => {
       map[filter.accessorKey] =
         filter.options ??
+        (filter.filterType === "boolean" ? ["true", "false"] : undefined) ??
         (isServerMode ? [] : uniqueColumnValues(data, filter.accessorKey));
     });
     return map;
@@ -1504,7 +1530,7 @@ export function DataGrid<TData extends object>({
             <button
               type="button"
               onClick={() => toggleGroupRow(row)}
-              className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300"
+              className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 ${densityStyle.cell} text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300`}
               style={{ paddingLeft: 12 + row.depth * 18 }}
               aria-expanded={row.getIsExpanded()}
               aria-label={`Toggle ${groupColumnLabel} ${groupValueLabel} group`}
@@ -1585,7 +1611,7 @@ export function DataGrid<TData extends object>({
           <button
             type="button"
             onClick={() => toggleGroupRow(row)}
-            className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300"
+            className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 ${densityStyle.cell} text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300`}
             style={{ paddingLeft: 12 + row.depth * 18 }}
             aria-expanded={row.getIsExpanded()}
             aria-label={`Toggle ${groupColumnLabel} ${groupValueLabel} group`}
@@ -1624,7 +1650,7 @@ export function DataGrid<TData extends object>({
               key={`${row.id}:${column.id}`}
               aria-colindex={visibleLeafColumns.findIndex((visible) => visible.id === column.id) + 1}
               style={{ width: column.getSize() }}
-              className={`border-b border-r border-slate-200 px-3 py-2 text-xs last:border-r-0 ${
+              className={`border-b border-r border-slate-200 ${densityStyle.cell} text-xs last:border-r-0 ${
                 isNumeric ? "text-right tabular-nums" : "text-left"
               }`}
               title={item?.label}
@@ -1695,7 +1721,7 @@ export function DataGrid<TData extends object>({
   const rowVirtualizer = useVirtualizer({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => estimatedRowHeight,
+    estimateSize: () => resolvedEstimatedRowHeight,
     overscan: 12,
     enabled: virtualizeRows,
   });
@@ -1710,6 +1736,67 @@ export function DataGrid<TData extends object>({
   // the edit state machine; onCellKeyDown (below) is the precedence-chain
   // orchestrator that wires them together with row actions and clipboard.
   const visibleLeafColumns = table.getVisibleLeafColumns();
+  const clampColumnWidth = (
+    column: Column<TData | PivotRow<TData>, unknown>,
+    width: number,
+  ) => {
+    const min = column.columnDef.minSize ?? 48;
+    const max = column.columnDef.maxSize ?? Number.POSITIVE_INFINITY;
+    return Math.round(Math.max(min, Math.min(max, width)));
+  };
+  const setColumnWidth = (
+    column: Column<TData | PivotRow<TData>, unknown>,
+    width: number,
+  ) => {
+    emitColumnSizingChange((current) => ({
+      ...current,
+      [column.id]: clampColumnWidth(column, width),
+    }));
+  };
+  const autosizeColumn = (column: Column<TData | PivotRow<TData>, unknown>) => {
+    const label = getColumnControlLabel(column);
+    const sampleRows = visibleRows.slice(0, 100);
+    const longestText = sampleRows.reduce((longest, row) => {
+      const raw = row.getValue(column.id);
+      const columnConfig = columnsById.get(column.id);
+      const text =
+        columnConfig && !isPivotRow(row.original)
+          ? getColumnSearchText(columnConfig, raw, row.original, formatOptions)
+          : String(raw ?? "");
+      return Math.max(longest, text.length);
+    }, label.length);
+    setColumnWidth(column, longestText * 8 + 48);
+  };
+  const fitVisibleColumns = () => {
+    const resizableColumns = table.getVisibleLeafColumns().filter((column) => column.getCanResize());
+    if (resizableColumns.length === 0) {
+      return;
+    }
+
+    const targetWidth = Math.max(scrollRef.current?.clientWidth ?? 0, minTableWidth);
+    const baseWidths = resizableColumns.map((column) =>
+      clampColumnWidth(column, column.columnDef.size ?? column.getSize()),
+    );
+    const baseTotal = baseWidths.reduce((total, width) => total + width, 0);
+    if (baseTotal <= 0) {
+      return;
+    }
+
+    emitColumnSizingChange((current) => {
+      const next = { ...current };
+      resizableColumns.forEach((column, index) => {
+        next[column.id] = clampColumnWidth(column, (baseWidths[index] / baseTotal) * targetWidth);
+      });
+      return next;
+    });
+  };
+  const resetColumnWidth = (column: Column<TData | PivotRow<TData>, unknown>) => {
+    emitColumnSizingChange((current) => {
+      const next = { ...current };
+      delete next[column.id];
+      return next;
+    });
+  };
   const {
     navColumnIds,
     navRowIds,
@@ -2417,7 +2504,7 @@ export function DataGrid<TData extends object>({
                         : rowBackground,
                 }),
               }}
-              className={`border-b border-r px-3 py-2 align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
+              className={`border-b border-r ${densityStyle.cell} align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
                 pivotRow ? "border-slate-200" : "border-slate-100"
               } ${
                 isPivotMeasure
@@ -2687,6 +2774,7 @@ export function DataGrid<TData extends object>({
             </div>
           ) : null}
           <table
+            data-density={density}
             className="w-full border-separate border-spacing-0 text-xs"
             style={{ minWidth: minTableWidth }}
             aria-rowcount={
@@ -2721,6 +2809,16 @@ export function DataGrid<TData extends object>({
                     const headerColIndex = visibleLeafColumns.findIndex(
                       (column) => column.id === header.column.id,
                     );
+                    const isLeafHeader = headerColIndex >= 0;
+                    const headerLabel = getColumnControlLabel(header.column);
+                    const showHeaderMenu =
+                      features.headerMenu &&
+                      isLeafHeader &&
+                      (canSort ||
+                        Boolean(headerFilter) ||
+                        header.column.getCanHide() ||
+                        header.column.getCanPin() ||
+                        (features.columnResizing && header.column.getCanResize()));
 
                     return (
                       <th
@@ -2744,7 +2842,7 @@ export function DataGrid<TData extends object>({
                             backgroundColor: isPivotLayout ? "#cffafe" : "#f1f5f9",
                           }),
                         }}
-                        className={`relative border-r px-3 py-2 font-semibold last:border-r-0 ${
+                        className={`relative border-r ${densityStyle.header} font-semibold last:border-r-0 ${
                           isPivotLayout ? "border-cyan-200" : "border-slate-200"
                         }`}
                       >
@@ -2776,6 +2874,31 @@ export function DataGrid<TData extends object>({
                             </div>
                             {headerFilter ? (
                               <FilterPopover filter={headerFilter} variant="icon" />
+                            ) : null}
+                            {showHeaderMenu ? (
+                              <HeaderColumnMenu
+                                label={headerLabel}
+                                canSort={canSort}
+                                sortState={sortState}
+                                canFilter={Boolean(headerFilter)}
+                                filterActive={headerFilter ? isFilterActive(headerFilter) : false}
+                                canHide={header.column.getCanHide()}
+                                canPin={header.column.getCanPin()}
+                                pinState={header.column.getIsPinned()}
+                                canResize={features.columnResizing && header.column.getCanResize()}
+                                onSortAsc={() => emitSortingChange([{ id: header.column.id, desc: false }])}
+                                onSortDesc={() => emitSortingChange([{ id: header.column.id, desc: true }])}
+                                onClearSort={() => header.column.clearSorting()}
+                                onClearFilter={() => {
+                                  header.column.setFilterValue(undefined);
+                                  resetPageIndex();
+                                }}
+                                onHide={() => header.column.toggleVisibility(false)}
+                                onPin={(position) => header.column.pin(position)}
+                                onAutosize={() => autosizeColumn(header.column)}
+                                onFit={fitVisibleColumns}
+                                onResetWidth={() => resetColumnWidth(header.column)}
+                              />
                             ) : null}
                           </div>
                         )}
@@ -2833,7 +2956,7 @@ export function DataGrid<TData extends object>({
                             backgroundColor: "#f8fafc",
                           }),
                         }}
-                        className="border-r border-slate-200 px-2 py-1 align-top last:border-r-0"
+                        className={`border-r border-slate-200 ${densityStyle.cell} align-top last:border-r-0`}
                       >
                         {filter ? <FilterPopover filter={filter} variant="inline" /> : null}
                       </td>

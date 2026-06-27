@@ -86,6 +86,16 @@ const getDateRange = (value: unknown) =>
     ? (value as { from?: unknown; to?: unknown })
     : {};
 
+const toBoolean = (value: unknown) => {
+  if (value === true || String(value).toLowerCase() === "true") {
+    return true;
+  }
+  if (value === false || String(value).toLowerCase() === "false") {
+    return false;
+  }
+  return null;
+};
+
 // Unified column-filter predicate, shared by the grid filterFn and the pivot
 // source-row loop so both paths stay in lockstep. Dispatches by filter-value
 // shape/operator, preserving the older raw value shapes while supporting the
@@ -170,6 +180,15 @@ export const matchesFilterValue = (raw: unknown, filterValue: unknown, options?:
     return operator === "isNoneOf" ? !included : selected.length === 0 || included;
   }
 
+  if (options?.filterType === "boolean") {
+    const cell = toBoolean(raw);
+    const target = toBoolean(value);
+    if (cell == null || target == null) {
+      return false;
+    }
+    return operator === "isNot" || operator === "notEquals" ? cell !== target : cell === target;
+  }
+
   if (options?.filterType === "range" || typeof value === "object") {
     const numericValue = compareNumber(raw);
     if (numericValue == null) {
@@ -245,4 +264,13 @@ export const dateSortingFn: SortingFn<unknown> = (rowA, rowB, columnId) => {
   if (a === null) return 1;
   if (b === null) return -1;
   return a - b;
+};
+
+export const booleanSortingFn: SortingFn<unknown> = (rowA, rowB, columnId) => {
+  const a = toBoolean(rowA.getValue(columnId));
+  const b = toBoolean(rowB.getValue(columnId));
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return Number(a) - Number(b);
 };

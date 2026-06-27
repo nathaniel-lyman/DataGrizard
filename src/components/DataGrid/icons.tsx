@@ -8,6 +8,7 @@ import {
   Funnel,
   GripVertical,
   Minus,
+  MoreVertical,
   Plus,
   Search,
   X,
@@ -35,6 +36,8 @@ export const CloseIcon = (props: IconProps) => <X {...decorativeProps(props)} />
 export const PlusIcon = (props: IconProps) => <Plus {...decorativeProps(props)} />;
 
 export const MinusIcon = (props: IconProps) => <Minus {...decorativeProps(props)} />;
+
+export const MoreVerticalIcon = (props: IconProps) => <MoreVertical {...decorativeProps(props)} />;
 
 export const SearchIcon = (props: IconProps) => <Search {...decorativeProps(props)} />;
 

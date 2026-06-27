@@ -160,7 +160,7 @@ compatibility adapter, but new consumers should use `pivot.measures`.
 type GridColumnConfig<TData> = {
   accessorKey: keyof TData & string;
   header: string;
-  dataType: "text" | "number" | "currency" | "percent" | "status" | "date";
+  dataType: "text" | "number" | "currency" | "percent" | "status" | "date" | "boolean";
   width?: number; minWidth?: number; maxWidth?: number;
   pinned?: "left" | "right";
   enablePinning?: boolean;
@@ -179,6 +179,8 @@ type GridColumnConfig<TData> = {
 - `dataType` drives default formatting and alignment. `number`/`currency`/`percent`
   right-align with `tabular-nums`; non-finite / blank values render empty (no
   `$NaN` or fake `$0`).
+- `boolean` renders `True` / `False`, participates in boolean-aware sorting,
+  global search, filtering, and inline editing.
 - `status` renders a pill. Style it declaratively with `statusStyles`
   (`{ active: "bg-emerald-50 text-emerald-700 border-emerald-200" }`) or
   imperatively with `getStatusClassName`.
@@ -194,6 +196,7 @@ filters={[
   { accessorKey: "brand",    label: "Brand", filterType: "multiSelect" },
   { accessorKey: "revenue",  label: "Revenue", filterType: "range" },   // numeric min/max
   { accessorKey: "name",     label: "Name", filterType: "text" },
+  { accessorKey: "active",   label: "Active", filterType: "boolean" },
   { accessorKey: "createdAt", label: "Created", filterType: "date" },
 ]}
 ```
@@ -276,12 +279,23 @@ persisted, and two grids with different keys never collide.
 
 Defaults to `en-US` / `USD`. Applies to cell formatting and the searchable text.
 
+## Density
+
+```tsx
+<DataGrid density="compact" ... />
+```
+
+`density` accepts `"compact"`, `"standard"` (default), or `"comfortable"` and
+adjusts header/body cell padding plus the default virtual-row estimate.
+
 ## Accessibility
 
 - Sortable headers expose `aria-sort`; multi-sort via Shift-click with priority
   badges and a Clear-sort control.
 - Rows with a click/detail action are keyboard-operable (Enter/Space) and focusable.
 - Column resize handles are keyboard-operable (Arrow keys to resize, Enter/Home to reset).
+- Header column menus expose sort, clear sort/filter, hide, pin/unpin, autosize,
+  fit visible columns, and reset-width actions.
 - The Columns menu and multi-select filters close on Escape and outside click.
 - `tableLabel` renders a visually-hidden `<caption>` as the table's accessible name.
 
@@ -314,6 +328,7 @@ For a bare table with only sortable, resizable columns:
     pagination: false,
     rowSelection: false,
     detailPanel: false,
+    headerMenu: false,
   }}
 />
 ```
@@ -333,6 +348,7 @@ For a bare table with only sortable, resizable columns:
 | `pagination`      | ✅           | ✅            |
 | `rowSelection`    | ✅           | ✅            |
 | `detailPanel`     | ✅           | ✅            |
+| `headerMenu`      | ✅           | ✅            |
 
 ## Building from source
 

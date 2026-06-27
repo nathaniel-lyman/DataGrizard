@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronDownIcon, FilterIcon } from "./icons";
 import { FilterBody, formatOptionLabel } from "./filterBodies";
 import { isFilterValueActive } from "./filterMatch";
-import type { GridFilterOperator } from "../../types/grid";
+import type { GridFilterOperator, GridFilterType } from "../../types/grid";
 
 // Runtime descriptor for one column filter. Domain-neutral: built by DataGrid
 // from the public GridFilterConfig + current filter value, and rendered in the
@@ -10,7 +10,7 @@ import type { GridFilterOperator } from "../../types/grid";
 export type GridFilter = {
   id: string;
   label: string;
-  filterType: "select" | "multiSelect" | "range" | "text" | "date";
+  filterType: GridFilterType;
   operator?: GridFilterOperator;
   operators?: GridFilterOperator[];
   value: unknown;
@@ -71,7 +71,7 @@ const summarize = (filter: GridFilter) => {
   if (filter.filterType === "multiSelect" && Array.isArray(value)) {
     return `${value.length} selected`;
   }
-  if (filter.filterType === "select" && typeof value === "string") {
+  if ((filter.filterType === "select" || filter.filterType === "boolean") && typeof value === "string") {
     return format(value);
   }
   if (filter.filterType === "text" && typeof value === "string") {

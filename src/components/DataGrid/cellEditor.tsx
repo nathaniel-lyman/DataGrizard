@@ -41,6 +41,9 @@ const toInputString = <TData,>(column: EditCellColumn<TData>, value: unknown): s
   if (column.dataType === "date") {
     return toDateInputValue(value);
   }
+  if (column.dataType === "boolean") {
+    return value === true || String(value).toLowerCase() === "true" ? "true" : "false";
+  }
   return String(value);
 };
 
@@ -53,6 +56,9 @@ export const parseEditValue = <TData,>(column: EditCellColumn<TData>, input: str
   }
   if (isNumericType(column.dataType)) {
     return input === "" ? Number.NaN : Number(input);
+  }
+  if (column.dataType === "boolean") {
+    return input === "true";
   }
   return input;
 };
@@ -214,6 +220,22 @@ export function CellEditor<TData>({
             {option}
           </option>
         ))}
+      </select>,
+    );
+  }
+
+  if (column.dataType === "boolean") {
+    return withError(
+      <select
+        {...common}
+        value={draftText === "true" ? "true" : "false"}
+        onChange={(event) => {
+          setDraftText(event.target.value);
+          setError(null);
+        }}
+      >
+        <option value="true">True</option>
+        <option value="false">False</option>
       </select>,
     );
   }

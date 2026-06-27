@@ -6,6 +6,7 @@ export type {
   DataGridColumnPinningState,
   DataGridControlledState,
   DataGridDataMode,
+  DataGridDensity,
   DataGridExpandedState,
   DataGridFocusedCell,
   DataGridGroupSummaryDisplay,

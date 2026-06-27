@@ -46,6 +46,7 @@ const operatorLabels: Record<GridFilterOperator, string> = {
 
 const defaultOperatorsByType: Record<GridFilterType, GridFilterOperator[]> = {
   select: ["is", "isNot", "isEmpty", "isNotEmpty"],
+  boolean: ["is", "isNot", "isEmpty", "isNotEmpty"],
   multiSelect: ["isAnyOf", "isNoneOf", "isEmpty", "isNotEmpty"],
   text: ["contains", "notContains", "equals", "notEquals", "startsWith", "endsWith", "isEmpty", "isNotEmpty"],
   range: ["between", "equals", "notEquals", "gt", "gte", "lt", "lte", "isEmpty", "isNotEmpty"],
@@ -112,7 +113,7 @@ const OperatorSelect = ({ filter }: { filter: GridFilter }) => {
 
 const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => void }) => {
   const { operator, value } = resolveFilterState(filter);
-  const selected = typeof value === "string" ? value : "";
+  const selected = typeof value === "boolean" ? String(value) : typeof value === "string" ? value : "";
   const format = filter.formatOption ?? formatOptionLabel;
   const choose = (value: string) => {
     commitFilterValue(filter, operator, value || undefined);

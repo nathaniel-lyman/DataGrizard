@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 
-export type GridDataType = "text" | "number" | "currency" | "percent" | "status" | "date";
+export type GridDataType =
+  | "text"
+  | "number"
+  | "currency"
+  | "percent"
+  | "status"
+  | "date"
+  | "boolean";
 
 export type GridConditionalFormat<TValue = unknown, TData = unknown> = {
   when: (value: TValue, row: TData) => boolean;
@@ -143,7 +150,7 @@ export type GridColumnConfig<TData> = {
   [K in Extract<keyof TData, string>]: GridColumnConfigForKey<TData, K>;
 }[Extract<keyof TData, string>];
 
-export type GridFilterType = "select" | "multiSelect" | "range" | "text" | "date";
+export type GridFilterType = "select" | "multiSelect" | "range" | "text" | "date" | "boolean";
 
 export type GridFilterOperator =
   | "is"

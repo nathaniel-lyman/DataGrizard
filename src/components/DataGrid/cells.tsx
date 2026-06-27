@@ -81,6 +81,16 @@ const formatNumericValue = (dataType: GridDataType, value: unknown, formatOption
   return formatPercent(numericValue, formatOptions);
 };
 
+export const formatBooleanValue = (value: unknown) => {
+  if (value === true || String(value).toLowerCase() === "true") {
+    return "True";
+  }
+  if (value === false || String(value).toLowerCase() === "false") {
+    return "False";
+  }
+  return "";
+};
+
 const renderBaseCellValue = <TData extends object>(
   column: AnyColumnConfig<TData>,
   value: unknown,
@@ -119,6 +129,10 @@ const renderBaseCellValue = <TData extends object>(
       ...formatOptions,
       dateFormat: column.dateFormat ?? formatOptions.dateFormat,
     });
+  }
+
+  if (column.dataType === "boolean") {
+    return formatBooleanValue(value);
   }
 
   return String(value);
@@ -190,6 +204,9 @@ export const getColumnSearchText = <TData extends object>(
       ...formatOptions,
       dateFormat: column.dateFormat ?? formatOptions.dateFormat,
     });
+  }
+  if (column.dataType === "boolean") {
+    return formatBooleanValue(value);
   }
   return String(value);
 };
