@@ -17,7 +17,44 @@ export const defaultFilterTypeForDataType = (dataType: GridDataType): GridFilter
     case "boolean":
       return "boolean";
     case "text":
-    default:
       return "text";
+    default: {
+      const _exhaustive: never = dataType;
+      return "text";
+    }
   }
+};
+
+export const DEFAULT_FACET_THRESHOLD = 12;
+
+export type ResolveFilterTypeArgs = {
+  dataType: GridDataType;
+  /** Distinct value count over the data; omit in server mode (unknown from one page). */
+  distinctCount?: number;
+  /** True when the consumer supplied an explicit `options` list. */
+  hasStaticOptions?: boolean;
+  isServerMode?: boolean;
+  /** Text columns with <= this many distinct values auto-facet. Default 12. */
+  facetThreshold?: number;
+};
+
+// Refines the dataType default with cardinality awareness. Only `text` is
+// data-dependent: it becomes a faceted multiSelect when the value set is small
+// (or static options are supplied), otherwise a free-text contains box. `status`
+// is always categorical. Everything else uses the dataType default verbatim.
+export const resolveFilterType = ({
+  dataType,
+  distinctCount,
+  hasStaticOptions = false,
+  isServerMode = false,
+  facetThreshold = DEFAULT_FACET_THRESHOLD,
+}: ResolveFilterTypeArgs): GridFilterType => {
+  if (dataType === "text") {
+    if (hasStaticOptions) return "multiSelect";
+    if (!isServerMode && distinctCount != null && distinctCount <= facetThreshold) {
+      return "multiSelect";
+    }
+    return "text";
+  }
+  return defaultFilterTypeForDataType(dataType);
 };
