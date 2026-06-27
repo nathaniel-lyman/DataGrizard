@@ -4,6 +4,26 @@
   "description": "A reusable, domain-neutral analytical DataGrid component for React, built on TanStack Table v8. Grid + pivot layouts, grouping, saved views, summaries, and a controlled/uncontrolled hybrid API.",
   "type": "module",
   "license": "MIT",
+  "author": "Nathaniel Lyman <nathaniel.lyman@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nathaniel-lyman/DataGrizard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nathaniel-lyman/DataGrizard/issues"
+  },
+  "homepage": "https://github.com/nathaniel-lyman/DataGrizard#readme",
+  "keywords": [
+    "react",
+    "datagrid",
+    "data-grid",
+    "table",
+    "pivot",
+    "tanstack-table",
+    "grouping",
+    "virtualization",
+    "typescript"
+  ],
   "sideEffects": [
     "**/*.css"
   ],

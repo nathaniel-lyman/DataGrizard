@@ -9,3 +9,4 @@ datagrizard-grid-*.png
 *.ndjson
 
 .superpowers/
+.codex-audits/
