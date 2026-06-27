@@ -365,14 +365,64 @@ menu, and spreadsheet-style cell navigation. Disable the whole surface with
 
 ## Accessibility
 
-- Sortable headers expose `aria-sort`; multi-sort via Shift-click with priority
-  badges and a Clear-sort control.
-- Rows with a click/detail action are keyboard-operable (Enter/Space) and focusable.
-- Column resize handles are keyboard-operable (Arrow keys to resize, Enter/Home to reset).
-- Header column menus expose sort, clear sort/filter, hide, pin/unpin, autosize,
-  fit visible columns, and reset-width actions.
-- The Columns menu and multi-select filters close on Escape and outside click.
-- `tableLabel` renders a visually-hidden `<caption>` as the table's accessible name.
+DataGrizard targets **WCAG 2.1 Level AA**. It ships native table semantics, ARIA
+grid annotations, full keyboard operation, and managed focus. The behaviors
+below are covered by the `DataGrid.a11y.test.tsx` and `DataGrid.keyboard.test.tsx`
+suites.
+
+**Structure & ARIA**
+
+- Renders a semantic `<table>`. `tableLabel` becomes a visually-hidden
+  `<caption>` — the table's accessible name.
+- The table exposes `aria-rowcount` / `aria-colcount`, and every cell carries
+  `aria-rowindex` / `aria-colindex` (row index offset by the header rows).
+- Under client-side row virtualization (`virtualizeRows`, pagination off) only a
+  window of rows is in the DOM, yet each rendered row keeps its **true index
+  within the full row set** and `aria-rowcount` reports that full total, so
+  assistive tech announces "row N of total" correctly. The off-screen spacer
+  rows are `aria-hidden`.
+- Expanding a group inserts its rows into the cell grid in visual order and
+  renumbers `aria-rowindex` over the new order — rows below shift down, with no
+  stale or duplicated indices.
+- Sortable headers expose `aria-sort`; multi-sort is available via Shift-click
+  with visible priority badges and a Clear-sort control.
+- Loading and error overlays announce through an `aria-live` region
+  (`role="status"` / `role="alert"`).
+
+**Keyboard & focus**
+
+- Cells own the tab stop through a roving `tabindex` (exactly one cell is
+  tabbable). Arrows / Home / End / Ctrl+Home / Ctrl+End / PageUp / PageDown move
+  between cells; rows themselves are not focusable.
+- On a focused cell, Enter / F2 follows the precedence chain edit → row action →
+  group toggle, Space toggles row selection, and Escape cancels an in-progress
+  edit before closing the detail panel.
+- Column resize handles are keyboard-operable (Arrows to resize, Enter/Home to
+  reset). The Columns menu, header menus, and multi-select filters close on
+  Escape and outside click.
+- Value-change flashing and other motion honor `prefers-reduced-motion`.
+
+**Your responsibilities**
+
+- Keep the contrast of any class names you supply (`statusStyles`,
+  `conditionalFormats`, `getRowClassName`, `colorScale` text, …) at AA — the grid
+  can't validate your palette.
+- Pass `tableLabel` so the table has an accessible name, and give every column a
+  human-readable `header`.
+
+**Scope & known limitations**
+
+- Row numbering is scoped to the rendered row set: a paginated view numbers the
+  current page (each page is a self-contained grid), and in server mode
+  `aria-rowcount` reflects the backend total you supply via `rowCount`. The
+  globally-correct `aria-rowindex` guarantee above applies to the
+  virtualized/non-paginated grid.
+- jsdom cannot lay out the virtual row window, so the global-`aria-rowindex`
+  guarantee is verified at its source (the index is taken from the full row
+  list) rather than by scrolling a rendered window in tests.
+- These automated tests assert structure, ARIA, and keyboard behavior. They are
+  not a substitute for a manual screen-reader pass or an automated axe/contrast
+  audit against your app's actual theme.
 
 ---
 
