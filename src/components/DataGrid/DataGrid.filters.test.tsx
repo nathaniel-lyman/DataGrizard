@@ -669,6 +669,35 @@ describe("DataGrid applied-filter chip bar", () => {
     expect(screen.queryByTestId("applied-filter-dept")).not.toBeInTheDocument();
   });
 
+  it("clears every active filter when Clear all is clicked", () => {
+    render(
+      <DataGrid
+        data={[
+          { id: "a", dept: "Grocery", price: 5 },
+          { id: "b", dept: "Home", price: 50 },
+        ]}
+        columns={[
+          { accessorKey: "dept", header: "Dept", dataType: "text" },
+          { accessorKey: "price", header: "Price", dataType: "number" },
+        ]}
+        getRowId={(r) => r.id}
+      />,
+    );
+    // Two active filters → two chips (a Dept facet selection and a Price range).
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Grocery" }));
+    fireEvent.click(screen.getByRole("button", { name: /Price filter/i }));
+    fireEvent.change(screen.getByLabelText("Price minimum"), { target: { value: "10" } });
+    expect(screen.getByTestId("applied-filter-dept")).toBeInTheDocument();
+    expect(screen.getByTestId("applied-filter-price")).toBeInTheDocument();
+
+    // Clear all removes BOTH chips (not just one) and restores the full row set.
+    fireEvent.click(screen.getByRole("button", { name: /clear all/i }));
+    expect(screen.queryByTestId("applied-filter-dept")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("applied-filter-price")).not.toBeInTheDocument();
+    expect(screen.getByText(/2 of 2 rows/i)).toBeInTheDocument();
+  });
+
   it("hides the applied-filter bar when features.filterSummary is false", () => {
     render(
       <DataGrid
