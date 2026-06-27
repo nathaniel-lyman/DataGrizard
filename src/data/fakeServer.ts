@@ -4,7 +4,8 @@ import type {
   SortingState,
 } from "@tanstack/react-table";
 import { matchesFilterValue } from "../components/DataGrid/filterMatch";
-import { mockRetailData, retailFilters, type RetailItem } from "./mockRetailData";
+import { resolveFilterType } from "../components/DataGrid/filterDefaults";
+import { mockRetailData, retailColumns, retailFilters, type RetailItem } from "./mockRetailData";
 
 // Accept readonly inputs so callers can pass `as const` query literals (the
 // demo/tests do); the engine only reads these slices, copying when it sorts.
@@ -25,11 +26,22 @@ const LATENCY_MS = 300;
 // Mutable in-memory store (a copy) so applyEdit persists across queries.
 const store: RetailItem[] = mockRetailData.map((row) => ({ ...row }));
 
+const overrideByKey = new Map(retailFilters.map((f) => [f.accessorKey as string, f]));
+
 const filterTypeById = new Map(
-  retailFilters.map((filter) => [
-    filter.accessorKey as string,
-    filter.filterType ?? "select",
-  ]),
+  retailColumns.map((column) => {
+    const key = column.accessorKey as string;
+    const override = overrideByKey.get(key);
+    return [
+      key,
+      override?.filterType ??
+        resolveFilterType({
+          dataType: column.dataType,
+          hasStaticOptions: Boolean(override?.options?.length),
+          isServerMode: true,
+        }),
+    ];
+  }),
 );
 
 const filterOperatorById = new Map(
