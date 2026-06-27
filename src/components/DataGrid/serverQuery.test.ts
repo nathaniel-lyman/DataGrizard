@@ -25,7 +25,7 @@ const filters: GridFilterConfig<Row>[] = [
   { accessorKey: "status", label: "Status", filterType: "multiSelect" },
   { accessorKey: "qty", label: "Qty", filterType: "range" },
   { accessorKey: "when", label: "When", filterType: "date" },
-  { accessorKey: "region", label: "Region" }, // no filterType → defaults to "select"
+  { accessorKey: "region", label: "Region" }, // no filterType → inferred from dataType (text → contains)
 ];
 
 const base: QueryRequestSlices = {
