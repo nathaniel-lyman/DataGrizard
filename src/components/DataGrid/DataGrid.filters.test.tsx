@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig, GridFilterConfig } from "../../types/grid";
@@ -342,5 +342,300 @@ describe("DataGrid auto-provisioned filters", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Price filter/i }));
     expect(screen.getByLabelText("Price minimum")).toBeInTheDocument();
+  });
+});
+
+// ----- type-aware filter predicate coverage -----
+// Drives the real filter controls (aria-labels verified against filterBodies.tsx)
+// and asserts which rows are visible.  All data is domain-neutral.
+describe("type-aware filter predicate coverage", () => {
+  // --- shared number dataset ---
+  type NRow = { id: string; n: number };
+  const nData: NRow[] = [
+    { id: "neg",   n: -2 },
+    { id: "zero",  n: 0 },
+    { id: "dec",   n: 3.5 },
+    { id: "hi",    n: 10 },
+    { id: "blank", n: NaN }, // non-finite → excluded by any active range filter
+  ];
+  const nColumns: GridColumnConfig<NRow>[] = [
+    { accessorKey: "id", header: "ID", dataType: "text" },
+    { accessorKey: "n",  header: "N",  dataType: "number" },
+  ];
+  const openNFilter = () =>
+    fireEvent.click(screen.getByRole("button", { name: /N filter/i }));
+
+  // --- number: between ---
+  it("number: between min+max keeps only in-range rows (inclusive both ends)", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "5" } });
+    // 0 and 3.5 are in [0, 5]; -2 and 10 are not; NaN is excluded
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: min-only keeps rows >= min", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "3.5" } });
+    // 3.5 and 10 pass; -2, 0, NaN do not
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: max-only keeps rows <= max", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "0" } });
+    // -2 and 0 pass; 3.5, 10, NaN do not
+    expect(screen.getByText("neg")).toBeInTheDocument();
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: gt keeps rows strictly greater than bound", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gt" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "3.5" } });
+    // only 10 > 3.5
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: gte keeps rows >= bound (includes the exact match)", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gte" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "3.5" } });
+    // 3.5 and 10 pass
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: lt keeps rows strictly less than bound", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "lt" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "0" } });
+    // only -2 < 0
+    expect(screen.getByText("neg")).toBeInTheDocument();
+    expect(screen.queryByText("zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: lte keeps rows <= bound (includes the exact match)", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "lte" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "0" } });
+    // -2 and 0 pass
+    expect(screen.getByText("neg")).toBeInTheDocument();
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: equals keeps only the exact matched row", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "equals" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "10" } });
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: notEquals excludes matched row; blank/NaN cell is also excluded", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "notEquals" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "10" } });
+    // -2, 0, 3.5 pass; 10 excluded; NaN excluded (non-finite)
+    expect(screen.getByText("neg")).toBeInTheDocument();
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: negative bound — gt -2 excludes the -2 row itself", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gt" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "-2" } });
+    // 0, 3.5, 10 > -2; -2 is not strictly greater than -2; NaN excluded
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: decimal bound — between 0 and 3.5 is inclusive at both endpoints", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "3.5" } });
+    // 0 and 3.5 in [0, 3.5]; -2 and 10 out; NaN excluded
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: zero is a real value — gte 0 keeps the zero row", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gte" } });
+    fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "0" } });
+    // 0, 3.5, 10 >= 0; -2 does not; NaN excluded
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: between {min:0, max:3.5} includes the zero row (zero is not blank)", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "3.5" } });
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: inverted range (min > max) matches no rows", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    // min=10 > max=3 → no value can satisfy both bounds
+    fireEvent.change(screen.getByLabelText("N minimum"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "3" } });
+    expect(screen.queryByText("neg")).not.toBeInTheDocument();
+    expect(screen.queryByText("zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("dec")).not.toBeInTheDocument();
+    expect(screen.queryByText("hi")).not.toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  it("number: blank/NaN cell is excluded when any range filter is active", () => {
+    render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
+    openNFilter();
+    // max-only with a very high bound — all finite rows pass, NaN row does not
+    fireEvent.change(screen.getByLabelText("N maximum"), { target: { value: "100" } });
+    expect(screen.getByText("neg")).toBeInTheDocument();
+    expect(screen.getByText("zero")).toBeInTheDocument();
+    expect(screen.getByText("dec")).toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.queryByText("blank")).not.toBeInTheDocument();
+  });
+
+  // --- percent column ---
+  it("percent: between range over raw fractional values keeps in-range rows", () => {
+    type PRow = { id: string; rate: number };
+    const pData: PRow[] = [
+      { id: "low",  rate: 0.1 },
+      { id: "mid",  rate: 0.5 },
+      { id: "high", rate: 0.9 },
+    ];
+    const pColumns: GridColumnConfig<PRow>[] = [
+      { accessorKey: "id",   header: "ID",   dataType: "text" },
+      { accessorKey: "rate", header: "Rate", dataType: "percent" },
+    ];
+    render(<DataGrid data={pData} columns={pColumns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByRole("button", { name: /Rate filter/i }));
+    // min=0.4: mid (0.5) and high (0.9) are >= 0.4; low (0.1) is not
+    fireEvent.change(screen.getByLabelText("Rate minimum"), { target: { value: "0.4" } });
+    expect(screen.getByText("mid")).toBeInTheDocument();
+    expect(screen.getByText("high")).toBeInTheDocument();
+    expect(screen.queryByText("low")).not.toBeInTheDocument();
+  });
+
+  // --- currency column ---
+  it("currency: between range keeps in-range rows", () => {
+    type CRow = { id: string; price: number };
+    const cData: CRow[] = [
+      { id: "cheap",     price: 5 },
+      { id: "medium",    price: 25 },
+      { id: "expensive", price: 100 },
+    ];
+    const cColumns: GridColumnConfig<CRow>[] = [
+      { accessorKey: "id",    header: "ID",    dataType: "text" },
+      { accessorKey: "price", header: "Price", dataType: "currency" },
+    ];
+    render(<DataGrid data={cData} columns={cColumns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByRole("button", { name: /Price filter/i }));
+    // [10, 50]: only 25 qualifies; 5 and 100 are out
+    fireEvent.change(screen.getByLabelText("Price minimum"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("Price maximum"), { target: { value: "50" } });
+    expect(screen.getByText("medium")).toBeInTheDocument();
+    expect(screen.queryByText("cheap")).not.toBeInTheDocument();
+    expect(screen.queryByText("expensive")).not.toBeInTheDocument();
+  });
+
+  // --- boolean column ---
+  type BRow = { id: string; flag: boolean };
+  const bData: BRow[] = [
+    { id: "yes1", flag: true },
+    { id: "yes2", flag: true },
+    { id: "no1",  flag: false },
+    { id: "no2",  flag: false },
+  ];
+  const bColumns: GridColumnConfig<BRow>[] = [
+    { accessorKey: "id",   header: "ID",   dataType: "text" },
+    { accessorKey: "flag", header: "Flag", dataType: "boolean" },
+  ];
+
+  it("boolean: funnel opens a listbox with True and False options", () => {
+    render(<DataGrid data={bData} columns={bColumns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByRole("button", { name: /Flag filter/i }));
+    const listbox = screen.getByRole("listbox", { name: /Flag options/i });
+    expect(listbox).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "True" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "False" })).toBeInTheDocument();
+  });
+
+  it("boolean: clicking True keeps only true rows", () => {
+    render(<DataGrid data={bData} columns={bColumns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByRole("button", { name: /Flag filter/i }));
+    // Clicking the option closes the popover
+    fireEvent.click(screen.getByRole("option", { name: "True" }));
+    expect(screen.getByText("yes1")).toBeInTheDocument();
+    expect(screen.getByText("yes2")).toBeInTheDocument();
+    expect(screen.queryByText("no1")).not.toBeInTheDocument();
+    expect(screen.queryByText("no2")).not.toBeInTheDocument();
+  });
+
+  it("boolean: clicking False keeps only false rows", () => {
+    render(<DataGrid data={bData} columns={bColumns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByRole("button", { name: /Flag filter/i }));
+    fireEvent.click(screen.getByRole("option", { name: "False" }));
+    expect(screen.getByText("no1")).toBeInTheDocument();
+    expect(screen.getByText("no2")).toBeInTheDocument();
+    expect(screen.queryByText("yes1")).not.toBeInTheDocument();
+    expect(screen.queryByText("yes2")).not.toBeInTheDocument();
   });
 });
