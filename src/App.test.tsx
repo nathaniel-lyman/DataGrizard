@@ -19,7 +19,8 @@ describe("App server-mode demo", () => {
   });
 
   it("disables the Server toggle in pivot layout (server is grid-only)", () => {
-    render(<App />); // starts in pivot
+    render(<App />); // starts in grid
+    fireEvent.click(screen.getByRole("button", { name: "Pivot" }));
     expect(screen.getByRole("button", { name: "Server" })).toBeDisabled();
   });
 

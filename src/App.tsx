@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnFiltersState, PaginationState, SortingState } from "@tanstack/react-table";
 import {
   DataGrid,
@@ -16,6 +16,12 @@ import {
   type RetailItem,
 } from "./data/mockRetailData";
 import { applyEdit, queryRetail } from "./data/fakeServer";
+import { createRetailBigQueryDataSource } from "./data/retailBigQuery";
+
+// When VITE_RETAIL_ENDPOINT is set, server mode round-trips to the real
+// Express + BigQuery backend; otherwise it uses the in-memory fake server.
+const retailEndpoint = (import.meta.env as Record<string, string | undefined>)
+  .VITE_RETAIL_ENDPOINT;
 
 const layouts: { id: DataGridLayoutMode; label: string }[] = [
   { id: "pivot", label: "Pivot" },
@@ -39,7 +45,7 @@ const retailColumnGroups: DataGridColumnGroup[] = [
 ];
 
 function App() {
-  const [layoutMode, setLayoutMode] = useState<DataGridLayoutMode>("pivot");
+  const [layoutMode, setLayoutMode] = useState<DataGridLayoutMode>("grid");
   const [dataMode, setDataMode] = useState<DataGridDataMode>("client");
 
   // Client mode: the grid never mutates `data`; we apply onCellEdit by item_id.
@@ -60,6 +66,12 @@ function App() {
   const effectiveDataMode: DataGridDataMode = layoutMode === "pivot" ? "client" : dataMode;
   const isServer = effectiveDataMode === "server";
 
+  // The real backend adapter (created once); null falls back to the fake server.
+  const bigQuerySource = useMemo(
+    () => (retailEndpoint ? createRetailBigQueryDataSource({ endpoint: retailEndpoint }) : null),
+    [],
+  );
+
   const updateRecommendationStatus = (item: RetailItem, status: RecommendationStatus) => {
     if (isServer) {
       applyEdit(item.item_id, "recommendation_status", status);
@@ -77,14 +89,30 @@ function App() {
   useEffect(() => {
     if (!isServer) return;
     const requestId = ++requestIdRef.current;
+    const controller = new AbortController();
     setIsLoading(true);
-    queryRetail({ sorting, columnFilters, globalFilter, pagination }).then((result) => {
-      if (requestId !== requestIdRef.current) return; // drop stale responses
-      setServerRows(result.rows);
-      setServerRowCount(result.rowCount);
-      setIsLoading(false);
-    });
-  }, [isServer, sorting, columnFilters, globalFilter, pagination, refreshToken]);
+    const query = { sorting, columnFilters, globalFilter, pagination };
+    // Same wire contract either way: the BigQuery adapter takes the grid's
+    // request shape (signal + requestId), the fake server takes the slices.
+    const pending = bigQuerySource
+      ? bigQuerySource({ ...query, signal: controller.signal, requestId })
+      : queryRetail(query);
+    Promise.resolve(pending)
+      .then((result) => {
+        if (requestId !== requestIdRef.current) return; // drop stale responses
+        setServerRows(result.rows);
+        setServerRowCount(result.rowCount ?? 0);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+        console.error("Server query failed:", error);
+        setServerRows([]);
+        setServerRowCount(0);
+        setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [isServer, sorting, columnFilters, globalFilter, pagination, refreshToken, bigQuerySource]);
 
   return (
     <main className="flex min-h-dvh flex-col bg-slate-100 text-slate-900">
