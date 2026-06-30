@@ -155,6 +155,28 @@ describe("DataGrid scoped localStorage persistence", () => {
     expect(window.localStorage.getItem("columnPinning")).toBeNull();
   });
 
+  it("clears persisted column order when columns are reset", () => {
+    render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.id}
+        storageKey="grid-A"
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    openViewControls();
+    fireEvent.click(screen.getByRole("button", { name: /visible/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Product right" }));
+
+    expect(window.localStorage.getItem("grid-A.columnOrder")).toContain("product");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset columns" }));
+
+    expect(window.localStorage.getItem("grid-A.columnOrder")).toBeNull();
+  });
+
   it("rehydrates saved views on remount from the scoped key", () => {
     const { unmount } = render(
       <DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-A" />,

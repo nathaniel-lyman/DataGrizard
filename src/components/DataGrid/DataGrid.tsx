@@ -97,6 +97,7 @@ import {
   isGeneratedPivotColumnId,
   isPivotRow,
   normalizeColumnPinning,
+  reconcileColumnOrder,
   uniqueColumnValues,
 } from "./gridHelpers";
 import { useCellEditing } from "./useCellEditing";
@@ -1488,10 +1489,7 @@ export function DataGrid<TData extends object>({
   }, [currentColumnPinning, generatedPivotColumnIds, lockedLeftColumnIds, pivotMaterialization]);
   const effectiveColumnOrder = useMemo<ColumnOrderState>(() => {
     if (!pivotMaterialization) {
-      const missingDefaultIds = effectiveDefaultColumnOrder.filter(
-        (columnId) => !currentColumnOrder.includes(columnId),
-      );
-      return [...currentColumnOrder, ...missingDefaultIds];
+      return reconcileColumnOrder(currentColumnOrder, effectiveDefaultColumnOrder);
     }
 
     const generatedAxisIds = pivotMaterialization.metadata.generatedColumnIds.filter((columnId) =>
@@ -1506,14 +1504,8 @@ export function DataGrid<TData extends object>({
       return effectiveDefaultColumnOrder;
     }
 
-    const reconciled = currentColumnOrder.filter(
-      (columnId) => !isGeneratedPivotColumnId(columnId) || generatedPivotColumnIds.has(columnId),
-    );
-    const missingGeneratedIds = effectiveDefaultColumnOrder.filter(
-      (columnId) => !reconciled.includes(columnId),
-    );
-    return [...reconciled, ...missingGeneratedIds];
-  }, [currentColumnOrder, effectiveDefaultColumnOrder, generatedPivotColumnIds, pivotMaterialization]);
+    return reconcileColumnOrder(currentColumnOrder, effectiveDefaultColumnOrder);
+  }, [currentColumnOrder, effectiveDefaultColumnOrder, pivotMaterialization]);
   const isTopLevelPivotPagination =
     isPivotLayout && resolvedPivotState.paginationMode === "topLevelGroups";
   const pivotPageCount =
@@ -1764,6 +1756,9 @@ export function DataGrid<TData extends object>({
     emitColumnPinningChange(defaultPinningState);
     if (controlledState?.columnSizing === undefined) {
       removeJson(storageKeys?.columnSizing);
+    }
+    if (controlledState?.columnOrder === undefined) {
+      removeJson(storageKeys?.columnOrder);
     }
     if (controlledState?.columnPinning === undefined) {
       removeJson(storageKeys?.columnPinning);

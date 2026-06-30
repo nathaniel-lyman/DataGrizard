@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { columnNumericExtent } from "./gridHelpers";
+import { columnNumericExtent, reconcileColumnOrder } from "./gridHelpers";
 
 describe("columnNumericExtent", () => {
   it("returns min/max over finite numeric cells", () => {
@@ -22,6 +22,26 @@ describe("columnNumericExtent", () => {
   });
 
   it("ignores empty-string cells", () => {
-    expect(columnNumericExtent([{ n: "" }, { n: 4 }] as unknown as { n: number }[], "n")).toEqual({ min: 4, max: 4 });
+    expect(
+      columnNumericExtent([{ n: "" }, { n: 4 }] as unknown as { n: number }[], "n"),
+    ).toEqual({ min: 4, max: 4 });
+  });
+});
+
+describe("reconcileColumnOrder", () => {
+  it("preserves valid order, drops stale ids, dedupes, and appends new defaults", () => {
+    expect(
+      reconcileColumnOrder(
+        ["revenue", "old", "product", "revenue"],
+        ["select", "product", "revenue", "units"],
+      ),
+    ).toEqual(["revenue", "product", "select", "units"]);
+  });
+
+  it("falls back to default order when every persisted id is stale", () => {
+    expect(reconcileColumnOrder(["old-a", "old-b"], ["product", "revenue"])).toEqual([
+      "product",
+      "revenue",
+    ]);
   });
 });

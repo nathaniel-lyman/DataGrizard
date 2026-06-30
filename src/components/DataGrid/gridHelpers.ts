@@ -1,7 +1,7 @@
 // Pure, state-free helpers used by the DataGrid engine. Each is generic over
 // the consumer row type (`TData extends object`) and free of React state, so
 // they live here rather than inside the component. Domain-neutral by design.
-import type { ColumnPinningState, Row, Updater } from "@tanstack/react-table";
+import type { ColumnOrderState, ColumnPinningState, Row, Updater } from "@tanstack/react-table";
 import { PIVOT_ROW_LABEL_COLUMN_ID, type PivotRow } from "./pivot";
 
 // Resolves a TanStack `Updater` (a value or an updater fn) against the current value.
@@ -22,6 +22,16 @@ export const normalizeColumnPinning = (
   );
 
   return { left, right };
+};
+
+export const reconcileColumnOrder = (
+  currentOrder: ColumnOrderState,
+  defaultOrder: ColumnOrderState,
+): ColumnOrderState => {
+  const validColumnIds = new Set(defaultOrder);
+  const reconciled = uniqueIds(currentOrder).filter((columnId) => validColumnIds.has(columnId));
+  const missing = defaultOrder.filter((columnId) => !reconciled.includes(columnId));
+  return [...reconciled, ...missing];
 };
 
 export const uniqueColumnValues = <TData extends object>(
