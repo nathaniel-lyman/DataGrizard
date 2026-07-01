@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`headerWrap` prop:** opt-in two-line (clamped) header labels. Header cells
+  top-align and the sort/filter/menu tools anchor to the first line, so tools
+  stay aligned across columns regardless of how many lines each label wraps to.
+- Header labels expose the full column name via a native `title` tooltip
+  (string headers only), so truncated names are recoverable.
+
+### Fixed
+
+- **Column widths are now authoritative:** the table uses `table-layout: fixed`
+  with a per-leaf-column `<colgroup>`. Previously, a long header label silently
+  expanded its column past the configured/resized width (`truncate` never
+  engaged), drag-resize could not shrink such a column, and — because pinned
+  sticky offsets are computed from `getSize()` sums — pinned columns visibly
+  overlapped their neighbors once rendered widths drifted.
+- Non-sortable header labels now truncate with an ellipsis (the label span was
+  a flex container, where `text-overflow: ellipsis` does not apply).
+
 ## [0.1.0] - 2026-06-27
 
 Initial public release of the `DataGrid` component — a domain-neutral analytical

@@ -329,6 +329,12 @@ export type DataGridProps<TData extends object> = {
   currency?: string;
   dateFormat?: Intl.DateTimeFormatOptions;
   density?: DataGridDensity;
+  /**
+   * Let long header labels wrap to two lines (clamped) instead of truncating.
+   * Header tools (sort/filter/menu) anchor to the first line so they stay
+   * aligned across columns regardless of wrap count. Default false.
+   */
+  headerWrap?: boolean;
   searchPlaceholder?: string;
   viewNamePlaceholder?: string;
   pageSizeOptions?: number[];
@@ -493,6 +499,7 @@ export function DataGrid<TData extends object>({
   currency,
   dateFormat,
   density = "standard",
+  headerWrap = false,
   searchPlaceholder = "Search rows...",
   viewNamePlaceholder = "Analysis view",
   pageSizeOptions = [25, 50, 100, 250],
@@ -2144,6 +2151,10 @@ export function DataGrid<TData extends object>({
   // the edit state machine; onCellKeyDown (below) is the precedence-chain
   // orchestrator that wires them together with row actions and clipboard.
   const visibleLeafColumns = table.getVisibleLeafColumns();
+  // Single-line ellipsis by default; headerWrap clamps to two lines instead.
+  const headerLabelClass = headerWrap
+    ? "line-clamp-2 whitespace-normal break-words"
+    : "truncate";
   const clampColumnWidth = (
     column: Column<TData | PivotRow<TData>, unknown>,
     width: number,
@@ -2920,7 +2931,7 @@ export function DataGrid<TData extends object>({
                         : rowBackground,
                 }),
               }}
-              className={`border-b border-r ${densityStyle.cell} align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
+              className={`break-words border-b border-r ${densityStyle.cell} align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
                 pivotRow ? "border-slate-200" : "border-slate-100"
               } ${
                 isPivotMeasure
@@ -3201,7 +3212,7 @@ export function DataGrid<TData extends object>({
           ) : null}
           <table
             data-density={density}
-            className="w-full border-separate border-spacing-0 text-xs"
+            className="w-full table-fixed border-separate border-spacing-0 text-xs"
             style={{ minWidth: minTableWidth }}
             aria-rowcount={
               headerRowCount +
@@ -3212,6 +3223,15 @@ export function DataGrid<TData extends object>({
             aria-colcount={visibleLeafColumns.length}
           >
             {tableLabel ? <caption className="sr-only">{tableLabel}</caption> : null}
+            {/* Fixed layout reads column widths from the first row, which can
+                be a band-header row with colSpans — a colgroup keeps leaf
+                widths authoritative so getSize() matches what renders (pinned
+                offsets are computed from getSize() sums). */}
+            <colgroup>
+              {visibleLeafColumns.map((column) => (
+                <col key={column.id} style={{ width: column.getSize() }} />
+              ))}
+            </colgroup>
             <thead
               className={`sticky top-0 z-10 text-left shadow-[0_2px_4px_-1px_rgba(15,23,42,0.12)] ${
                 isPivotLayout
@@ -3237,6 +3257,13 @@ export function DataGrid<TData extends object>({
                     );
                     const isLeafHeader = headerColIndex >= 0;
                     const headerLabel = getColumnControlLabel(header.column);
+                    // Truncated labels are otherwise unrecoverable in the UI —
+                    // only string headers get a title (a ReactNode would
+                    // stringify to junk).
+                    const headerTitle =
+                      typeof header.column.columnDef.header === "string"
+                        ? header.column.columnDef.header
+                        : undefined;
                     const showHeaderMenu =
                       features.headerMenu &&
                       isLeafHeader &&
@@ -3269,20 +3296,27 @@ export function DataGrid<TData extends object>({
                           }),
                         }}
                         className={`relative border-r ${densityStyle.header} font-semibold last:border-r-0 ${
-                          isPivotLayout ? "border-cyan-200" : "border-slate-200"
-                        }`}
+                          headerWrap ? "align-top" : ""
+                        } ${isPivotLayout ? "border-cyan-200" : "border-slate-200"}`}
                       >
                         {header.isPlaceholder ? null : (
-                          <div className="flex w-full items-center gap-1">
+                          <div
+                            className={`flex w-full gap-1 ${headerWrap ? "items-start" : "items-center"}`}
+                          >
                             <div className="min-w-0 flex-1">
                               {canSort ? (
                                 <button
                                   type="button"
                                   onClick={header.column.getToggleSortingHandler()}
                                   title="Click to sort. Shift-click to add to multi-sort."
-                                  className="flex w-full cursor-pointer items-center gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                                  className={`flex w-full cursor-pointer gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
+                                    headerWrap ? "items-start text-left" : "items-center"
+                                  }`}
                                 >
-                                  <span className="truncate">
+                                  <span
+                                    title={headerTitle}
+                                    className={headerLabelClass}
+                                  >
                                     {flexRender(header.column.columnDef.header, header.getContext())}
                                   </span>
                                   <SortIcon state={sortState} />
@@ -3293,8 +3327,10 @@ export function DataGrid<TData extends object>({
                                   ) : null}
                                 </button>
                               ) : (
-                                <div className="flex w-full items-center truncate">
-                                  {flexRender(header.column.columnDef.header, header.getContext())}
+                                <div className="flex w-full items-center">
+                                  <span title={headerTitle} className={headerLabelClass}>
+                                    {flexRender(header.column.columnDef.header, header.getContext())}
+                                  </span>
                                 </div>
                               )}
                             </div>
