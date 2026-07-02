@@ -605,3 +605,15 @@ describe("DataGrid column pinning configuration", () => {
     expect(screen.getByRole("columnheader", { name: /Revenue/ }).style.position).toBe("");
   });
 });
+
+describe("DataGrid loading overlay", () => {
+  it("anchors the loading overlay outside the scroll container", () => {
+    render(<DataGrid data={[]} columns={columns} getRowId={(r) => r.id} isLoading features={{ pagination: false }} />);
+    const overlay = screen.getByRole("status");
+    // The overlay must be a *sibling* of the scroller, not inside it,
+    // or it scrolls out of view with the content.
+    const scroller = overlay.parentElement!.querySelector(".overflow-auto");
+    expect(scroller).not.toBeNull();
+    expect(scroller!.contains(overlay)).toBe(false);
+  });
+});

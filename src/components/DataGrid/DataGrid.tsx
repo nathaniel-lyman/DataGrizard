@@ -3203,11 +3203,7 @@ export function DataGrid<TData extends object>({
           </div>
         ) : null}
 
-        <div
-          ref={scrollRef}
-          onScroll={(event) => setHorizontalScrollLeft(event.currentTarget.scrollLeft)}
-          className="relative h-[min(68dvh,640px)] min-h-72 overflow-auto md:h-auto md:min-h-0 md:flex-1"
-        >
+        <div className="relative flex min-h-0 flex-col md:flex-1">
           {overlay ? (
             <div
               role={error ? "alert" : "status"}
@@ -3217,6 +3213,11 @@ export function DataGrid<TData extends object>({
               {overlay}
             </div>
           ) : null}
+          <div
+            ref={scrollRef}
+            onScroll={(event) => setHorizontalScrollLeft(event.currentTarget.scrollLeft)}
+            className="h-[min(68dvh,640px)] min-h-72 overflow-auto md:h-auto md:min-h-0 md:flex-1"
+          >
           <table
             data-density={density}
             className="w-full table-fixed border-separate border-spacing-0 text-xs"
@@ -3455,6 +3456,7 @@ export function DataGrid<TData extends object>({
             </thead>
             <tbody>{renderBodyRows()}</tbody>
           </table>
+          </div>
         </div>
 
         {features.pagination ? (
