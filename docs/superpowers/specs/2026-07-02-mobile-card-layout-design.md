@@ -78,7 +78,7 @@ Unset roles fall back to the heuristic per-role (overrides and inference compose
 
 **Accessibility.** Card mode uses list semantics (`role="list"`/`listitem`), each card one focusable element; Enter/Space opens the detail sheet. No roving tabindex in card mode; with virtualization only rendered cards are tabbable. Sheets are dialogs: `aria-modal`, focus trap, focus returns to the opening chip. Touch targets ≥44px.
 
-**Degradations (explicit, overridable).** `cardModeFeatureDefaults` disables in card mode: inline editing, fill handle, clipboard/cell selection, row selection, export, grouping UI, column chooser, header/floating filters (sheet replaces them). **Pivot ignores `cardLayout`.** Server mode composes: cards render the loaded page, pager stays. `virtualizeRows` windows the card list with the same react-virtual + `measureElement` wiring.
+**Degradations (explicit, overridable).** `cardModeFeatureDefaults` disables in card mode: inline editing, fill handle, clipboard/cell selection, row selection, export, grouping UI, column chooser, floating filters. *Errata:* the `headerFilters` flag itself stays **ON** — it is the master toggle that feeds `resolvedFilters`, which the Filters sheet renders; header funnels simply have no table header to appear in (an earlier draft listed header filters as disabled). **Pivot ignores `cardLayout`.** Server mode composes: cards render the loaded page, pager stays. `virtualizeRows` windows the card list with the same react-virtual + `measureElement` wiring.
 
 **Files.**
 
