@@ -2251,6 +2251,34 @@ export function DataGrid<TData extends object>({
       ),
     [visibleLeafColumns, columnsById, cardView?.card],
   );
+  const compactSortColumns = useMemo<CompactSortColumn[]>(
+    () =>
+      visibleLeafColumns
+        .filter(
+          (column) =>
+            column.id !== SELECT_COLUMN_ID &&
+            column.id !== ROW_ACTIONS_COLUMN_ID &&
+            column.getCanSort(),
+        )
+        .map((column) => ({
+          id: column.id,
+          label: getColumnControlLabel(column),
+          direction: column.getIsSorted(),
+        })),
+    // currentSorting is what actually changes getIsSorted()'s answer.
+    [visibleLeafColumns, currentSorting],
+  );
+  // Single-column cycle: tap a new column → asc; same column → desc; again → clear.
+  const handleCompactSort = (columnId: string) => {
+    const current = currentSorting[0];
+    if (current?.id !== columnId) {
+      emitSortingChangeWithServerReset([{ id: columnId, desc: false }]);
+    } else if (!current.desc) {
+      emitSortingChangeWithServerReset([{ id: columnId, desc: true }]);
+    } else {
+      emitSortingChangeWithServerReset([]);
+    }
+  };
   // Single-line ellipsis by default; headerWrap clamps to two lines instead.
   const headerLabelClass = headerWrap
     ? "line-clamp-2 whitespace-normal break-words"
@@ -3396,6 +3424,20 @@ export function DataGrid<TData extends object>({
     <div ref={rootRef} className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {features.toolbar ? (
+          isCardMode ? (
+            <ToolbarCompact
+              search={String(currentGlobalFilter ?? "")}
+              searchPlaceholder={searchPlaceholder}
+              enableGlobalSearch={features.globalSearch}
+              onSearchChange={emitGlobalFilterChangeWithServerReset}
+              enableSorting={features.sorting}
+              sortColumns={compactSortColumns}
+              onSortColumn={handleCompactSort}
+              onClearSort={() => emitSortingChangeWithServerReset([])}
+              filters={toolbarFilters}
+              onClearFilters={clearFilters}
+            />
+          ) : (
           <Toolbar
             search={currentGlobalFilter}
             searchPlaceholder={searchPlaceholder}
@@ -3445,6 +3487,7 @@ export function DataGrid<TData extends object>({
             onDeleteView={deleteView}
             onActiveViewNameChange={emitActiveViewNameChange}
           />
+          )
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
@@ -3498,6 +3541,23 @@ export function DataGrid<TData extends object>({
         ) : null}
 
         {showSummaries ? (
+          isCardMode ? (
+            <div className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2">
+              {summaryItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex shrink-0 items-baseline gap-1.5 rounded-full border border-slate-200 bg-slate-50/60 px-3 py-1"
+                >
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                    {item.label}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-950">
+                    {item.value(summaryContext)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="border-b border-slate-200 bg-white px-4 py-3">
             <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
               <span>Summary</span>
@@ -3528,6 +3588,7 @@ export function DataGrid<TData extends object>({
               ))}
             </div>
           </div>
+          )
         ) : null}
 
         <div className="relative flex min-h-0 flex-col md:flex-1">

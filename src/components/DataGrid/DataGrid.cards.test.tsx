@@ -134,3 +134,52 @@ describe("DataGrid card mode: render swap", () => {
     expect(onActiveRowChange).toHaveBeenCalledWith(rows[0]);
   });
 });
+
+describe("DataGrid card mode: chrome", () => {
+  it("replaces the desktop toolbar with search + Sort/Filters chips", () => {
+    renderCards();
+    expect(screen.getByPlaceholderText("Search rows...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filters" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View controls" })).not.toBeInTheDocument();
+  });
+
+  it("sort sheet cycles asc → desc → clear on the same column and reorders cards", () => {
+    renderCards();
+    fireEvent.click(screen.getByRole("button", { name: "Sort" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
+    // asc: lowest revenue first
+    let cards = screen.getAllByRole("listitem");
+    expect(within(cards[0]).getByText("Lamp")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
+    // desc: highest revenue first
+    cards = screen.getAllByRole("listitem");
+    expect(within(cards[0]).getByText("Almond Butter")).toBeInTheDocument();
+    // third tap clears: the chip label (aria-hidden arrow excluded) reverts to
+    // plain "Sort" — data order happens to equal desc order, so assert the chip.
+    fireEvent.click(screen.getByRole("button", { name: "Revenue" }));
+    expect(screen.getByRole("button", { name: "Sort" })).toBeInTheDocument();
+  });
+
+  it("filters sheet writes columnFilters: facet a value, cards filter, chip counts", () => {
+    renderCards();
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    // dept is low-cardinality text → auto-faceted multiSelect checkboxes.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Grocery" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+  });
+
+  it("summaries condense to a horizontal strip in card mode", () => {
+    renderCards({
+      summaryItems: [
+        { id: "count", label: "Items", value: ({ filteredRows }) => filteredRows.length },
+      ],
+    });
+    // The desktop summary header ("Summary" + scope) is not rendered.
+    expect(screen.queryByText("Summary")).not.toBeInTheDocument();
+    expect(screen.getByText("Items")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+  });
+});
