@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stay aligned across columns regardless of how many lines each label wraps to.
 - Header labels expose the full column name via a native `title` tooltip
   (string headers only), so truncated names are recoverable.
+- **`features.headerToolsOnDemand`:** collapse per-column funnel/menu buttons
+  until hover, keyboard focus, an active filter, or an open menu.
+- Per-column `enableSorting` opt-out on `GridColumnConfig`.
+- MultiSelect filter bodies over 10 options get an in-list search box.
+- Saved-views save button relabels to "Update view" when the name exists.
 
 ### Fixed
 
@@ -25,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overlapped their neighbors once rendered widths drifted.
 - Non-sortable header labels now truncate with an ellipsis (the label span was
   a flex container, where `text-overflow: ellipsis` does not apply).
+- Filter popovers and the header column menu flip vertically and clamp their
+  height instead of running below short viewports.
+- Inline-edit validation errors flip above the field near the viewport bottom.
+- The loading/empty overlay anchors to the visible area instead of scrolling
+  away with the content.
+- Applied-filter chips truncate at a bounded width with a full-value tooltip.
+- Empty filter option lists show "No options available" instead of a blank
+  popover; blur with an invalid inline edit reverts instead of trapping the
+  editor open.
 
 ## [0.1.0] - 2026-06-27
 
