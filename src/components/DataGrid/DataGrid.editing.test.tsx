@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
+import { shouldFlipErrorAbove } from "./cellEditor";
 import type { GridColumnConfig } from "../../types/grid";
 
 type Row = { id: string; name: string; qty: number; price: number; status: string };
@@ -37,7 +38,40 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+describe("shouldFlipErrorAbove", () => {
+  it("flips above when the field bottom is within ~40px of the viewport bottom and there is room above", () => {
+    // viewport 768; field near bottom: bottom=740 (740+40 > 768), top=720 (>40)
+    expect(shouldFlipErrorAbove({ top: 720, bottom: 740 }, 768)).toBe(true);
+  });
+  it("does not flip when there is room below", () => {
+    expect(shouldFlipErrorAbove({ top: 100, bottom: 120 }, 768)).toBe(false);
+  });
+  it("does not flip when there is no room above even if near the bottom", () => {
+    // near bottom but top within the 40px band → nowhere to go up
+    expect(shouldFlipErrorAbove({ top: 20, bottom: 760 }, 768)).toBe(false);
+  });
+  it("does not flip when rect is undefined", () => {
+    expect(shouldFlipErrorAbove(undefined, 768)).toBe(false);
+  });
+});
+
 describe("DataGrid cell editing", () => {
+  it("renders the edit validation error below by default (no flip in jsdom's zero-rect layout)", () => {
+    render(
+      <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={vi.fn()} features={{ rowSelection: false }} />,
+    );
+
+    fireEvent.doubleClick(cellOf("5"));
+    const input = screen.getByDisplayValue("5");
+    fireEvent.change(input, { target: { value: "-3" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveClass("top-full");
+    expect(alert).not.toHaveClass("bottom-full");
+  });
+
+
   it("enters edit on double-click and commits via Enter without mutating data", () => {
     const onCellEdit = vi.fn();
     const data = makeData();

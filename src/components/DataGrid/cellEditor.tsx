@@ -85,6 +85,13 @@ export const computeEditError = <TData,>(
 const inputClass =
   "h-7 w-full rounded border border-slate-400 bg-white px-1.5 text-xs text-slate-900 outline-none focus:border-slate-600 focus:ring-2 focus:ring-slate-300";
 
+// ~40px bubble; flip when the field bottom is within that band of the viewport
+// (and there is room above). Exported for direct unit testing.
+export const shouldFlipErrorAbove = (
+  rect: { top: number; bottom: number } | undefined,
+  viewportHeight: number,
+): boolean => Boolean(rect && rect.bottom + 40 > viewportHeight && rect.top > 40);
+
 export function CellEditor<TData>({
   column,
   value,
@@ -103,6 +110,7 @@ export function CellEditor<TData>({
   const [draftValue, setDraftValue] = useState<unknown>(value);
   const [draftText, setDraftText] = useState<string>(() => toInputString(column, value));
   const [error, setError] = useState<string | null>(null);
+  const [errorAbove, setErrorAbove] = useState(false);
   const committedRef = useRef(false);
   const fieldRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
   const errorId = useId();
@@ -114,6 +122,13 @@ export function CellEditor<TData>({
       node.select();
     }
   }, []);
+
+  useEffect(() => {
+    if (!error) return;
+    setErrorAbove(
+      shouldFlipErrorAbove(fieldRef.current?.getBoundingClientRect(), window.innerHeight),
+    );
+  }, [error]);
 
   const commitTyped = (typed: unknown, advance: boolean) => {
     if (committedRef.current) {
@@ -197,7 +212,9 @@ export function CellEditor<TData>({
         <span
           id={errorId}
           role="alert"
-          className="absolute left-0 top-full z-10 mt-0.5 rounded bg-rose-600 px-1 py-0.5 text-[10px] font-medium text-white shadow"
+          className={`absolute left-0 z-10 rounded bg-rose-600 px-1 py-0.5 text-[10px] font-medium text-white shadow ${
+            errorAbove ? "bottom-full mb-0.5" : "top-full mt-0.5"
+          }`}
         >
           {error}
         </span>
