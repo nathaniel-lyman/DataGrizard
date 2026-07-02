@@ -44,6 +44,10 @@ export type {
   DataGridRowActions,
 } from "./RowActionsMenu";
 export type {
+  DataGridCardConfig,
+  DataGridCardContext,
+  DataGridCardView,
+  DataGridDisplayMode,
   GridColorScale,
   GridColumnConfig,
   GridConditionalFormat,
