@@ -1114,7 +1114,7 @@ export function DataGrid<TData extends object>({
         size: column.width,
         minSize: column.minWidth ?? 88,
         maxSize: column.maxWidth ?? 420,
-        enableSorting: features.sorting,
+        enableSorting: features.sorting && (column.enableSorting ?? true),
         enableHiding: features.columnVisibility,
         enableResizing: features.columnResizing,
         enablePinning: features.columnPinning && (column.enablePinning ?? true),

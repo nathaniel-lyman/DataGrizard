@@ -104,6 +104,8 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
   enableGrouping?: boolean;
   /** Opt this column out of auto-provisioned filtering. Default true. */
   enableFiltering?: boolean;
+  /** Per-column sorting opt-out; features.sorting remains the master switch. */
+  enableSorting?: boolean;
   /** Date columns: Intl options for this column's display, overriding the grid-level `dateFormat`. */
   dateFormat?: Intl.DateTimeFormatOptions;
   /** Cell value is typed as the field's own type, e.g. `TData["revenue"]`. */

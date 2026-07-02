@@ -156,3 +156,30 @@ describe("DataGrid header tools on demand", () => {
     expect(cell).toHaveClass("group/header");
   });
 });
+
+describe("DataGrid per-column sorting opt-out", () => {
+  it("renders a non-sortable header for a column with enableSorting false", () => {
+    const cols: GridColumnConfig<Row>[] = [
+      { accessorKey: "dept", header: "Dept", dataType: "text", enableSorting: false },
+      { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+    ];
+    render(
+      <DataGrid
+        data={rows}
+        columns={cols}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false, pagination: false, rowActions: false }}
+      />,
+    );
+
+    // No sort toggle button for the opted-out column…
+    expect(screen.queryByRole("button", { name: "Dept" })).toBeNull();
+    // …but the label still renders (non-sortable span path), with its tooltip.
+    const header = screen.getByRole("columnheader", { name: "Dept" });
+    expect(header.querySelector("span[title='Dept']")).not.toBeNull();
+    // Other columns keep sorting.
+    expect(screen.getByRole("button", { name: "Revenue" })).toBeInTheDocument();
+    // And the opted-out header carries no aria-sort.
+    expect(header).not.toHaveAttribute("aria-sort");
+  });
+});
