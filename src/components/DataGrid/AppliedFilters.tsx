@@ -29,7 +29,9 @@ export const AppliedFilters = ({
     >
       {hasGlobal ? (
         <span data-testid="applied-filter-search" className={chipClass}>
-          <span className="truncate">Search: “{globalSearch}”</span>
+          <span className="min-w-0 max-w-64 truncate" title={globalSearch}>
+            Search: “{globalSearch}”
+          </span>
           <button
             type="button"
             aria-label="Remove search filter"
@@ -42,7 +44,10 @@ export const AppliedFilters = ({
       ) : null}
       {active.map((filter) => (
         <span key={filter.id} data-testid={`applied-filter-${filter.id}`} className={chipClass}>
-          <span className="truncate">
+          <span
+            className="min-w-0 max-w-64 truncate"
+            title={`${filter.label}: ${summarizeFilter(filter)}`}
+          >
             {filter.label}: {summarizeFilter(filter)}
           </span>
           <button

@@ -784,4 +784,23 @@ describe("DataGrid applied-filter chip bar", () => {
     const chip = screen.getByTestId("applied-filter-dept");
     expect(chip).toHaveTextContent(/Dept/);
   });
+
+  it("bounds applied-filter chip labels so long values cannot push Clear all away", () => {
+    const longValue =
+      "an extremely long free-text filter value that would otherwise stretch the chip and push Clear all off-screen";
+    render(
+      <DataGrid
+        data={[
+          { id: "a", note: longValue },
+          { id: "b", note: "other" },
+        ]}
+        columns={[{ accessorKey: "note", header: "Note", dataType: "text" }]}
+        getRowId={(r) => r.id}
+        state={{ columnFilters: [{ id: "note", value: longValue }] }}
+      />,
+    );
+    const chip = screen.getAllByTestId(/applied-filter-/)[0];
+    const label = chip.querySelector("span.truncate");
+    expect(label).toHaveClass("max-w-64", "min-w-0");
+  });
 });
