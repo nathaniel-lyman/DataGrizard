@@ -209,3 +209,48 @@ export type GridFilterConfig<TData> = {
   /** Show quick date presets (filterType: "date"). Defaults to true. */
   presets?: boolean;
 };
+
+export type DataGridDisplayMode = "table" | "cards";
+
+/** Context handed to a custom `renderCard`. */
+export type DataGridCardContext = {
+  /** True when this row is the active (detail-panel) row. */
+  isActive: boolean;
+};
+
+/**
+ * Card-mode role overrides. Each role names columns by accessorKey; any role
+ * left unset falls back to the auto-composition heuristic (first text column →
+ * title, first status column → badge, next text columns → subtitle, numeric
+ * columns → metrics, remainder → meta). `renderCard` replaces the whole card
+ * body.
+ */
+export type DataGridCardConfig<TData> = {
+  title?: Extract<keyof TData, string>;
+  subtitle?: Extract<keyof TData, string>[];
+  badge?: Extract<keyof TData, string>;
+  /** Ordered metric tiles. */
+  metrics?: Extract<keyof TData, string>[];
+  meta?: Extract<keyof TData, string>[];
+  /** Cap on auto-assigned metric tiles (ignored when `metrics` is set). Default 3. */
+  maxMetrics?: number;
+  /** Full card override; when set, the role props above are ignored. */
+  renderCard?: (row: TData, context: DataGridCardContext) => ReactNode;
+};
+
+/**
+ * Card-mode configuration. Inert unless `features.cardLayout` is on. Grid
+ * layout only — pivot ignores card mode entirely.
+ */
+export type DataGridCardView<TData> = {
+  /** Container width (px) below which "auto" switches to cards. Default 640. */
+  breakpoint?: number;
+  /**
+   * "auto" (default) resolves from the grid root's own width via
+   * ResizeObserver; "cards"/"table" pin the mode (also the test/demo forcing
+   * mechanism — jsdom has no ResizeObserver).
+   */
+  mode?: "auto" | DataGridDisplayMode;
+  card?: DataGridCardConfig<TData>;
+  onDisplayModeChange?: (mode: DataGridDisplayMode) => void;
+};

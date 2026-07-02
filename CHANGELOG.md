@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mobile card layout (opt-in):** `features.cardLayout` + the `cardView` prop
+  render rows as auto-composed cards when the grid's own container is narrower
+  than `cardView.breakpoint` (default 640px, ResizeObserver on the grid root).
+  A pure heuristic assigns visible columns to card roles (title / status badge
+  / subtitle / metric tiles / meta footer) by dataType and visible order;
+  `DataGridCardConfig` overrides any role and `renderCard` replaces the body.
+  Card mode swaps the toolbar for touch-first search + Sort/Filters chips over
+  bottom sheets (writing the existing `sorting`/`columnFilters` slices),
+  condenses summaries to a pill strip, moves the detail panel into a bottom
+  sheet, and defaults desktop-only features (editing, selection, export,
+  grouping UI…) off — every default consumer-overridable. Grid layout only;
+  pivot ignores card mode. New public types: `DataGridCardView`,
+  `DataGridCardConfig`, `DataGridCardContext`, `DataGridDisplayMode`.
 - **`headerWrap` prop:** opt-in two-line (clamped) header labels. Header cells
   top-align and the sort/filter/menu tools anchor to the first line, so tools
   stay aligned across columns regardless of how many lines each label wraps to.

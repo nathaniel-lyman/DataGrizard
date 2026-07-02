@@ -81,3 +81,24 @@ select {
     background-color: rgba(148, 163, 184, 0.3);
   }
 }
+
+/* Card-mode bottom sheet (BottomSheet.tsx). Mirrored in the other stylesheet
+   so the demo and the packaged datagrid.css stay in lockstep. */
+@keyframes dg-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.dg-sheet {
+  animation: dg-sheet-in 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dg-sheet {
+    animation: none;
+  }
+}

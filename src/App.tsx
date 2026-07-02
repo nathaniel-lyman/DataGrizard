@@ -221,7 +221,12 @@ function App() {
           groupSummaryDisplay="columns"
           defaultGrouping={["department", "category"]}
           pivot={{ showLeafRows: true }}
-          features={{ detailPanel: false, headerToolsOnDemand: true }}
+          features={{ detailPanel: false, headerToolsOnDemand: true, cardLayout: true }}
+          cardView={{
+            // item_id is the first text column and would win title by default;
+            // the card reads better titled by name.
+            card: { title: "item_name", badge: "recommendation_status" },
+          }}
           storageKey="retail-recommendation-workbench"
           rowLabel="items"
           tableLabel="Retail recommendation analytics"

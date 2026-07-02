@@ -34,6 +34,8 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table";
 import type {
+  DataGridCardView,
+  DataGridDisplayMode,
   GridColumnConfig,
   GridDataType,
   GridFilterConfig,
@@ -49,6 +51,11 @@ type RowMeasureProps = {
 };
 import type { FormatOptions } from "../../utils/formatters";
 import { Toolbar } from "./Toolbar";
+import { composeCardRoles } from "./cardComposition";
+import { CardList } from "./CardList";
+import { ToolbarCompact, type CompactSortColumn } from "./ToolbarCompact";
+import { BottomSheet } from "./BottomSheet";
+import { useContainerWidth } from "./useContainerWidth";
 import { FilterPopover, isFilterActive, type GridFilter } from "./filters";
 import { AppliedFilters } from "./AppliedFilters";
 import { DEFAULT_FACET_THRESHOLD, resolveFilterType } from "./filterDefaults";
@@ -173,6 +180,12 @@ export type DataGridFeatures = {
   rowActions: boolean;
   /** Collapse grouping, column, and saved-view controls behind a toolbar disclosure. */
   collapsibleToolbar: boolean;
+  /**
+   * Card layout below `cardView.breakpoint` container width (grid layout
+   * only; pivot ignores it). Inert without this flag even if `cardView` is
+   * passed. Default false.
+   */
+  cardLayout: boolean;
 };
 
 export type DataGridSummaryScope = "filtered" | "selected" | "group";
@@ -302,6 +315,8 @@ export type DataGridProps<TData extends object> = {
   /** Grid-mode header bands. Ignored in pivot mode. */
   columnGroups?: DataGridColumnGroup[];
   pivot?: DataGridPivotConfig<TData>;
+  /** Card-mode configuration; inert unless `features.cardLayout` is on. */
+  cardView?: DataGridCardView<TData>;
   filters?: GridFilterConfig<TData>[];
   /** Text columns with <= this many distinct values auto-facet into multiSelect. Default 12. */
   facetThreshold?: number;
@@ -396,6 +411,7 @@ const defaultFeatures: DataGridFeatures = {
   headerToolsOnDemand: false,
   rowActions: true,
   collapsibleToolbar: true,
+  cardLayout: false,
 };
 
 // Stable empty default so consumers that omit `filters` (the common case now
@@ -479,6 +495,7 @@ export function DataGrid<TData extends object>({
   rowCount: externalRowCount,
   columnGroups,
   pivot: pivotConfig,
+  cardView,
   filters = EMPTY_FILTERS as GridFilterConfig<TData>[],
   facetThreshold = DEFAULT_FACET_THRESHOLD,
   summaryItems = [],
@@ -716,12 +733,60 @@ export function DataGrid<TData extends object>({
   const dataModeFeatureDefaults: Partial<DataGridFeatures> = isServerMode
     ? { grouping: false, summaries: false }
     : {};
-  const features = {
+  const baseFeatures = {
     ...defaultFeatures,
     ...layoutFeatureDefaults,
     ...dataModeFeatureDefaults,
     ...featureOverrides,
   };
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const cardModeCandidate = baseFeatures.cardLayout && !isPivotLayout;
+  const cardViewMode = cardView?.mode ?? "auto";
+  const containerWidth = useContainerWidth(
+    rootRef,
+    cardModeCandidate && cardViewMode === "auto",
+  );
+  const displayMode: DataGridDisplayMode = !cardModeCandidate
+    ? "table"
+    : cardViewMode === "auto"
+      ? containerWidth != null && containerWidth < (cardView?.breakpoint ?? 640)
+        ? "cards"
+        : "table"
+      : cardViewMode;
+  const isCardMode = displayMode === "cards";
+  // Card mode drops the desktop-only chrome. headerFilters stays ON — it feeds
+  // resolvedFilters, which the Filters sheet renders. Consumer overrides win.
+  const cardModeFeatureDefaults: Partial<DataGridFeatures> = isCardMode
+    ? {
+        editing: false,
+        cellSelection: false,
+        fillHandle: false,
+        clipboard: false,
+        rowSelection: false,
+        export: false,
+        grouping: false,
+        savedViews: false,
+        columnResizing: false,
+        floatingFilters: false,
+        rowActions: false,
+      }
+    : {};
+  const features = {
+    ...baseFeatures,
+    ...cardModeFeatureDefaults,
+    ...featureOverrides,
+  };
+  const onDisplayModeChangeRef = useRef(cardView?.onDisplayModeChange);
+  useEffect(() => {
+    onDisplayModeChangeRef.current = cardView?.onDisplayModeChange;
+  });
+  const previousDisplayModeRef = useRef(displayMode);
+  useEffect(() => {
+    if (previousDisplayModeRef.current !== displayMode) {
+      previousDisplayModeRef.current = displayMode;
+      onDisplayModeChangeRef.current?.(displayMode);
+    }
+  }, [displayMode]);
   const densityStyle = densityStyles[density] ?? densityStyles.standard;
   const resolvedEstimatedRowHeight = estimatedRowHeight ?? densityStyle.rowHeight;
   const showRowActions =
@@ -2148,10 +2213,18 @@ export function DataGrid<TData extends object>({
         : flattenExpandedRows(table.getExpandedRowModel().rows)
     : table.getRowModel().rows;
 
+  // Card layout renders leaf rows only (grouping defaults off in card mode,
+  // but a consumer can force it back on — group rows are filtered, not shown).
+  // Grid layout only (pivot never reaches card mode), so originals are TData.
+  const cardRows = isCardMode
+    ? (visibleRows.filter((row) => !row.getIsGrouped()) as unknown as Row<TData>[])
+    : [];
+
   const rowVirtualizer = useVirtualizer({
-    count: visibleRows.length,
+    count: isCardMode ? cardRows.length : visibleRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => resolvedEstimatedRowHeight,
+    estimateSize: () =>
+      isCardMode ? Math.max(resolvedEstimatedRowHeight, 96) : resolvedEstimatedRowHeight,
     overscan: 12,
     enabled: virtualizeRows,
   });
@@ -2166,6 +2239,46 @@ export function DataGrid<TData extends object>({
   // the edit state machine; onCellKeyDown (below) is the precedence-chain
   // orchestrator that wires them together with row actions and clipboard.
   const visibleLeafColumns = table.getVisibleLeafColumns();
+  // Card composition follows the CURRENT visible leaf set, so column
+  // visibility/order changes keep applying in card mode.
+  const cardRoles = useMemo(
+    () =>
+      composeCardRoles(
+        visibleLeafColumns
+          .map((column) => columnsById.get(column.id))
+          .filter((column): column is AnyColumnConfig<TData> => Boolean(column)),
+        cardView?.card,
+      ),
+    [visibleLeafColumns, columnsById, cardView?.card],
+  );
+  const compactSortColumns = useMemo<CompactSortColumn[]>(
+    () =>
+      visibleLeafColumns
+        .filter(
+          (column) =>
+            column.id !== SELECT_COLUMN_ID &&
+            column.id !== ROW_ACTIONS_COLUMN_ID &&
+            column.getCanSort(),
+        )
+        .map((column) => ({
+          id: column.id,
+          label: getColumnControlLabel(column),
+          direction: column.getIsSorted(),
+        })),
+    // currentSorting is what actually changes getIsSorted()'s answer.
+    [visibleLeafColumns, currentSorting],
+  );
+  // Single-column cycle: tap a new column → asc; same column → desc; again → clear.
+  const handleCompactSort = (columnId: string) => {
+    const current = currentSorting[0];
+    if (current?.id !== columnId) {
+      emitSortingChangeWithServerReset([{ id: columnId, desc: false }]);
+    } else if (!current.desc) {
+      emitSortingChangeWithServerReset([{ id: columnId, desc: true }]);
+    } else {
+      emitSortingChangeWithServerReset([]);
+    }
+  };
   // Single-line ellipsis by default; headerWrap clamps to two lines instead.
   const headerLabelClass = headerWrap
     ? "line-clamp-2 whitespace-normal break-words"
@@ -3308,9 +3421,23 @@ export function DataGrid<TData extends object>({
     ) : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:flex-row">
+    <div ref={rootRef} className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {features.toolbar ? (
+          isCardMode ? (
+            <ToolbarCompact
+              search={String(currentGlobalFilter ?? "")}
+              searchPlaceholder={searchPlaceholder}
+              enableGlobalSearch={features.globalSearch}
+              onSearchChange={emitGlobalFilterChangeWithServerReset}
+              enableSorting={features.sorting}
+              sortColumns={compactSortColumns}
+              onSortColumn={handleCompactSort}
+              onClearSort={() => emitSortingChangeWithServerReset([])}
+              filters={toolbarFilters}
+              onClearFilters={clearFilters}
+            />
+          ) : (
           <Toolbar
             search={currentGlobalFilter}
             searchPlaceholder={searchPlaceholder}
@@ -3360,6 +3487,7 @@ export function DataGrid<TData extends object>({
             onDeleteView={deleteView}
             onActiveViewNameChange={emitActiveViewNameChange}
           />
+          )
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
@@ -3413,6 +3541,23 @@ export function DataGrid<TData extends object>({
         ) : null}
 
         {showSummaries ? (
+          isCardMode ? (
+            <div className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2">
+              {summaryItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex shrink-0 items-baseline gap-1.5 rounded-full border border-slate-200 bg-slate-50/60 px-3 py-1"
+                >
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                    {item.label}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-950">
+                    {item.value(summaryContext)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="border-b border-slate-200 bg-white px-4 py-3">
             <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
               <span>Summary</span>
@@ -3443,6 +3588,7 @@ export function DataGrid<TData extends object>({
               ))}
             </div>
           </div>
+          )
         ) : null}
 
         <div className="relative flex min-h-0 flex-col md:flex-1">
@@ -3460,6 +3606,22 @@ export function DataGrid<TData extends object>({
             onScroll={(event) => setHorizontalScrollLeft(event.currentTarget.scrollLeft)}
             className="h-[min(68dvh,640px)] min-h-72 overflow-auto md:h-auto md:min-h-0 md:flex-1"
           >
+          {isCardMode ? (
+            <CardList
+              rows={cardRows}
+              roles={cardRoles}
+              card={cardView?.card}
+              formatOptions={formatOptions}
+              columnDomains={columnDomains}
+              activeRow={activeRow}
+              hasRowAction={hasLeafRowAction}
+              onCardClick={handleRowClick}
+              getRowClassName={getRowClassName}
+              virtualizeRows={virtualizeRows}
+              virtualizer={rowVirtualizer}
+              label={tableLabel}
+            />
+          ) : (
           <table
             data-density={density}
             className="w-full table-fixed border-separate border-spacing-0 text-xs"
@@ -3698,6 +3860,7 @@ export function DataGrid<TData extends object>({
             </thead>
             <tbody>{renderBodyRows()}</tbody>
           </table>
+          )}
           </div>
         </div>
 
@@ -3745,7 +3908,15 @@ export function DataGrid<TData extends object>({
         ) : null}
       </div>
 
-      {showDetailPanel ? renderDetailPanel?.(activeRow, { close: closeActiveRow }) : null}
+      {showDetailPanel ? (
+        isCardMode ? (
+          <BottomSheet open={activeRow !== null} label="Details" onClose={closeActiveRow}>
+            {renderDetailPanel?.(activeRow, { close: closeActiveRow })}
+          </BottomSheet>
+        ) : (
+          renderDetailPanel?.(activeRow, { close: closeActiveRow })
+        )
+      ) : null}
     </div>
   );
 }
