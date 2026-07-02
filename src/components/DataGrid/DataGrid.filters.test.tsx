@@ -153,6 +153,40 @@ describe("DataGrid column filters", () => {
     expect(screen.getByText("$1,500")).toBeInTheDocument();
   });
 
+  it("adds a search box to multiSelect filters with many options and filters the list", () => {
+    // 12 distinct dept values → auto-facets to multiSelect (facetThreshold default
+    // is 12) and exceeds the 10-option search-box threshold.
+    type WideRow = { id: string; dept: string };
+    const wideData: WideRow[] = Array.from({ length: 12 }, (_, i) => ({
+      id: String(i),
+      dept: `Dept${i}`,
+    }));
+    const wideColumns: GridColumnConfig<WideRow>[] = [
+      { accessorKey: "dept", header: "Dept", dataType: "text" },
+    ];
+    render(<DataGrid data={wideData} columns={wideColumns} getRowId={(r) => r.id} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByRole("checkbox").length).toBe(12);
+
+    const search = screen.getByPlaceholderText("Find option...");
+    fireEvent.change(search, { target: { value: "Dept1" } });
+
+    // "Dept1", "Dept10", "Dept11" match; the rest are filtered out of view.
+    expect(within(dialog).getAllByRole("checkbox").length).toBeLessThan(12);
+  });
+
+  it("omits the search box for short option lists", () => {
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "dept", label: "Dept", filterType: "multiSelect" },
+    ];
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    expect(screen.queryByPlaceholderText("Find option...")).toBeNull();
+  });
+
   it("renders an always-visible floating filter row when enabled", () => {
     const filters: GridFilterConfig<Row>[] = [{ accessorKey: "dept", label: "Dept" }];
     render(

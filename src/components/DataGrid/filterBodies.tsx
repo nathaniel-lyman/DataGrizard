@@ -1,6 +1,7 @@
 // The per-filter-type body UIs (select / multiSelect / range / text / date) and
 // the FilterBody dispatcher. Stateless and value-driven; the popover chrome that
 // hosts them lives in filters.tsx. GridFilter is imported type-only (erased).
+import { useState } from "react";
 import type { GridFilter } from "./filters";
 import {
   defaultOperatorForFilterType,
@@ -160,10 +161,13 @@ const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => vo
   );
 };
 
+const MULTISELECT_SEARCH_THRESHOLD = 10;
+
 const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
   const { operator, value } = resolveFilterState(filter);
   const selected = Array.isArray(value) ? (value as string[]) : [];
   const format = filter.formatOption ?? formatOptionLabel;
+  const [query, setQuery] = useState("");
   const toggle = (option: string) => {
     const next = selected.includes(option)
       ? selected.filter((value) => value !== option)
@@ -176,23 +180,41 @@ const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
   if (filter.options.length === 0) {
     return <div className="w-48">{emptyOptions}</div>;
   }
+  const needle = query.trim().toLowerCase();
+  const visibleOptions = needle
+    ? filter.options.filter((option) => format(option).toLowerCase().includes(needle))
+    : filter.options;
   return (
-    <div className="max-h-64 w-48 overflow-auto">
-      {filter.options.map((option) => (
-        <label
-          key={option}
-          className="flex h-7 items-center gap-2 rounded px-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
-        >
-          <input
-            type="checkbox"
-            checked={selected.includes(option)}
-            onChange={() => toggle(option)}
-            aria-label={format(option)}
-            className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-          />
-          <span className="truncate">{format(option)}</span>
-        </label>
-      ))}
+    <div className="w-48">
+      {filter.options.length > MULTISELECT_SEARCH_THRESHOLD ? (
+        <input
+          type="text"
+          value={query}
+          placeholder="Find option..."
+          aria-label={`Find ${filter.label} option`}
+          onChange={(event) => setQuery(event.target.value)}
+          className={`${inputClass} mb-1 w-full`}
+        />
+      ) : null}
+      <div className="max-h-64 overflow-auto">
+        {visibleOptions.length === 0
+          ? emptyOptions
+          : visibleOptions.map((option) => (
+              <label
+                key={option}
+                className="flex h-7 items-center gap-2 rounded px-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(option)}
+                  onChange={() => toggle(option)}
+                  aria-label={format(option)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                />
+                <span className="truncate">{format(option)}</span>
+              </label>
+            ))}
+      </div>
     </div>
   );
 };
