@@ -2583,6 +2583,7 @@ export function DataGrid<TData extends object>({
         if (!sourceRow) {
           return;
         }
+        // source is already-typed data (not clipboard text), so no parseEditValue step here
         const sourceOriginal = sourceRow.original as TData;
         const value = (sourceOriginal as Record<string, unknown>)[sourceColumnId];
         const targetOriginal = targetRow.original as TData;
