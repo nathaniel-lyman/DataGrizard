@@ -147,6 +147,25 @@ describe("DataGrid cell editing", () => {
     expect(screen.getByRole("spinbutton")).toBeInTheDocument(); // still editing
   });
 
+  it("reverts the edit when the editor blurs with an invalid value", () => {
+    const onCellEdit = vi.fn();
+    render(
+      <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
+    );
+
+    fireEvent.doubleClick(cellOf("$100"));
+    const input = screen.getByDisplayValue("100");
+    // Clearing a numeric input parses to NaN, which the built-in guard rejects.
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+
+    expect(onCellEdit).not.toHaveBeenCalled();
+    // Blur on an invalid value cancels (reverts) instead of trapping the editor open.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument(); // editor closed
+    expect(cellOf("$100")).toBeInTheDocument();
+  });
+
   it("blocks commit on validation error and Tab does not advance while invalid", () => {
     const onCellEdit = vi.fn();
     render(

@@ -130,19 +130,20 @@ export function CellEditor<TData>({
     );
   }, [error]);
 
-  const commitTyped = (typed: unknown, advance: boolean) => {
+  const commitTyped = (typed: unknown, advance: boolean): boolean => {
     if (committedRef.current) {
-      return;
+      return true;
     }
     const validationError = computeEditError(column, typed, row);
     if (validationError) {
       setError(validationError);
-      return;
+      return false;
     }
     committedRef.current = true;
     onCommit(typed, advance);
+    return true;
   };
-  const commitText = (advance: boolean) => {
+  const commitText = (advance: boolean): boolean => {
     let parsed: unknown;
     try {
       parsed = parseEditValue(column, draftText);
@@ -150,9 +151,9 @@ export function CellEditor<TData>({
       // A consumer parseValue that throws surfaces as a validation error rather
       // than an unhandled exception that leaves the editor silently stuck.
       setError("Invalid value");
-      return;
+      return false;
     }
-    commitTyped(parsed, advance);
+    return commitTyped(parsed, advance);
   };
   const cancel = () => {
     committedRef.current = true;
@@ -197,7 +198,11 @@ export function CellEditor<TData>({
       fieldRef.current = node;
     },
     onKeyDown,
-    onBlur: () => commitText(false),
+    onBlur: () => {
+      if (!commitText(false)) {
+        cancel();
+      }
+    },
     "aria-invalid": error ? true : undefined,
     // Error is surfaced via a described element, not aria-label, so the field
     // keeps its own accessible name and the message is also visible.
