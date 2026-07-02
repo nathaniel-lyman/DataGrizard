@@ -156,6 +156,12 @@ export type DataGridFeatures = {
   clipboard: boolean;
   /** Show the per-column header menu for sort/filter/hide/pin/width actions. */
   headerMenu: boolean;
+  /**
+   * Collapse the per-column funnel + menu buttons until the header is
+   * hovered, a tool has keyboard focus, the filter is active, or the menu is
+   * open. Reclaims label space in narrow columns. Default false.
+   */
+  headerToolsOnDemand: boolean;
   /** Show a per-row actions menu when `rowActions` is supplied. */
   rowActions: boolean;
   /** Collapse grouping, column, and saved-view controls behind a toolbar disclosure. */
@@ -379,6 +385,7 @@ const defaultFeatures: DataGridFeatures = {
   export: true,
   clipboard: true,
   headerMenu: true,
+  headerToolsOnDemand: false,
   rowActions: true,
   collapsibleToolbar: true,
 };
@@ -3295,7 +3302,7 @@ export function DataGrid<TData extends object>({
                             backgroundColor: isPivotLayout ? "#cffafe" : "#f1f5f9",
                           }),
                         }}
-                        className={`relative border-r ${densityStyle.header} font-semibold last:border-r-0 ${
+                        className={`group/header relative border-r ${densityStyle.header} font-semibold last:border-r-0 ${
                           headerWrap ? "align-top" : ""
                         } ${isPivotLayout ? "border-cyan-200" : "border-slate-200"}`}
                       >
@@ -3334,6 +3341,19 @@ export function DataGrid<TData extends object>({
                                 </div>
                               )}
                             </div>
+                            {headerFilter || showHeaderMenu ? (
+                              <div
+                                data-header-tools
+                                className={`flex shrink-0 items-center gap-1 ${
+                                  features.headerToolsOnDemand
+                                    ? "w-0 opacity-0 pointer-events-none transition-opacity " +
+                                      "group-hover/header:w-auto group-hover/header:opacity-100 group-hover/header:pointer-events-auto " +
+                                      "focus-within:w-auto focus-within:opacity-100 focus-within:pointer-events-auto " +
+                                      "has-[[data-active]]:w-auto has-[[data-active]]:opacity-100 has-[[data-active]]:pointer-events-auto " +
+                                      "has-[[aria-expanded=true]]:w-auto has-[[aria-expanded=true]]:opacity-100 has-[[aria-expanded=true]]:pointer-events-auto"
+                                    : ""
+                                }`}
+                              >
                             {headerFilter ? (
                               <FilterPopover filter={headerFilter} variant="icon" />
                             ) : null}
@@ -3365,6 +3385,8 @@ export function DataGrid<TData extends object>({
                                 onFit={fitVisibleColumns}
                                 onResetWidth={() => resetColumnWidth(header.column)}
                               />
+                            ) : null}
+                              </div>
                             ) : null}
                           </div>
                         )}

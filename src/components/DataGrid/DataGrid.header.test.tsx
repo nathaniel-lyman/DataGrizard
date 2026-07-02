@@ -112,3 +112,47 @@ describe("DataGrid header layout", () => {
     expect(toolsRow).toHaveClass("items-center");
   });
 });
+
+describe("DataGrid header tools on demand", () => {
+  const getToolsCluster = (headerText: string) => {
+    const cell = screen.getByRole("columnheader", { name: new RegExp(headerText) });
+    const funnel = cell.querySelector('button[aria-label$=" filter"]');
+    expect(funnel).not.toBeNull();
+    return funnel!.closest("[data-header-tools]");
+  };
+
+  it("collapses the funnel/menu cluster when headerToolsOnDemand is on", () => {
+    renderGrid({
+      features: { rowSelection: false, pagination: false, headerToolsOnDemand: true },
+    });
+
+    const cluster = getToolsCluster("Dept");
+    expect(cluster).not.toBeNull();
+    expect(cluster).toHaveClass("w-0", "opacity-0", "pointer-events-none");
+    // Reveal styles must exist so hover/focus/active/open can restore the cluster.
+    expect(cluster!.className).toContain("group-hover/header:w-auto");
+    expect(cluster!.className).toContain("focus-within:w-auto");
+    expect(cluster!.className).toContain("has-[[data-active]]:w-auto");
+    expect(cluster!.className).toContain("has-[[aria-expanded=true]]:w-auto");
+    // Never display:none — the buttons must stay keyboard-reachable.
+    expect(cluster).not.toHaveClass("hidden");
+  });
+
+  it("keeps the cluster expanded by default (flag off)", () => {
+    renderGrid();
+
+    const cluster = getToolsCluster("Dept");
+    expect(cluster).not.toBeNull();
+    expect(cluster).not.toHaveClass("w-0");
+    expect(cluster).not.toHaveClass("opacity-0");
+  });
+
+  it("marks the header cell as the hover group", () => {
+    renderGrid({
+      features: { rowSelection: false, pagination: false, headerToolsOnDemand: true },
+    });
+
+    const cell = screen.getByRole("columnheader", { name: /Dept/ });
+    expect(cell).toHaveClass("group/header");
+  });
+});

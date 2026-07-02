@@ -221,7 +221,7 @@ function App() {
           groupSummaryDisplay="columns"
           defaultGrouping={["department", "category"]}
           pivot={{ showLeafRows: true }}
-          features={{ detailPanel: false }}
+          features={{ detailPanel: false, headerToolsOnDemand: true }}
           storageKey="retail-recommendation-workbench"
           rowLabel="items"
           tableLabel="Retail recommendation analytics"
