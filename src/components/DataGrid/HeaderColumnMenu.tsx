@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MoreVerticalIcon } from "./icons";
+import { computeAnchoredPlacement, type AnchoredPlacement } from "./popoverPosition";
 
 type PinState = false | "left" | "right";
 
@@ -48,6 +49,11 @@ export function HeaderColumnMenu({
   onResetWidth,
 }: HeaderColumnMenuProps) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<AnchoredPlacement>({
+    alignEnd: true,
+    openUp: false,
+    maxHeight: undefined,
+  });
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -94,7 +100,23 @@ export function HeaderColumnMenu({
         title={`${label} column menu`}
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((current) => !current);
+          setOpen((current) => {
+            if (!current) {
+              const rect = triggerRef.current?.getBoundingClientRect();
+              if (rect) {
+                setPlacement(
+                  computeAnchoredPlacement({
+                    trigger: rect,
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                    estimatedWidth: 192,
+                    estimatedHeight: 420,
+                  }),
+                );
+              }
+            }
+            return !current;
+          });
         }}
         className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
       >
@@ -106,7 +128,10 @@ export function HeaderColumnMenu({
           ref={menuRef}
           role="menu"
           aria-label={`${label} column menu`}
-          className="absolute right-0 top-full z-50 mt-1 min-w-48 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-slate-800 shadow-lg"
+          style={placement.maxHeight ? { maxHeight: placement.maxHeight } : undefined}
+          className={`absolute z-50 min-w-48 overflow-auto rounded-md border border-slate-200 bg-white py-1 text-slate-800 shadow-lg ${
+            placement.alignEnd ? "right-0" : "left-0"
+          } ${placement.openUp ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           <button
             type="button"

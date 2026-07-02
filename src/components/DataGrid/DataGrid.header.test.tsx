@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
@@ -181,5 +181,16 @@ describe("DataGrid per-column sorting opt-out", () => {
     expect(screen.getByRole("button", { name: "Revenue" })).toBeInTheDocument();
     // And the opted-out header carries no aria-sort.
     expect(header).not.toHaveAttribute("aria-sort");
+  });
+});
+
+describe("DataGrid header menu placement", () => {
+  it("menu opens down by default with a scroll clamp guard", () => {
+    renderGrid();
+    fireEvent.click(screen.getByRole("button", { name: "Open Dept column menu" }));
+    const menu = screen.getByRole("menu");
+    expect(menu).toHaveClass("top-full");
+    expect(menu).toHaveClass("overflow-auto");
+    expect(menu).not.toHaveClass("bottom-full");
   });
 });
