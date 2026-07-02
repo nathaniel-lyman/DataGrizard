@@ -52,6 +52,28 @@ describe("DataGrid column filters", () => {
     expect(screen.queryByText("$1,500")).not.toBeInTheDocument();
   });
 
+  it("shows a message instead of a blank popover when a multiSelect filter has no options", () => {
+    // Server mode with a named multiSelect filter that has no static options —
+    // the documented degradation where the grid cannot auto-facet, so the
+    // option list is empty. Without a message the popover body renders blank.
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "dept", label: "Dept", filterType: "multiSelect" },
+    ];
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        filters={filters}
+        dataMode="server"
+        rowCount={data.length}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
+    expect(screen.getByText("No options available")).toBeInTheDocument();
+  });
+
   it("supports range filtering on numeric columns", () => {
     const filters: GridFilterConfig<Row>[] = [
       { accessorKey: "revenue", label: "Revenue", filterType: "range" },

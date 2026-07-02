@@ -59,6 +59,10 @@ const getOperators = (filter: GridFilter) =>
 const isUnaryOperator = (operator: GridFilterOperator) =>
   operator === "isEmpty" || operator === "isNotEmpty";
 
+const emptyOptions = (
+  <p className="px-2 py-1.5 text-xs font-medium text-slate-500">No options available</p>
+);
+
 const resolveFilterState = (filter: GridFilter) => {
   const clause = resolveFilterClause(filter.value, {
     filterType: filter.filterType,
@@ -122,6 +126,9 @@ const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => vo
   if (isUnaryOperator(operator)) {
     return null;
   }
+  if (filter.options.length === 0) {
+    return <div className="w-56">{emptyOptions}</div>;
+  }
   return (
     <div role="listbox" aria-label={`${filter.label} options`} className="max-h-64 w-56 overflow-auto">
       <button
@@ -165,6 +172,9 @@ const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
   };
   if (isUnaryOperator(operator)) {
     return null;
+  }
+  if (filter.options.length === 0) {
+    return <div className="w-48">{emptyOptions}</div>;
   }
   return (
     <div className="max-h-64 w-48 overflow-auto">
