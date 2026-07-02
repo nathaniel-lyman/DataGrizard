@@ -2273,6 +2273,12 @@ export function DataGrid<TData extends object>({
   const suppressNextCellClickRef = useRef(false);
   const isFillDraggingRef = useRef(false);
   const fillSourceRef = useRef<DataGridCellRange | null>(null);
+  const [fillPreview, setFillPreview] = useState<DataGridCellRange | null>(null);
+  const fillPreviewRef = useRef<DataGridCellRange | null>(null);
+  useEffect(() => {
+    fillPreviewRef.current = fillPreview;
+  }, [fillPreview]);
+  const commitFillRef = useRef<(source: DataGridCellRange, target: DataGridCellRange) => void>(() => {});
 
   const normalizeCellRange = (range: DataGridCellRange | null) => {
     if (!range) {
@@ -2299,6 +2305,33 @@ export function DataGrid<TData extends object>({
       area: rowIds.length * columnIds.length,
     };
   };
+
+  const clampToDownRight = (
+    source: DataGridCellRange,
+    hovered: Exclude<DataGridFocusedCell, null>,
+  ): DataGridCellRange | null => {
+    const normalizedSource = normalizeCellRange(source);
+    if (!normalizedSource) {
+      return null;
+    }
+    const hoveredRowIdx = navRowIds.indexOf(hovered.rowId);
+    const hoveredColIdx = navColumnIds.indexOf(hovered.columnId);
+    if (hoveredRowIdx < 0 || hoveredColIdx < 0) {
+      return null;
+    }
+    const sourceEndRowIdx = normalizedSource.startRowIdx + normalizedSource.rowIds.length - 1;
+    const sourceEndColIdx = normalizedSource.startColIdx + normalizedSource.columnIds.length - 1;
+    const clampedRowIdx = Math.max(hoveredRowIdx, sourceEndRowIdx);
+    const clampedColIdx = Math.max(hoveredColIdx, sourceEndColIdx);
+    return {
+      anchor: {
+        rowId: navRowIds[normalizedSource.startRowIdx],
+        columnId: navColumnIds[normalizedSource.startColIdx],
+      },
+      focus: { rowId: navRowIds[clampedRowIdx], columnId: navColumnIds[clampedColIdx] },
+    };
+  };
+
   const selectedCellKeys = useMemo(() => {
     const normalized = normalizeCellRange(cellSelection);
     if (!normalized) {
@@ -2331,9 +2364,50 @@ export function DataGrid<TData extends object>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fillHandleEnabled, cellSelection, navColumnIds, navRowIds, activeTabCell]);
 
+  const fillPreviewCellKeys = useMemo(() => {
+    if (!fillPreview) {
+      return new Set<string>();
+    }
+    const normalizedPreview = normalizeCellRange(fillPreview);
+    if (!normalizedPreview) {
+      return new Set<string>();
+    }
+    const normalizedSource = normalizeCellRange(fillSourceRef.current);
+    const sourceKeys = new Set<string>();
+    normalizedSource?.rowIds.forEach((rowId) => {
+      normalizedSource.columnIds.forEach((columnId) => {
+        sourceKeys.add(cellKey(rowId, columnId));
+      });
+    });
+    const keys = new Set<string>();
+    normalizedPreview.rowIds.forEach((rowId) => {
+      normalizedPreview.columnIds.forEach((columnId) => {
+        const key = cellKey(rowId, columnId);
+        if (!sourceKeys.has(key)) {
+          keys.add(key);
+        }
+      });
+    });
+    return keys;
+    // normalizeCellRange is intentionally local and depends on these arrays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillPreview, navColumnIds, navRowIds]);
+
   useEffect(() => {
     const stopSelecting = () => {
       isSelectingCellsRef.current = false;
+      if (!isFillDraggingRef.current) {
+        return;
+      }
+      isFillDraggingRef.current = false;
+      const source = fillSourceRef.current;
+      const preview = fillPreviewRef.current;
+      fillSourceRef.current = null;
+      if (source && preview) {
+        commitFillRef.current(source, preview);
+        setCellSelection(preview);
+      }
+      setFillPreview(null);
     };
     document.addEventListener("mouseup", stopSelecting);
     return () => document.removeEventListener("mouseup", stopSelecting);
@@ -2471,6 +2545,64 @@ export function DataGrid<TData extends object>({
         /* denied clipboard access */
       });
   };
+
+  const commitFill = (source: DataGridCellRange, target: DataGridCellRange) => {
+    if (!features.editing || !onCellEdit) {
+      return;
+    }
+    const normalizedSource = normalizeCellRange(source);
+    const normalizedTarget = normalizeCellRange(target);
+    if (!normalizedSource || !normalizedTarget) {
+      return;
+    }
+    const sourceRowIds = normalizedSource.rowIds;
+    const sourceColumnIds = normalizedSource.columnIds;
+    const sourceKeys = new Set<string>();
+    sourceRowIds.forEach((rowId) => {
+      sourceColumnIds.forEach((columnId) => {
+        sourceKeys.add(cellKey(rowId, columnId));
+      });
+    });
+    const edits: DataGridCellEdit<TData>[] = [];
+    normalizedTarget.rowIds.forEach((targetRowId, rowIdx) => {
+      const targetRow = rowById.get(targetRowId);
+      if (!targetRow) {
+        return;
+      }
+      normalizedTarget.columnIds.forEach((targetColumnId, colIdx) => {
+        if (sourceKeys.has(cellKey(targetRowId, targetColumnId))) {
+          return; // part of the source range itself, not a fill target
+        }
+        const columnConfig = columnsById.get(targetColumnId);
+        if (!columnConfig || !isCellEditable(targetRow, targetColumnId)) {
+          return;
+        }
+        const sourceRowId = sourceRowIds[rowIdx % sourceRowIds.length];
+        const sourceColumnId = sourceColumnIds[colIdx % sourceColumnIds.length];
+        const sourceRow = rowById.get(sourceRowId);
+        if (!sourceRow) {
+          return;
+        }
+        const sourceOriginal = sourceRow.original as TData;
+        const value = (sourceOriginal as Record<string, unknown>)[sourceColumnId];
+        const targetOriginal = targetRow.original as TData;
+        if (computeEditError(columnConfig as unknown as EditCellColumn<TData>, value, targetOriginal)) {
+          return; // skip, consistent with pasteTextIntoCell's semantics
+        }
+        edits.push({
+          rowId: targetRow.id,
+          row: targetOriginal,
+          columnId: targetColumnId,
+          value,
+          previousValue: (targetOriginal as Record<string, unknown>)[targetColumnId],
+        });
+      });
+    });
+    edits.forEach((edit) => onCellEdit(edit));
+  };
+  useEffect(() => {
+    commitFillRef.current = commitFill;
+  }, [commitFill]);
 
   useEffect(() => {
     if (activeRow == null) {
@@ -2867,6 +2999,7 @@ export function DataGrid<TData extends object>({
           const isCellRangeSelected = selectedCellKeys.has(selectedCellKey);
           const isFillHandleCell =
             fillHandleTargetCell?.rowId === row.id && fillHandleTargetCell?.columnId === cell.column.id;
+          const isFillPreviewCell = fillPreviewCellKeys.has(selectedCellKey);
 
           // Value-driven visual effects (grid data cells only; suppressed while editing).
           const cellValue = cell.getValue();
@@ -2923,6 +3056,13 @@ export function DataGrid<TData extends object>({
               onMouseEnter={
                 isNavCell && cellSelectionEnabled
                   ? (event) => {
+                      if (isFillDraggingRef.current && event.buttons === 1) {
+                        const source = fillSourceRef.current;
+                        if (source) {
+                          setFillPreview(clampToDownRight(source, { rowId: row.id, columnId: cell.column.id }));
+                        }
+                        return;
+                      }
                       if (!isSelectingCellsRef.current || event.buttons !== 1) {
                         return;
                       }
@@ -2952,6 +3092,7 @@ export function DataGrid<TData extends object>({
               }
               aria-selected={isCellRangeSelected ? true : undefined}
               data-cell-selected={isCellRangeSelected ? "true" : undefined}
+              data-fill-preview={isFillPreviewCell ? "true" : undefined}
               style={{
                 width: cell.column.getSize(),
                 ...(useScaleStyle
@@ -2983,6 +3124,8 @@ export function DataGrid<TData extends object>({
                   : fillHandleEnabled && isFillHandleCell
                     ? "relative"
                     : ""
+              } ${
+                isFillPreviewCell ? "outline outline-2 outline-dashed outline-blue-500 outline-offset-[-2px]" : ""
               }`}
             >
               {barGeometry ? (
