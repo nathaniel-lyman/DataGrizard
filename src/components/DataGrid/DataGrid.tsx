@@ -150,6 +150,13 @@ export type DataGridFeatures = {
   editing: boolean;
   /** Enable rectangular cell selection for spreadsheet-style copy/paste. */
   cellSelection: boolean;
+  /**
+   * Drag a handle from the corner of the current cell selection (or the
+   * focused cell) to replicate its value(s) into adjacent cells, plus the
+   * Ctrl+D (fill down) / Ctrl+R (fill right) keyboard equivalents. Inert
+   * unless `cellSelection` is also on.
+   */
+  fillHandle: boolean;
   /** Show the toolbar Export CSV button. */
   export: boolean;
   /** Enable Ctrl/Cmd-C copy and Ctrl/Cmd-V paste for grid cells as TSV. */
@@ -382,6 +389,7 @@ const defaultFeatures: DataGridFeatures = {
   filterSummary: true,
   editing: true,
   cellSelection: true,
+  fillHandle: true,
   export: true,
   clipboard: true,
   headerMenu: true,
@@ -2259,9 +2267,12 @@ export function DataGrid<TData extends object>({
     focusCell,
   });
   const cellSelectionEnabled = features.cellSelection && !isPivotLayout;
+  const fillHandleEnabled = features.fillHandle && cellSelectionEnabled;
   const [cellSelection, setCellSelection] = useState<DataGridCellRange | null>(null);
   const isSelectingCellsRef = useRef(false);
   const suppressNextCellClickRef = useRef(false);
+  const isFillDraggingRef = useRef(false);
+  const fillSourceRef = useRef<DataGridCellRange | null>(null);
 
   const normalizeCellRange = (range: DataGridCellRange | null) => {
     if (!range) {
@@ -2303,6 +2314,22 @@ export function DataGrid<TData extends object>({
     // normalizeCellRange is intentionally local and depends on these arrays.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellSelection, navColumnIds, navRowIds]);
+
+  const fillHandleTargetCell = useMemo(() => {
+    if (!fillHandleEnabled) {
+      return null;
+    }
+    const normalized = normalizeCellRange(cellSelection);
+    if (normalized) {
+      return {
+        rowId: normalized.rowIds[normalized.rowIds.length - 1],
+        columnId: normalized.columnIds[normalized.columnIds.length - 1],
+      };
+    }
+    return activeTabCell;
+    // normalizeCellRange is intentionally local and depends on these arrays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillHandleEnabled, cellSelection, navColumnIds, navRowIds, activeTabCell]);
 
   useEffect(() => {
     const stopSelecting = () => {
@@ -2838,6 +2865,8 @@ export function DataGrid<TData extends object>({
           const canEditCell = isNavCell && Boolean(columnConfig) && isCellEditable(row, cell.column.id);
           const selectedCellKey = cellKey(row.id, cell.column.id);
           const isCellRangeSelected = selectedCellKeys.has(selectedCellKey);
+          const isFillHandleCell =
+            fillHandleTargetCell?.rowId === row.id && fillHandleTargetCell?.columnId === cell.column.id;
 
           // Value-driven visual effects (grid data cells only; suppressed while editing).
           const cellValue = cell.getValue();
@@ -2948,7 +2977,13 @@ export function DataGrid<TData extends object>({
                     : "text-left text-slate-950"
               } ${isCellRangeSelected ? "shadow-[inset_0_0_0_1px_rgb(37_99_235)]" : ""} ${
                 cellSelectionEnabled ? "select-none" : ""
-              } ${hasCellOverlay ? "relative overflow-hidden" : ""}`}
+              } ${
+                hasCellOverlay
+                  ? "relative overflow-hidden"
+                  : fillHandleEnabled && isFillHandleCell
+                    ? "relative"
+                    : ""
+              }`}
             >
               {barGeometry ? (
                 <DataBarFill
@@ -2985,6 +3020,21 @@ export function DataGrid<TData extends object>({
               ) : (
                 flexRender(cell.column.columnDef.cell, cell.getContext())
               )}
+              {fillHandleEnabled && isFillHandleCell ? (
+                <span
+                  data-fill-handle
+                  className="absolute bottom-0 right-0 z-[2] h-1.5 w-1.5 cursor-crosshair bg-blue-600"
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    if (event.button !== 0) {
+                      return;
+                    }
+                    fillSourceRef.current =
+                      cellSelection ?? (activeTabCell ? { anchor: activeTabCell, focus: activeTabCell } : null);
+                    isFillDraggingRef.current = true;
+                  }}
+                />
+              ) : null}
             </td>
           );
         })}
