@@ -3214,6 +3214,7 @@ export function DataGrid<TData extends object>({
               {fillHandleEnabled && isFillHandleCell ? (
                 <span
                   data-fill-handle
+                  aria-hidden="true"
                   className="absolute bottom-0 right-0 z-[2] h-1.5 w-1.5 cursor-crosshair bg-blue-600"
                   onMouseDown={(event) => {
                     event.stopPropagation();

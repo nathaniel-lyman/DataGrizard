@@ -86,6 +86,25 @@ describe("DataGrid fill handle rendering", () => {
     expect(start.querySelector("[data-fill-handle]")).toBeNull();
     expect(cellOf("9").querySelector("[data-fill-handle]")).not.toBeNull();
   });
+
+  it("renders no fill handle in pivot layout mode", () => {
+    const pivotColumns: GridColumnConfig<FillRow>[] = [
+      { accessorKey: "name", header: "Name", dataType: "text", enableGrouping: true },
+      { accessorKey: "qty", header: "Qty", dataType: "number" },
+      { accessorKey: "price", header: "Price", dataType: "currency" },
+    ];
+    render(
+      <DataGrid
+        data={makeFillData()}
+        columns={pivotColumns}
+        getRowId={(r) => r.id}
+        layoutMode="pivot"
+        defaultGrouping={["name"]}
+        features={{ rowSelection: false }}
+      />,
+    );
+    expect(document.querySelector("[data-fill-handle]")).toBeNull();
+  });
 });
 
 describe("DataGrid fill handle drag-to-extend", () => {
