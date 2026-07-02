@@ -3612,6 +3612,7 @@ export function DataGrid<TData extends object>({
               roles={cardRoles}
               card={cardView?.card}
               formatOptions={formatOptions}
+              columnDomains={columnDomains}
               activeRow={activeRow}
               hasRowAction={hasLeafRowAction}
               onCardClick={handleRowClick}

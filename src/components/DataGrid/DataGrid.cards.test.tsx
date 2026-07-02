@@ -230,3 +230,28 @@ describe("DataGrid card mode: detail sheet + mode callback + virtualization", ()
     expect(screen.queryAllByRole("listitem").length).toBeLessThanOrEqual(rows.length);
   });
 });
+
+describe("DataGrid card mode: metric effects", () => {
+  const effectColumns: GridColumnConfig<Item>[] = columns.map((column) =>
+    column.accessorKey === "revenue"
+      ? { ...column, dataBar: { color: "#10b981" } }
+      : column.accessorKey === "margin"
+        ? { ...column, colorScale: { colors: ["#fee2e2", "#dcfce7"] } }
+        : column,
+  );
+
+  it("dataBar renders a proportional mini-bar under the metric value", () => {
+    const { container } = renderCards({ columns: effectColumns });
+    const bars = container.querySelectorAll("[data-card-bar]");
+    expect(bars.length).toBe(4); // one per card
+    // Almond Butter has the max revenue → full-width bar.
+    expect((bars[0] as HTMLElement).style.width).toBe("100%");
+  });
+
+  it("colorScale tints the metric value", () => {
+    const { container } = renderCards({ columns: effectColumns });
+    const tinted = container.querySelectorAll("[data-card-tint]");
+    expect(tinted.length).toBe(4);
+    expect((tinted[0] as HTMLElement).style.backgroundColor).not.toBe("");
+  });
+});

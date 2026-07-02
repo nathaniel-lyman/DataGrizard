@@ -5,6 +5,7 @@ import type { DataGridCardConfig } from "../../types/grid";
 import type { FormatOptions } from "../../utils/formatters";
 import type { CardRoles } from "./cardComposition";
 import { getColumnSearchText, renderCellValue, type AnyColumnConfig } from "./cells";
+import { colorScaleStyle, computeBarGeometry, type NumericDomain } from "./cellEffects";
 
 // Card-mode render path. Rows come from the SAME table instance as the grid —
 // sorting/filter/pagination state is untouched; only presentation changes.
@@ -14,6 +15,7 @@ type CardListProps<TData extends object> = {
   roles: CardRoles<TData>;
   card?: DataGridCardConfig<TData>;
   formatOptions: FormatOptions;
+  columnDomains: Map<string, NumericDomain>;
   activeRow: TData | null;
   hasRowAction: boolean;
   onCardClick: (row: TData) => void;
@@ -34,10 +36,12 @@ function CardBody<TData extends object>({
   row,
   roles,
   formatOptions,
+  columnDomains,
 }: {
   row: TData;
   roles: CardRoles<TData>;
   formatOptions: FormatOptions;
+  columnDomains: Map<string, NumericDomain>;
 }) {
   const subtitleText = roles.subtitle
     .map((column) => plainText(column, row, formatOptions))
@@ -83,14 +87,44 @@ function CardBody<TData extends object>({
               <div className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
                 {column.header}
               </div>
-              <div className="text-sm font-semibold tabular-nums text-slate-900">
-                {renderCellValue(
-                  column,
-                  row[column.accessorKey as keyof TData],
-                  row,
-                  formatOptions,
-                )}
-              </div>
+              {(() => {
+                const value = row[column.accessorKey as keyof TData];
+                const domain = columnDomains.get(column.accessorKey as string);
+                const tint = column.colorScale
+                  ? colorScaleStyle(value, column.colorScale, domain)
+                  : null;
+                const bar = column.dataBar
+                  ? computeBarGeometry(value, column.dataBar, domain)
+                  : null;
+                return (
+                  <>
+                    <div
+                      data-card-tint={tint ? "" : undefined}
+                      style={tint ?? undefined}
+                      className={`text-sm font-semibold tabular-nums text-slate-900 ${
+                        tint ? "inline-block rounded px-1" : ""
+                      }`}
+                    >
+                      {renderCellValue(column, value, row, formatOptions)}
+                    </div>
+                    {bar ? (
+                      <div className="mt-1 h-1 w-16 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          data-card-bar
+                          className="h-1 rounded-full"
+                          style={{
+                            width: `${bar.widthPct}%`,
+                            marginLeft: `${bar.leftPct}%`,
+                            backgroundColor: bar.negative
+                              ? column.dataBar?.negativeColor ?? "#ef4444"
+                              : column.dataBar?.color ?? "#0ea5e9",
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -107,6 +141,7 @@ export function CardList<TData extends object>({
   roles,
   card,
   formatOptions,
+  columnDomains,
   activeRow,
   hasRowAction,
   onCardClick,
@@ -120,7 +155,12 @@ export function CardList<TData extends object>({
     const content = card?.renderCard ? (
       card.renderCard(row.original, { isActive })
     ) : (
-      <CardBody row={row.original} roles={roles} formatOptions={formatOptions} />
+      <CardBody
+        row={row.original}
+        roles={roles}
+        formatOptions={formatOptions}
+        columnDomains={columnDomains}
+      />
     );
     const cardClass = `block w-full rounded-lg border bg-white p-3 text-left shadow-sm transition ${
       isActive ? "border-slate-400 ring-2 ring-inset ring-slate-400" : "border-slate-200"
