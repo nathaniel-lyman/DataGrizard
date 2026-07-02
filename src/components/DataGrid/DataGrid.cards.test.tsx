@@ -183,3 +183,50 @@ describe("DataGrid card mode: chrome", () => {
     expect(screen.getByText("4")).toBeInTheDocument();
   });
 });
+
+describe("DataGrid card mode: detail sheet + mode callback + virtualization", () => {
+  it("renders the detail panel in a bottom sheet; Escape closes it", () => {
+    renderCards({
+      renderDetailPanel: (row) => (row ? <div>Detail: {row.product}</div> : null),
+    });
+    fireEvent.click(within(screen.getAllByRole("listitem")[0]).getByRole("button"));
+    const dialog = screen.getByRole("dialog", { name: "Details" });
+    expect(within(dialog).getByText("Detail: Almond Butter")).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("fires onDisplayModeChange when the pinned mode flips", () => {
+    const onDisplayModeChange = vi.fn();
+    const { rerender } = render(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.product}
+        features={{ cardLayout: true }}
+        cardView={{ mode: "table", onDisplayModeChange }}
+      />,
+    );
+    expect(onDisplayModeChange).not.toHaveBeenCalled();
+    rerender(
+      <DataGrid
+        data={rows}
+        columns={columns}
+        getRowId={(r) => r.product}
+        features={{ cardLayout: true }}
+        cardView={{ mode: "cards", onDisplayModeChange }}
+      />,
+    );
+    expect(onDisplayModeChange).toHaveBeenCalledWith("cards");
+  });
+
+  it("virtualizeRows renders the card list without crashing", () => {
+    renderCards({ virtualizeRows: true, features: { pagination: false } });
+    expect(screen.getByRole("list")).toBeInTheDocument();
+    // jsdom measures the scroller at 0 height, so react-virtual windows to ZERO
+    // rows here (documented gotcha — see DataGrid.virtual.test.tsx, which only
+    // ever asserts upper bounds). Assert the card path tolerates windowing;
+    // real rendering is covered by the manual verification in Task 10.
+    expect(screen.queryAllByRole("listitem").length).toBeLessThanOrEqual(rows.length);
+  });
+});

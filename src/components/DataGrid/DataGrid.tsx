@@ -3907,7 +3907,15 @@ export function DataGrid<TData extends object>({
         ) : null}
       </div>
 
-      {showDetailPanel ? renderDetailPanel?.(activeRow, { close: closeActiveRow }) : null}
+      {showDetailPanel ? (
+        isCardMode ? (
+          <BottomSheet open={activeRow !== null} label="Details" onClose={closeActiveRow}>
+            {renderDetailPanel?.(activeRow, { close: closeActiveRow })}
+          </BottomSheet>
+        ) : (
+          renderDetailPanel?.(activeRow, { close: closeActiveRow })
+        )
+      ) : null}
     </div>
   );
 }
