@@ -87,6 +87,20 @@ describe("DataGrid column filters", () => {
     expect(screen.getByRole("button", { name: "Dept filter" })).toHaveAttribute("data-active");
   });
 
+  it("filter popover dialog carries scrollable clamp styling and default down placement", () => {
+    // jsdom rects are all zeros → helper reports openUp=false/alignEnd=false;
+    // this pins the default branch and the overflow guard.
+    const filters: GridFilterConfig<Row>[] = [
+      { accessorKey: "dept", label: "Dept", filterType: "text" },
+    ];
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /filter$/ })[0]);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("top-full");
+    expect(dialog).toHaveClass("overflow-auto");
+    expect(dialog).not.toHaveClass("bottom-full");
+  });
+
   it("lets text filters use a starts-with operator from the header popover", () => {
     const filters: GridFilterConfig<Row>[] = [
       { accessorKey: "dept", label: "Dept", filterType: "text" },

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronDownIcon, FilterIcon } from "./icons";
 import { FilterBody, formatOptionLabel } from "./filterBodies";
 import { isFilterValueActive } from "./filterMatch";
+import { computeAnchoredPlacement, type AnchoredPlacement } from "./popoverPosition";
 import type { GridFilterOperator, GridFilterType } from "../../types/grid";
 
 // Runtime descriptor for one column filter. Domain-neutral: built by DataGrid
@@ -112,7 +113,11 @@ export const FilterPopover = ({
   variant?: "icon" | "inline";
 }) => {
   const [open, setOpen] = useState(false);
-  const [alignEnd, setAlignEnd] = useState(true);
+  const [placement, setPlacement] = useState<AnchoredPlacement>({
+    alignEnd: true,
+    openUp: false,
+    maxHeight: undefined,
+  });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const active = isFilterActive(filter);
@@ -123,8 +128,15 @@ export const FilterPopover = ({
       if (!isOpen) {
         const rect = triggerRef.current?.getBoundingClientRect();
         if (rect) {
-          const estimatedPopoverWidth = 280;
-          setAlignEnd(rect.left + estimatedPopoverWidth > window.innerWidth);
+          setPlacement(
+            computeAnchoredPlacement({
+              trigger: rect,
+              viewportWidth: window.innerWidth,
+              viewportHeight: window.innerHeight,
+              estimatedWidth: 280,
+              estimatedHeight: 360,
+            }),
+          );
         }
       }
       return !isOpen;
@@ -164,9 +176,10 @@ export const FilterPopover = ({
         <div
           role="dialog"
           aria-label={`${filter.label} filter`}
-          className={`absolute top-full z-30 mt-1 rounded-md border border-slate-200 bg-white p-2 text-left shadow-lg ${
-            alignEnd ? "right-0" : "left-0"
-          }`}
+          style={placement.maxHeight ? { maxHeight: placement.maxHeight } : undefined}
+          className={`absolute z-30 overflow-auto rounded-md border border-slate-200 bg-white p-2 text-left shadow-lg ${
+            placement.alignEnd ? "right-0" : "left-0"
+          } ${placement.openUp ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           <FilterBody filter={filter} onClose={() => setOpen(false)} />
         </div>
