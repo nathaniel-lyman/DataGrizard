@@ -17,6 +17,8 @@ export function ToolbarSavedViews({
   onDeleteView,
   onActiveViewNameChange,
 }: ToolbarSavedViewsProps) {
+  const willOverwrite = savedViews.includes(activeViewName.trim());
+
   return (
     <div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:min-w-[360px] sm:flex-wrap">
       <label className="order-1 col-span-2 flex min-w-0 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:order-none sm:min-w-40 sm:flex-1">
@@ -33,7 +35,7 @@ export function ToolbarSavedViews({
         onClick={onSaveView}
         className="order-2 h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:order-none"
       >
-        Save view
+        {willOverwrite ? "Update view" : "Save view"}
       </button>
       <select
         value=""

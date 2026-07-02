@@ -134,6 +134,21 @@ describe("DataGrid scoped localStorage persistence", () => {
     expect(window.localStorage.getItem("savedViews")).toBeNull();
   });
 
+  it("relabels the save button to Update view when the name already exists", () => {
+    render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-A" />);
+
+    openViewControls();
+    fireEvent.change(screen.getByLabelText("View name"), { target: { value: "Weekly" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save view" }));
+
+    fireEvent.change(screen.getByLabelText("View name"), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "Save view" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("View name"), { target: { value: "Weekly" } });
+    expect(screen.getByRole("button", { name: "Update view" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save view" })).toBeNull();
+  });
+
   it("persists column pinning under the scoped key", () => {
     render(
       <DataGrid
