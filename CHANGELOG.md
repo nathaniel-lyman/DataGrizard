@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-column `enableSorting` opt-out on `GridColumnConfig`.
 - MultiSelect filter bodies over 10 options get an in-list search box.
 - Saved-views save button relabels to "Update view" when the name exists.
+- **Fill handle:** drag the handle at the corner of a cell selection down or
+  right to replicate/tile its value(s) into adjacent cells, or use `Ctrl+D`
+  (fill down) / `Ctrl+R` (fill right) as the keyboard equivalent over an
+  existing multi-row/multi-column selection (`features.fillHandle`).
 
 ### Fixed
 
