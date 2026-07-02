@@ -2653,6 +2653,53 @@ export function DataGrid<TData extends object>({
       }
       return;
     }
+    // Ctrl/Cmd-D and Ctrl/Cmd-R fill the top row / left column of the current
+    // cell-range selection into the rest of the selection. commitFill is called
+    // directly (not via commitFillRef) because this closure is fresh every
+    // render — the ref indirection exists only for the mouseup listener's
+    // empty-dependency-array effect.
+    if (ctrl && (event.key === "d" || event.key === "D")) {
+      if (fillHandleEnabled) {
+        const normalized = normalizeCellRange(cellSelection);
+        if (normalized && normalized.rowIds.length > 1) {
+          const firstRowId = normalized.rowIds[0];
+          const lastColumnId = normalized.columnIds[normalized.columnIds.length - 1];
+          commitFill(
+            {
+              anchor: { rowId: firstRowId, columnId: normalized.columnIds[0] },
+              focus: { rowId: firstRowId, columnId: lastColumnId },
+            },
+            {
+              anchor: { rowId: normalized.rowIds[1], columnId: normalized.columnIds[0] },
+              focus: { rowId: normalized.rowIds[normalized.rowIds.length - 1], columnId: lastColumnId },
+            },
+          );
+        }
+        event.preventDefault();
+      }
+      return;
+    }
+    if (ctrl && (event.key === "r" || event.key === "R")) {
+      if (fillHandleEnabled) {
+        const normalized = normalizeCellRange(cellSelection);
+        if (normalized && normalized.columnIds.length > 1) {
+          const firstColumnId = normalized.columnIds[0];
+          const lastRowId = normalized.rowIds[normalized.rowIds.length - 1];
+          commitFill(
+            {
+              anchor: { rowId: normalized.rowIds[0], columnId: firstColumnId },
+              focus: { rowId: lastRowId, columnId: firstColumnId },
+            },
+            {
+              anchor: { rowId: normalized.rowIds[0], columnId: normalized.columnIds[1] },
+              focus: { rowId: lastRowId, columnId: normalized.columnIds[normalized.columnIds.length - 1] },
+            },
+          );
+        }
+        event.preventDefault();
+      }
+      return;
+    }
     const navigationTarget = navigateTargetForKey(event.key, rowIdx, colIdx, ctrl);
     if (navigationTarget) {
       if (event.shiftKey && cellSelectionEnabled) {

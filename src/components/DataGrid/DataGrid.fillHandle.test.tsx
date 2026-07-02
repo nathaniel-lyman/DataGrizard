@@ -248,3 +248,126 @@ describe("DataGrid fill handle drag-to-extend", () => {
     expect(onCellEdit).not.toHaveBeenCalled();
   });
 });
+
+describe("DataGrid fill handle keyboard (Ctrl+D / Ctrl+R)", () => {
+  it("Ctrl+D fills the top row into the remaining rows of a selection", () => {
+    const onCellEdit = vi.fn();
+    render(
+      <DataGrid
+        data={makeFillData()}
+        columns={fillColumns}
+        getRowId={(r) => r.id}
+        onCellEdit={onCellEdit}
+        features={{ rowSelection: false }}
+      />,
+    );
+    const start = cellOf("5"); // row1 qty
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("3"), { buttons: 1 }); // row3 qty -> selects rows 1-3
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "d", ctrlKey: true });
+
+    expect(onCellEdit).toHaveBeenCalledTimes(2);
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ rowId: "2", columnId: "qty", value: 5, previousValue: 9 }),
+    );
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ rowId: "3", columnId: "qty", value: 5, previousValue: 3 }),
+    );
+  });
+
+  it("Ctrl+R fills the left column into the remaining columns of a selection", () => {
+    const onCellEdit = vi.fn();
+    render(
+      <DataGrid
+        data={makeFillData()}
+        columns={fillColumns}
+        getRowId={(r) => r.id}
+        onCellEdit={onCellEdit}
+        features={{ rowSelection: false }}
+      />,
+    );
+    const start = cellOf("Alpha");
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("$100"), { buttons: 1 }); // row1 price -> selects name..price
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "r", ctrlKey: true });
+
+    expect(onCellEdit).toHaveBeenCalledTimes(2);
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ rowId: "1", columnId: "qty", value: "Alpha" }),
+    );
+    expect(onCellEdit).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ rowId: "1", columnId: "price", value: "Alpha" }),
+    );
+  });
+});
+
+describe("DataGrid fill handle no-op conditions", () => {
+  it("does not fill on Ctrl+D when features.fillHandle is false", () => {
+    const onCellEdit = vi.fn();
+    render(
+      <DataGrid
+        data={makeFillData()}
+        columns={fillColumns}
+        getRowId={(r) => r.id}
+        onCellEdit={onCellEdit}
+        features={{ rowSelection: false, fillHandle: false }}
+      />,
+    );
+    const start = cellOf("5");
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("3"), { buttons: 1 });
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "d", ctrlKey: true });
+
+    expect(onCellEdit).not.toHaveBeenCalled();
+  });
+
+  it("does not commit a drag-fill when features.editing is false", () => {
+    const onCellEdit = vi.fn();
+    render(
+      <DataGrid
+        data={makeFillData()}
+        columns={fillColumns}
+        getRowId={(r) => r.id}
+        onCellEdit={onCellEdit}
+        features={{ rowSelection: false, editing: false }}
+      />,
+    );
+    const source = cellOf("Alpha");
+    fireEvent.mouseDown(source, { button: 0, buttons: 1 });
+    fireEvent.mouseUp(document);
+
+    const handle = source.querySelector("[data-fill-handle]") as HTMLElement;
+    expect(handle).not.toBeNull();
+    fireEvent.mouseDown(handle, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("Delta"), { buttons: 1 });
+    fireEvent.mouseUp(document);
+
+    expect(onCellEdit).not.toHaveBeenCalled();
+  });
+
+  it("does not fill on Ctrl+D when the selection is a single row", () => {
+    const onCellEdit = vi.fn();
+    render(
+      <DataGrid
+        data={makeFillData()}
+        columns={fillColumns}
+        getRowId={(r) => r.id}
+        onCellEdit={onCellEdit}
+        features={{ rowSelection: false }}
+      />,
+    );
+    const cell = cellOf("5");
+    fireEvent.mouseDown(cell, { button: 0, buttons: 1 });
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(cell, { key: "d", ctrlKey: true });
+
+    expect(onCellEdit).not.toHaveBeenCalled();
+  });
+});
