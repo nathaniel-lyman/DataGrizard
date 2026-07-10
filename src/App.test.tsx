@@ -9,6 +9,13 @@ afterEach(() => {
 });
 
 describe("App server-mode demo", () => {
+  it("starts the grid at item level without grouping", () => {
+    const { container } = render(<App />);
+
+    expect(container.querySelector(".dg-row--group")).not.toBeInTheDocument();
+    expect(screen.queryByText(/grouped$/)).not.toBeInTheDocument();
+  });
+
   it("applies the dark preset through a demo wrapper", () => {
     const { container } = render(<App />);
     const toggle = screen.getByRole("button", { name: "Dark theme" });
@@ -31,10 +38,26 @@ describe("App server-mode demo", () => {
     expect(await screen.findByText(/of 500 items/)).toBeInTheDocument();
   });
 
+  it("runs the agent proof in server mode", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Server" }));
+
+    expect(await screen.findByText(/of 500 items/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask the live grid agent" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Ask live agent" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Run deterministic proof" })).toBeEnabled();
+    expect(screen.queryByText("Available in grid layout.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run deterministic proof" }));
+    expect(await screen.findByText(/5 Grocery products/)).toBeInTheDocument();
+    expect(screen.getByText("View analysis receipt")).toBeInTheDocument();
+  });
+
   it("disables the Server toggle in pivot layout (server is grid-only)", () => {
     render(<App />); // starts in grid
     fireEvent.click(screen.getByRole("button", { name: "Pivot" }));
     expect(screen.getByRole("button", { name: "Server" })).toBeDisabled();
+    expect(screen.getByText("Available in grid layout.")).toBeInTheDocument();
   });
 
   it("shows Client as the active data source while pivot disables Server", () => {

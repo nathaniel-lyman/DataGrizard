@@ -19,6 +19,7 @@ import {
   type RetailItem,
 } from "./data/mockRetailData";
 import { applyEdit, queryRetail } from "./data/fakeServer";
+import { fakeRetailServerAnalysis } from "./data/fakeServerAnalysis";
 import { createRetailBigQueryDataSource } from "./data/retailBigQuery";
 import { AssistantDemo } from "./demo/AssistantDemo";
 
@@ -171,7 +172,7 @@ function App() {
                 ? "Pivot view — grouped subtotals. Switch to Grid to drill to item level."
                 : isServer
                   ? "Grid view — server mode: sort/filter/paginate round-trip to a simulated backend."
-                  : "Grid view — expand a group to see item rows."}
+                  : "Grid view — item-level retail recommendations."}
             </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 text-xs text-slate-500 sm:w-auto">
@@ -244,7 +245,7 @@ function App() {
 
       <AssistantDemo
         toolkit={assistantToolkit}
-        disabled={layoutMode !== "grid" || isServer}
+        disabled={layoutMode !== "grid"}
       />
 
       <section
@@ -256,6 +257,7 @@ function App() {
           columns={themedRetailColumns}
           layoutMode={layoutMode}
           dataMode={isServer ? "server" : "client"}
+          serverAnalysis={isServer && !bigQuerySource ? fakeRetailServerAnalysis : undefined}
           rowCount={isServer ? serverRowCount : undefined}
           isLoading={isServer ? isLoading : false}
           state={isServer ? { sorting, columnFilters, globalFilter, pagination } : undefined}
@@ -283,7 +285,6 @@ function App() {
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}
           groupSummaryDisplay="columns"
-          defaultGrouping={["department", "category"]}
           pivot={{ showLeafRows: true }}
           features={{ detailPanel: false, headerToolsOnDemand: true, cardLayout: true }}
           cardView={{

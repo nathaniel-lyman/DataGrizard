@@ -31,11 +31,15 @@ export async function runRetailAssistantWorkflow(
     return await toolkit.execute(name, input);
   };
 
-  await call("grid_get_context");
+  const context = await call("grid_get_context");
+  const contextFeatures = context && typeof context === "object"
+    ? (context as { features?: { grouping?: unknown } }).features
+    : undefined;
+  const groupingEnabled = contextFeatures?.grouping === true;
   const planResult = await call("grid_plan_actions", {
     filters: [{ id: "department", value: { operator: "isAnyOf", value: ["Grocery"] } }],
     sorting: [{ id: "sales", desc: true }],
-    grouping: [],
+    ...(groupingEnabled ? { grouping: [] } : {}),
     visibleColumnIds: ["item_name", "sales", "margin_rate"],
     presentation: {
       sales: { dataBar: { color: "#8b5cf6", showValue: true } },

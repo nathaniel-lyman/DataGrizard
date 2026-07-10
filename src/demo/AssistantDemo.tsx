@@ -186,7 +186,7 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
             </pre>
           </details>
         ) : null}
-        {disabled ? <span className="mt-3 block text-slate-400">Available in client grid mode.</span> : null}
+        {disabled ? <span className="mt-3 block text-slate-400">Available in grid layout.</span> : null}
       </div>
     </section>
   );
