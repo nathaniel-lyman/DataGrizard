@@ -1,7 +1,7 @@
 {
   "name": "datagrizard",
   "version": "0.1.0",
-  "description": "A reusable, domain-neutral analytical DataGrid component for React, built on TanStack Table v8. Grid + pivot layouts, grouping, saved views, summaries, and a controlled/uncontrolled hybrid API.",
+  "description": "A trustworthy, domain-neutral analytical control plane and DataGrid for React agents and applications, built on TanStack Table v8.",
   "type": "module",
   "license": "MIT",
   "author": "Nathaniel Lyman <nathaniel.lyman@gmail.com>",

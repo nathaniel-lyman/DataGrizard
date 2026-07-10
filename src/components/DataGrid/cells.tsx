@@ -1,6 +1,7 @@
 import { isValidElement, type ReactNode } from "react";
 import type {
   GridColorScale,
+  GridColumnSemanticMetadata,
   GridDataBar,
   GridDataType,
   GridFlashOnChange,
@@ -27,6 +28,7 @@ export type AnyColumnConfig<TData> = {
   accessorKey: Extract<keyof TData, string>;
   header: string;
   dataType: GridDataType;
+  semantic?: GridColumnSemanticMetadata;
   width?: number;
   minWidth?: number;
   maxWidth?: number;

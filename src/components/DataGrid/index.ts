@@ -7,6 +7,7 @@ export type {
   DataGridAggregateQuery,
   DataGridAggregateResult,
   DataGridColumnSnapshot,
+  DataGridColumnFilterSnapshot,
   DataGridCommand,
   DataGridCommandError,
   DataGridCommandErrorCode,
@@ -20,6 +21,7 @@ export type {
   DataGridQueryScope,
   DataGridSerializableValue,
   DataGridSnapshot,
+  DataGridSourceColumnSnapshot,
 } from "./dataGridApi";
 export type {
   DataGridFeatures,
@@ -79,6 +81,7 @@ export type {
   DataGridDisplayMode,
   GridColorScale,
   GridColumnConfig,
+  GridColumnSemanticMetadata,
   GridConditionalFormat,
   GridDataBar,
   GridDataType,
@@ -91,6 +94,7 @@ export type {
   GridIconSet,
   GridIconSetRule,
   GridProgressBar,
+  GridSemanticAllowedValue,
 } from "../../types/grid";
 export { trendIconSet, type TrendIconSetOptions } from "./trendIconSet";
 // Optional server-data helper: turns the dataSource request + the grid's own
@@ -113,8 +117,9 @@ export {
 } from "./filterDefaults";
 export {
   createDataGridAgentToolkit,
-  dataGridAgentToolDefinitions,
+  type DataGridAgentPermissionSource,
   type DataGridAgentPermissions,
+  type DataGridAgentToolName,
   type DataGridAgentToolDefinition,
   type DataGridAgentToolkitOptions,
 } from "./dataGridAgentToolkit";

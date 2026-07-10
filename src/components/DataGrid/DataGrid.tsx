@@ -40,7 +40,7 @@ import { DataGridPagination } from "./DataGridPagination";
 import { useContainerWidth } from "./useContainerWidth";
 import type { GridFilter } from "./filters";
 import { AppliedFilters } from "./AppliedFilters";
-import { DEFAULT_FACET_THRESHOLD } from "./filterDefaults";
+import { DEFAULT_FACET_THRESHOLD, resolveFilterOperators } from "./filterDefaults";
 import { RowActionsMenu } from "./RowActionsMenu";
 import {
   CellEditor,
@@ -1507,7 +1507,16 @@ export function DataGrid<TData extends object>({
     apiRef,
     table,
     columnsById,
-    resolvedFilterIds: resolvedFilters.map((filter) => filter.accessorKey),
+    resolvedFilters: resolvedFilters.map((filter) => ({
+      accessorKey: filter.accessorKey,
+      filterType: filter.filterType,
+      operators: resolveFilterOperators(filter.filterType, filter.operators),
+      allowedValues:
+        columnsById.get(filter.accessorKey)?.semantic?.allowedValues ??
+        filterOptionsById[filter.accessorKey],
+      min: filter.min,
+      max: filter.max,
+    })),
     groupableColumnIds: groupableColumns.map((column) => column.id),
     pivotMeasureIds,
     layoutMode,

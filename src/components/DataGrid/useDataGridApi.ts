@@ -13,10 +13,16 @@ import type {
   Updater,
   VisibilityState,
 } from "@tanstack/react-table";
-import type { DataGridDisplayMode } from "../../types/grid";
+import type {
+  DataGridDisplayMode,
+  GridFilterOperator,
+  GridFilterType,
+  GridSemanticAllowedValue,
+} from "../../types/grid";
 import type { AnyColumnConfig } from "./cells";
 import type {
   DataGridApi,
+  DataGridAggregateOperation,
   DataGridAggregateQuery,
   DataGridAggregateResult,
   DataGridCommand,
@@ -94,7 +100,14 @@ type UseDataGridApiOptions<TData extends object> = {
   apiRef?: Ref<DataGridApi<TData>>;
   table: Table<TData | PivotRow<TData>>;
   columnsById: Map<string, AnyColumnConfig<TData>>;
-  resolvedFilterIds: string[];
+  resolvedFilters: Array<{
+    accessorKey: string;
+    filterType: GridFilterType;
+    operators: GridFilterOperator[];
+    allowedValues?: GridSemanticAllowedValue[];
+    min?: number;
+    max?: number;
+  }>;
   groupableColumnIds: string[];
   pivotMeasureIds: string[];
   layoutMode: DataGridLayoutMode;
@@ -115,6 +128,31 @@ type UseDataGridApiOptions<TData extends object> = {
 };
 
 const hasDuplicates = (ids: string[]) => new Set(ids).size !== ids.length;
+
+const aggregateOperationsForDataType = (
+  dataType: string,
+): DataGridAggregateOperation[] => {
+  const common: DataGridAggregateOperation[] = ["count", "distinct_count", "top_values"];
+  if (["number", "currency", "percent"].includes(dataType)) {
+    return ["count", "sum", "average", "min", "max", "min_max", "distinct_count", "top_values"];
+  }
+  if (dataType === "date") {
+    return ["count", "min", "max", "min_max", "distinct_count", "top_values"];
+  }
+  return common;
+};
+
+const cloneSemanticMetadata = <TData extends object>(
+  column: AnyColumnConfig<TData>,
+) => column.semantic
+  ? {
+      ...column.semantic,
+      synonyms: column.semantic.synonyms ? [...column.semantic.synonyms] : undefined,
+      allowedValues: column.semantic.allowedValues
+        ? [...column.semantic.allowedValues]
+        : undefined,
+    }
+  : undefined;
 
 const cloneExpanded = (expanded: ExpandedState): ExpandedState =>
   expanded === true ? true : { ...expanded };
@@ -267,7 +305,7 @@ export function useDataGridApi<TData extends object>({
   apiRef,
   table,
   columnsById,
-  resolvedFilterIds,
+  resolvedFilters,
   groupableColumnIds,
   pivotMeasureIds,
   layoutMode,
@@ -331,7 +369,10 @@ export function useDataGridApi<TData extends object>({
   const dataColumnIds = dataColumns.map((column) => column.id);
   const dataColumnIdSet = new Set(dataColumnIds);
   const sourceColumnIdSet = new Set(columnsById.keys());
-  const filterableColumnIdSet = new Set(resolvedFilterIds);
+  const filterByColumnId = new Map(
+    resolvedFilters.map((filter) => [filter.accessorKey, filter]),
+  );
+  const filterableColumnIdSet = new Set(filterByColumnId.keys());
   const groupableColumnIdSet = new Set(groupableColumnIds);
   const loadedRowIdSet = new Set(table.getCoreRowModel().flatRows.map((row) => row.id));
   const pivotMeasureIdSet = new Set(pivotMeasureIds);
@@ -343,6 +384,31 @@ export function useDataGridApi<TData extends object>({
     dataMode,
     displayMode,
     features: { ...features },
+    sourceColumns: [...columnsById.entries()].map(([id, column]) => {
+      const renderedColumn = table.getColumn(id);
+      const filter = filterByColumnId.get(id);
+      return {
+        id,
+        label: column.header,
+        dataType: column.dataType,
+        semantic: cloneSemanticMetadata(column),
+        visible: renderedColumn?.getIsVisible() ?? false,
+        canHide: layoutMode === "grid" && Boolean(renderedColumn?.getCanHide()),
+        canSort: layoutMode === "grid" && Boolean(renderedColumn?.getCanSort()),
+        canFilter: filterableColumnIdSet.has(id),
+        canGroup: layoutMode === "grid" && groupableColumnIdSet.has(id),
+        filter: filter
+          ? {
+              type: filter.filterType,
+              operators: [...filter.operators],
+              allowedValues: filter.allowedValues ? [...filter.allowedValues] : undefined,
+              min: filter.min,
+              max: filter.max,
+            }
+          : undefined,
+        aggregateOperations: aggregateOperationsForDataType(column.dataType),
+      };
+    }),
     columns: dataColumns.map((column, order) => ({
       id: column.id,
       label: getColumnLabel(column.id),

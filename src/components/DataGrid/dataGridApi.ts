@@ -10,7 +10,13 @@ import type {
   SortingState,
   VisibilityState,
 } from "@tanstack/react-table";
-import type { GridDataType } from "../../types/grid";
+import type {
+  GridColumnSemanticMetadata,
+  GridDataType,
+  GridFilterOperator,
+  GridFilterType,
+  GridSemanticAllowedValue,
+} from "../../types/grid";
 import type {
   DataGridCellRange,
   DataGridColumnPresentationState,
@@ -85,6 +91,29 @@ export type DataGridAggregateOperation =
   | "distinct_count"
   | "top_values";
 
+export type DataGridColumnFilterSnapshot = {
+  type: GridFilterType;
+  operators: GridFilterOperator[];
+  allowedValues?: GridSemanticAllowedValue[];
+  min?: number;
+  max?: number;
+};
+
+/** Source-column contract used by analysis and agent integrations. */
+export type DataGridSourceColumnSnapshot = {
+  id: string;
+  label: string;
+  dataType: GridDataType;
+  semantic?: GridColumnSemanticMetadata;
+  visible: boolean;
+  canHide: boolean;
+  canSort: boolean;
+  canFilter: boolean;
+  canGroup: boolean;
+  filter?: DataGridColumnFilterSnapshot;
+  aggregateOperations: DataGridAggregateOperation[];
+};
+
 export type DataGridAggregateMetric = {
   /** Optional only for count, which counts rows when omitted. */
   columnId?: string;
@@ -144,6 +173,9 @@ export type DataGridSnapshot = {
   dataMode: DataGridDataMode;
   displayMode: "table" | "cards";
   features: DataGridFeatures;
+  /** Stable source columns, including when the rendered pivot columns are generated. */
+  sourceColumns: DataGridSourceColumnSnapshot[];
+  /** Columns in the current rendered layout (source or generated pivot columns). */
   columns: DataGridColumnSnapshot[];
   rowCounts: {
     loaded: number;

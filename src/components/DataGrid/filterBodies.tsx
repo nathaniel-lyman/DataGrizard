@@ -8,6 +8,7 @@ import {
   resolveFilterClause,
 } from "./filterMatch";
 import type { GridFilterOperator, GridFilterType } from "../../types/grid";
+import { resolveFilterOperators } from "./filterDefaults";
 
 export const formatOptionLabel = (option: string) =>
   option
@@ -43,17 +44,8 @@ const operatorLabels: Record<GridFilterOperator, string> = {
   isNotEmpty: "Is not empty",
 };
 
-const defaultOperatorsByType: Record<GridFilterType, GridFilterOperator[]> = {
-  select: ["is", "isNot", "isEmpty", "isNotEmpty"],
-  boolean: ["is", "isNot", "isEmpty", "isNotEmpty"],
-  multiSelect: ["isAnyOf", "isNoneOf", "isEmpty", "isNotEmpty"],
-  text: ["contains", "notContains", "equals", "notEquals", "startsWith", "endsWith", "isEmpty", "isNotEmpty"],
-  range: ["between", "equals", "notEquals", "gt", "gte", "lt", "lte", "isEmpty", "isNotEmpty"],
-  date: ["between", "equals", "notEquals", "before", "onOrBefore", "after", "onOrAfter", "isEmpty", "isNotEmpty"],
-};
-
 const getOperators = (filter: GridFilter) =>
-  filter.operators?.length ? filter.operators : defaultOperatorsByType[filter.filterType];
+  resolveFilterOperators(filter.filterType, filter.operators);
 
 const isUnaryOperator = (operator: GridFilterOperator) =>
   operator === "isEmpty" || operator === "isNotEmpty";

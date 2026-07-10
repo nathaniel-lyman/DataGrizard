@@ -1,6 +1,7 @@
 # DataGrizard
 
-A reusable, **domain-neutral** analytical data grid for React, built on
+A trustworthy, **domain-neutral analytical control plane for agents**, delivered
+as a reusable React data grid built on
 [TanStack Table v8](https://tanstack.com/table/v8). One component, two layouts
 (**grid** and Excel-style **pivot**), with grouping, saved views, summaries,
 column management, column pinning, conditional formatting, and a fully controllable state
@@ -231,6 +232,14 @@ type GridColumnConfig<TData> = {
   accessorKey: keyof TData & string;
   header: string;
   dataType: "text" | "number" | "currency" | "percent" | "status" | "date" | "boolean";
+  semantic?: {
+    description?: string;
+    synonyms?: string[];
+    unit?: string;
+    currency?: string;
+    allowedValues?: Array<string | number | boolean | null>;
+    sensitivity?: string;
+  };
   width?: number; minWidth?: number; maxWidth?: number;
   pinned?: "left" | "right";
   enablePinning?: boolean;
@@ -257,6 +266,10 @@ type GridColumnConfig<TData> = {
 - `conditionalFormats` rules compose — every matching rule contributes its class.
 - `pinned` sets an initial frozen side for a column. Set `enablePinning: false`
   to keep a column out of the Columns menu pin controls.
+- `semantic` is optional consumer-owned business metadata. The reusable grid
+  does not assume a vocabulary or sensitivity taxonomy; its agent toolkit uses
+  this metadata to describe columns and enforce the caller's sensitivity
+  allowlist.
 
 ## Clipboard, range selection, and batch editing
 
@@ -429,27 +442,60 @@ were the complete server dataset.
 ## Agent toolkit
 
 `createDataGridAgentToolkit()` provides provider-neutral JSON schemas plus one
-executor. Provider SDKs stay in the consumer layer:
+executor. Its schemas are generated from the mounted grid—not from a static
+catalog. They reflect source column IDs and types, semantic metadata, resolved
+filter operators and allowed values, aggregate operations legal for each type,
+enabled features, layout/data mode, permissions, and data-access limits.
+
+Add business meaning to the same generic column config used by the grid:
+
+```tsx
+const columns = [
+  {
+    accessorKey: "amount",
+    header: "Amount",
+    dataType: "currency",
+    semantic: {
+      description: "Recognized amount for the current record.",
+      synonyms: ["value", "total"],
+      currency: "USD",
+      sensitivity: "internal",
+    },
+  },
+] satisfies GridColumnConfig<Row>[];
+```
+
+Provider SDKs and authorization decisions stay in the consumer layer:
 
 ```tsx
 import { createDataGridAgentToolkit } from "datagrizard";
 
 const toolkit = createDataGridAgentToolkit({
   api: gridApi,
-  permissions: {
+  permissions: () => ({
     readData: true,
     changeView: true,
     changeFormatting: true,
-  },
+    allowedSensitivityLevels: ["public", "internal"],
+  }),
   limits: { maxRowsPerQuery: 100, maxCellsPerQuery: 2_000 },
 });
 
-// Give toolkit.tools to any tool-calling provider, then route calls here.
+// `tools` is a live getter. Read it when preparing each provider request.
+// Tools and column choices disappear when permissions/features no longer allow them.
+const tools = toolkit.tools;
 const output = toolkit.execute(toolCall.name, toolCall.arguments);
 ```
 
-The MVP tools are `grid_get_context`, `grid_query_rows`, `grid_aggregate`,
-`grid_update_view`, `grid_update_selection`, and `grid_format_columns`.
+The available tools are drawn from `grid_get_context`, `grid_query_rows`,
+`grid_aggregate`, `grid_update_view`, `grid_update_selection`, and
+`grid_format_columns`. A tool is omitted when current permissions or grid
+features make it unavailable. In server mode, whole-dataset `all` and
+`filtered` scopes are omitted rather than pretending the loaded page is the
+dataset. The executor repeats the same checks, including sensitivity and
+type-legal aggregation checks; the JSON schema is not treated as a security
+boundary by itself.
+
 Formatting is serializable through `columnPresentation`: number/date formats,
 color scales, data bars, progress bars, and operator/tone rules. The schema does
 not accept CSS class names, JavaScript predicates, arbitrary formulas, or code.

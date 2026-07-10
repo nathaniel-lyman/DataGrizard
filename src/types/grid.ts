@@ -9,6 +9,24 @@ export type GridDataType =
   | "date"
   | "boolean";
 
+export type GridSemanticAllowedValue = string | number | boolean | null;
+
+/**
+ * Optional, domain-neutral business meaning for a column. DataGrizard exposes
+ * this metadata through its serializable snapshot and uses it to generate
+ * agent tool schemas; it never interprets a sensitivity label on its own.
+ */
+export type GridColumnSemanticMetadata = {
+  description?: string;
+  synonyms?: string[];
+  unit?: string;
+  /** ISO 4217 code when the values represent money (for example, "USD"). */
+  currency?: string;
+  allowedValues?: GridSemanticAllowedValue[];
+  /** Consumer-defined policy label, such as "public" or "restricted". */
+  sensitivity?: string;
+};
+
 export type GridConditionalFormat<TValue = unknown, TData = unknown> = {
   when: (value: TValue, row: TData) => boolean;
   className: string;
@@ -96,6 +114,8 @@ type GridColumnConfigForKey<TData, K extends Extract<keyof TData, string>> = {
   accessorKey: K;
   header: string;
   dataType: GridDataType;
+  /** Business meaning used by generic agent/schema integrations. */
+  semantic?: GridColumnSemanticMetadata;
   width?: number;
   minWidth?: number;
   maxWidth?: number;

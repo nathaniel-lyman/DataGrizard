@@ -33,7 +33,7 @@ export async function runRetailAssistantWorkflow(
 
   call("grid_get_context");
   const viewResult = call("grid_update_view", {
-    filters: [{ id: "department", value: { operator: "is", value: "Grocery" } }],
+    filters: [{ id: "department", value: { operator: "isAnyOf", value: ["Grocery"] } }],
     sorting: [{ id: "sales", desc: true }],
     grouping: [],
   });

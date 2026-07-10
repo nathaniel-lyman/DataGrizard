@@ -1,4 +1,41 @@
-import type { GridDataType, GridFilterType } from "../../types/grid";
+import type {
+  GridDataType,
+  GridFilterOperator,
+  GridFilterType,
+} from "../../types/grid";
+
+export const defaultFilterOperatorsByType: Record<GridFilterType, GridFilterOperator[]> = {
+  select: ["is", "isNot", "isEmpty", "isNotEmpty"],
+  boolean: ["is", "isNot", "isEmpty", "isNotEmpty"],
+  multiSelect: ["isAnyOf", "isNoneOf", "isEmpty", "isNotEmpty"],
+  text: [
+    "contains",
+    "notContains",
+    "equals",
+    "notEquals",
+    "startsWith",
+    "endsWith",
+    "isEmpty",
+    "isNotEmpty",
+  ],
+  range: ["between", "equals", "notEquals", "gt", "gte", "lt", "lte", "isEmpty", "isNotEmpty"],
+  date: [
+    "between",
+    "equals",
+    "notEquals",
+    "before",
+    "onOrBefore",
+    "after",
+    "onOrAfter",
+    "isEmpty",
+    "isNotEmpty",
+  ],
+};
+
+export const resolveFilterOperators = (
+  filterType: GridFilterType,
+  configured?: GridFilterOperator[],
+) => configured?.length ? configured : defaultFilterOperatorsByType[filterType];
 
 // Maps a column's value semantics (dataType) to the control that fits it best.
 // This is the type-awareness the filter layer previously lacked (it defaulted
