@@ -24,6 +24,10 @@
 | Q8 CJS | Keep dual ESM+CJS. |
 | Q9 browser floor | Modern floor (2022+ evergreen). No autoprefixer in the lib CSS pipeline. |
 
+### Deviation from spec § 7: packaging (B) lands before de-Tailwind (A)
+
+The spec's serialization sentence is self-contradictory ("A lands first … because B's verify tooling should gate A's build changes too"). Its rationale only holds with B first, so this plan runs B (Tasks 1–3) before A (Tasks 4–12): attw/publint/type-fixture gates are in `test:package` before the CSS build is touched.
+
 ### Deviation from spec § 2.A2: no `@layer`
 
 The spec wraps shipped CSS in `@layer datagrizard` so consumer styles win. **This interacts fatally with Q1:** Tailwind v3 preflight is *unlayered*, and per CSS Cascade 5 unlayered author styles beat layered ones regardless of specificity. Preflight's `*, ::before, ::after { border-width: 0 }` would zero every grid border (43 `border-slate-200` sites) in any Tailwind-v3 host — including our own demo — failing the pixel-parity criterion. Instead:
@@ -102,7 +106,7 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 - Modify: `package.json` (remove `lucide-react` from `dependencies`)
 - Modify: `vite.lib.config.ts` only if it references lucide (it doesn't — verify)
 
-- [ ] **Step 1:** Read both files. List every lucide icon used and where it renders (`icons.tsx` already wraps them; `trendIconSet.tsx` is public API — its exported shape must not change).
+- [ ] **Step 1:** Read both files. List every lucide icon used and where it renders (`icons.tsx` already wraps them; `trendIconSet.tsx` is public API — its exported shape must not change). Note: `icons.tsx` also imports the `LucideProps` **type** — define a local replacement props type (e.g. `DgIconProps = SVGProps<SVGSVGElement> & { size?: number | string }`) covering every prop the call sites use.
 - [ ] **Step 2:** For each icon, replace with a local `<svg>` component reproducing the lucide 24×24 outline paths (viewBox `0 0 24 24`, `fill="none"`, `stroke="currentColor"`, `strokeWidth={2}`, `strokeLinecap="round"`, `strokeLinejoin="round"`), accepting the same props the call sites pass (at minimum `className`, `size`/width-height, `aria-hidden`). Copy path data from the installed `lucide-react` package (`node_modules/lucide-react/dist/esm/icons/*.js`) so the icons are pixel-identical. Keep lucide's ISC license note in a comment block above the path data.
 - [ ] **Step 3:** Remove the `lucide-react` imports; `npm uninstall lucide-react`.
 - [ ] **Step 4:** `npx tsc -b && npm test` — expect green (icon components are rendered in many tests).
@@ -117,7 +121,7 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 - Modify: `scripts/verify-package.mjs` (expected-file assertions: `dist/datagrid.d.ts`, `dist/datagrid.d.cts` present; `dist/types/**` absent)
 - Delete usage of: `tsconfig.lib.json` declaration emit path (keep the tsconfig if vite-plugin-dts consumes it; otherwise delete)
 
-- [ ] **Step 1:** `npm i -D vite-plugin-dts @microsoft/api-extractor` (api-extractor is required by `rollupTypes`).
+- [ ] **Step 1:** `npm i -D vite-plugin-dts @microsoft/api-extractor publint @arethetypeswrong/cli` (api-extractor is required by `rollupTypes`; publint/attw are used for verification in Step 7 and wired into the verify script in Task 3).
 - [ ] **Step 2:** In `vite.lib.config.ts`: add `dts({ rollupTypes: true, tsconfigPath: "./tsconfig.lib.json", outDir: "dist" })` to plugins, and `rollupOptions.output.banner: '"use client";'`. Ensure emitted file is `dist/datagrid.d.ts` (use `beforeWriteFile` or the plugin's `rollupOptions`/`fileName` handling; acceptable alternative: let it emit `index.d.ts` and rename in a script step).
 - [ ] **Step 3:** Add a post-build script step that copies `dist/datagrid.d.ts` → `dist/datagrid.d.cts` (tsup-style identical-content dual declarations). Wire into `build:package`; remove the separate `build:types` tsc step.
 - [ ] **Step 4:** Update `package.json`:
@@ -150,18 +154,22 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 - Modify: `scripts/verify-package.mjs`
 - Modify: `package.json` (devDeps: `publint`, `@arethetypeswrong/cli`)
 
-- [ ] **Step 1:** `npm i -D publint @arethetypeswrong/cli`.
+- [ ] **Step 1:** Confirm `publint` and `@arethetypeswrong/cli` are devDependencies (installed in Task 2).
 - [ ] **Step 2:** In `verify-package.mjs`, after the existing tarball checks: run `npx publint --strict` (via `run(...)`) and fail on nonzero; run `npx attw --pack . --exclude-entrypoints ./styles.css --format ascii` and fail on nonzero.
 - [ ] **Step 3:** Add two **type-fidelity fixtures** compiled against the extracted package in `.tmp/package-smoke` with `tsc --noEmit`:
   - `consumer-esm.ts` + tsconfig `{"module":"nodenext","moduleResolution":"nodenext","strict":true,"jsx":"react-jsx"}`
   - `consumer-cjs.cts` with the same tsconfig.
-  Fixture body must exercise the generic surface: define `type Row = { qty: number; name: string }`, build a `GridColumnConfig<Row>[]` where a `qty` column's `formatValue` parameter is checked as `number` (assign to a `number`-typed variable) and include one `// @ts-expect-error` line assigning it to `string`. Symlink `typescript` like the other deps, or resolve the repo's `node_modules/.bin/tsc`.
+  Fixture body must exercise the generic surface: define `type Row = { qty: number; name: string }`, build a `GridColumnConfig<Row>[]` where a `qty` column's `formatValue` parameter is checked as `number` (assign to a `number`-typed variable) and include one `// @ts-expect-error` line assigning it to `string`. Symlink `@types/react` and `@types/react-dom` in addition to the existing runtime symlinks (the fixtures use `jsx: react-jsx` and the package types reference React types — without the `@types/*` symlinks tsc fails on `react/jsx-runtime`). Run tsc via the repo's `node_modules/.bin/tsc` or a `typescript` symlink.
 - [ ] **Step 4:** `npm run test:package` green. Sabotage-check the fixture works: temporarily flip the `@ts-expect-error` line to a plain assignment, confirm the script FAILS, revert.
 - [ ] **Step 5:** Commit: `test(package): gate on publint, attw, and node16 type-fidelity fixtures`
 
 ---
 
 ## Chunk 2: De-Tailwind (spec § 2)
+
+### Task 3.5 (orchestrator, not a subagent): capture baseline screenshots
+
+Before any visual change: run the dev server and capture baseline screenshots of the demo on this branch (post-Task-3 = visually identical to `main`) into the session scratchpad — desktop grid, pivot layout, card mode (narrow viewport), a header filter popover open, the columns menu open. These are the pixel-parity reference for Tasks 5–8 checks and Final verification.
 
 > The Tailwind lib pipeline stays alive until Task 9: during Tasks 4–8, `src/styles.css` gains `@import "./components/DataGrid/datagrid.css";` (Tailwind CLI inlines it via postcss-import) so the shipped CSS carries both old utilities and new `dg-*` rules mid-migration, and `npm run test:package` keeps passing at every commit.
 
@@ -270,7 +278,7 @@ Reuse Task 7's `dg-menu`/`dg-btn`/`dg-input` vocabulary; add `dg-popover`, `dg-f
 - Modify: `scripts/verify-package.mjs`
 
 - [ ] **Step 1:** Extend the smoke harness with a **CSS isolation + override check** (no bundler needed): write `.tmp/package-smoke/css-check.mjs` that reads `dist/datagrid.css` as text and asserts (a) every top-level selector outside `@keyframes`/`@media` starts with `.dg-` (parse naively by splitting on `}`), (b) keyframe names start with `dg-`.
-- [ ] **Step 2:** Add a jsdom render fixture `consumer-render.mjs` run with the repo's vitest **or** plain node + jsdom symlink: render `<DataGrid data={[...3 rows]} columns={[...2 cols]} />` from the **extracted package** inside jsdom, assert it renders `.dg-root` and column headers. Then inject a consumer stylesheet after the package CSS (`<style>.dg-cell { background: rgb(1, 2, 3); }</style>`) and assert `getComputedStyle` on a cell yields the consumer value (override-order criterion). Symlink `jsdom` from root node_modules like other deps.
+- [ ] **Step 2:** Add a jsdom render fixture `consumer-render.mjs` run with the repo's vitest **or** plain node + jsdom symlink: render `<DataGrid data={[...3 rows]} columns={[...2 cols]} />` from the **extracted package** inside jsdom, assert it renders `.dg-root` and column headers. Then inject a consumer stylesheet after the package CSS (`<style>.dg-cell { background: rgb(1, 2, 3); }</style>`) and assert `getComputedStyle` on a cell yields the consumer value (override-order criterion). Symlink `jsdom` from root node_modules like other deps. Known risk: jsdom's cascade support is partial — if `getComputedStyle` returns the initial value for the property, fall back to asserting CSSOM rule order (consumer rule appears after package rules) and note it; the real-browser confirmation is the orchestrator's Task 11 review.
 - [ ] **Step 3:** `npm run test:package` green; sabotage-check: temporarily add `body { margin: 0 }` to `datagrid.css`, confirm css-check FAILS, revert.
 - [ ] **Step 4:** Commit: `test(package): css isolation and consumer-override checks`
 
@@ -348,3 +356,4 @@ jobs:
 - [ ] Dark preset legible in grid/pivot/card.
 - [ ] `grep -rE "(bg|text|border|ring)-(slate|white|rose|emerald|blue|red)" src/components/DataGrid/*.tsx` → zero.
 - [ ] Dispatch final code-reviewer over the whole branch diff.
+- [ ] Note in report: the Next.js App Router *runtime* check (spec § 9 item 2) is only verified here as banner presence (`head -1`); the live-consumer check is deferred to work package D (publish), out of scope.
