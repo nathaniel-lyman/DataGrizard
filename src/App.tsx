@@ -14,6 +14,7 @@ import {
   retailColumns,
   retailFilters,
   retailGroupSummaryItems,
+  retailPivotMeasures,
   retailSummaryItems,
   type RecommendationStatus,
   type RetailItem,
@@ -164,10 +165,10 @@ function App() {
       <header className="border-b border-slate-200 bg-white px-3 py-3 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-base font-semibold text-slate-950">
+            <h1 className="text-lg font-semibold text-slate-950">
               Retail Recommendation Workbench
             </h1>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-1 text-sm leading-5 text-slate-600">
               {layoutMode === "pivot"
                 ? "Pivot view — grouped subtotals. Switch to Grid to drill to item level."
                 : isServer
@@ -175,7 +176,7 @@ function App() {
                   : "Grid view — item-level retail recommendations."}
             </p>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-2 text-xs text-slate-500 sm:w-auto">
+          <div className="flex w-full flex-wrap items-center gap-2.5 text-sm text-slate-600 sm:w-auto">
             <div
               role="group"
               aria-label="Data source"
@@ -193,7 +194,7 @@ function App() {
                       ? "Server mode is grid-only"
                       : undefined
                   }
-                  className={`h-7 rounded px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`h-9 rounded px-3.5 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40 ${
                     effectiveDataMode === mode.id
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
@@ -214,7 +215,7 @@ function App() {
                   type="button"
                   onClick={() => setLayoutMode(layout.id)}
                   aria-pressed={layoutMode === layout.id}
-                  className={`h-7 rounded px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
+                  className={`h-9 rounded px-3.5 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
                     layoutMode === layout.id
                       ? "bg-white text-slate-900 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
@@ -228,7 +229,7 @@ function App() {
               type="button"
               onClick={() => setIsDarkTheme((current) => !current)}
               aria-pressed={isDarkTheme}
-              className={`h-8 rounded-md border border-slate-200 px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
+              className={`h-10 rounded-md border border-slate-200 px-3.5 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
                 isDarkTheme
                   ? "bg-slate-900 text-white shadow-sm"
                   : "bg-slate-50 text-slate-600 hover:text-slate-900"
@@ -236,17 +237,14 @@ function App() {
             >
               Dark theme
             </button>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium">
+            <span className="inline-flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 font-medium">
               500 rows
             </span>
           </div>
         </div>
       </header>
 
-      <AssistantDemo
-        toolkit={assistantToolkit}
-        disabled={layoutMode !== "grid"}
-      />
+      {layoutMode === "grid" ? <AssistantDemo toolkit={assistantToolkit} /> : null}
 
       <section
         className={`flex min-h-0 flex-1 p-3 sm:p-4 ${isDarkTheme ? "dg-theme-dark" : ""}`}
@@ -285,7 +283,7 @@ function App() {
           summaryItems={retailSummaryItems}
           groupSummaryItems={retailGroupSummaryItems}
           groupSummaryDisplay="columns"
-          pivot={{ showLeafRows: true }}
+          pivot={{ measures: retailPivotMeasures, showLeafRows: true }}
           features={{ detailPanel: false, headerToolsOnDemand: true, cardLayout: true }}
           cardView={{
             // item_id is the first text column and would win title by default;

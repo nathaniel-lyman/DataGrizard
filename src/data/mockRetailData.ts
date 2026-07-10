@@ -1,4 +1,8 @@
-import { trendIconSet, type DataGridSummaryItem } from "../components/DataGrid";
+import {
+  trendIconSet,
+  type DataGridPivotMeasure,
+  type DataGridSummaryItem,
+} from "../components/DataGrid";
 import type { GridColumnConfig, GridFilterConfig } from "../types/grid";
 import {
   formatCurrency,
@@ -174,6 +178,28 @@ const sum = (rows: RetailItem[], key: "sales" | "units") =>
 const average = (rows: RetailItem[], key: "margin_rate" | "price_gap") =>
   rows.length === 0 ? 0 : rows.reduce((total, row) => total + row[key], 0) / rows.length;
 
+export const weightedMarginRate = (rows: RetailItem[]) => {
+  const totalSales = sum(rows, "sales");
+  if (totalSales === 0) return null;
+
+  const marginDollars = rows.reduce(
+    (total, row) => total + row.sales * row.margin_rate,
+    0,
+  );
+  return marginDollars / totalSales;
+};
+
+const topRecommendationStatus = (rows: RetailItem[]) => {
+  const counts = rows.reduce<Partial<Record<RecommendationStatus, number>>>((totals, row) => {
+    totals[row.recommendation_status] = (totals[row.recommendation_status] ?? 0) + 1;
+    return totals;
+  }, {});
+
+  return Object.entries(counts).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] as
+    | RecommendationStatus
+    | undefined;
+};
+
 export const retailSummaryItems: DataGridSummaryItem<RetailItem>[] = [
   {
     id: "sales",
@@ -255,6 +281,43 @@ export const retailGroupSummaryItems: DataGridSummaryItem<RetailItem>[] = [
 
       return topStatus ? formatStatusLabel(topStatus[0]) : "None";
     },
+  },
+];
+
+export const retailPivotMeasures: DataGridPivotMeasure<RetailItem>[] = [
+  {
+    id: "sales",
+    columnId: "sales",
+    label: "Sales",
+    aggregation: "sum",
+    format: (value) => formatCurrency(Number(value)),
+  },
+  {
+    id: "units",
+    columnId: "units",
+    label: "Units",
+    aggregation: "sum",
+    format: (value) => formatNumber(Number(value)),
+  },
+  {
+    id: "margin",
+    label: "Margin",
+    aggregation: (rows) => weightedMarginRate(rows),
+    format: (value) => (typeof value === "number" ? formatPercent(value) : "—"),
+  },
+  {
+    id: "price_gap",
+    columnId: "price_gap",
+    label: "Price Gap",
+    aggregation: "avg",
+    format: (value) =>
+      typeof value === "number" ? formatSignedPercent(value) : "—",
+  },
+  {
+    id: "status_mix",
+    label: "Status",
+    aggregation: (rows) => topRecommendationStatus(rows),
+    format: (value) => (typeof value === "string" ? formatStatusLabel(value) : "None"),
   },
 ];
 

@@ -81,12 +81,12 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
   };
 
   return (
-    <section aria-label="Assistant workflow demo" className="border-b border-slate-200 bg-white px-3 py-3 sm:px-5">
-      <div className="mx-auto max-w-7xl text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <section aria-label="Assistant workflow demo" className="border-b border-slate-200 bg-white px-3 py-4 sm:px-5">
+      <div className="mx-auto max-w-7xl text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="font-semibold text-slate-900">Live grid agent</h2>
-            <p className="mt-0.5 text-slate-500">The model chooses typed tools; the mounted grid enforces policy and applies every visible change.</p>
+            <p className="mt-1 leading-5 text-slate-600">The model chooses typed tools; the mounted grid enforces policy and applies every visible change.</p>
           </div>
           <button
             type="button"
@@ -99,31 +99,31 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
                 setWorkflowRunning(false);
               }
             }}
-            className="h-8 rounded-md border border-slate-300 bg-white px-3 font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-10 rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {workflowRunning ? "Running proof…" : "Run deterministic proof"}
           </button>
         </div>
 
-        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-violet-200 bg-violet-50/70 p-2 sm:flex-row sm:items-center">
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-violet-200 bg-violet-50/70 p-3 sm:flex-row sm:items-center">
           <label className="sr-only" htmlFor="live-agent-prompt">Ask the live grid agent</label>
           <input
             id="live-agent-prompt"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             disabled={disabled || agentRunning}
-            className="h-9 min-w-0 flex-1 rounded-md border border-violet-200 bg-white px-3 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:cursor-not-allowed"
+            className="h-10 min-w-0 flex-1 rounded-md border border-violet-200 bg-white px-3.5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:cursor-not-allowed"
           />
           <button
             type="button"
             disabled={disabled || agentRunning || workflowRunning || prompt.trim().length === 0}
             onClick={runLiveAgent}
-            className="h-9 rounded-md bg-violet-700 px-4 font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-10 rounded-md bg-violet-700 px-5 font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {agentRunning ? "Agent working…" : "Ask live agent"}
           </button>
         </div>
-        <div className="mt-2 flex flex-wrap gap-2 text-slate-600">
+        <div className="mt-3 flex flex-wrap items-center gap-2.5 text-slate-600">
           <span className="font-medium text-slate-500">Video prompts:</span>
           {[
             "Show the highest-sales Grocery products and summarize the results.",
@@ -134,7 +134,7 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
               type="button"
               onClick={() => setPrompt(suggestion)}
               disabled={disabled || agentRunning}
-              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-left transition hover:border-violet-300 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-9 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-left leading-5 transition hover:border-violet-300 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {suggestion}
             </button>

@@ -53,11 +53,19 @@ describe("App server-mode demo", () => {
     expect(screen.getByText("View analysis receipt")).toBeInTheDocument();
   });
 
-  it("disables the Server toggle in pivot layout (server is grid-only)", () => {
+  it("disables the Server toggle and removes inactive agent controls in pivot layout", () => {
     render(<App />); // starts in grid
+    expect(screen.getByRole("region", { name: "Assistant workflow demo" })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Pivot" }));
+
     expect(screen.getByRole("button", { name: "Server" })).toBeDisabled();
-    expect(screen.getByText("Available in grid layout.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Assistant workflow demo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask live agent" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Sales/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Margin/ })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Sum of Sales/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Avg Margin/ })).not.toBeInTheDocument();
   });
 
   it("shows Client as the active data source while pivot disables Server", () => {
