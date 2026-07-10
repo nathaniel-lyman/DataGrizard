@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnFiltersState, PaginationState, SortingState } from "@tanstack/react-table";
 import {
   DataGrid,
+  createDataGridAgentToolkit,
+  type DataGridApi,
   type DataGridColumnGroup,
   type DataGridDataMode,
   type DataGridLayoutMode,
@@ -18,6 +20,7 @@ import {
 } from "./data/mockRetailData";
 import { applyEdit, queryRetail } from "./data/fakeServer";
 import { createRetailBigQueryDataSource } from "./data/retailBigQuery";
+import { AssistantDemo } from "./demo/AssistantDemo";
 
 // When VITE_RETAIL_ENDPOINT is set, server mode round-trips to the real
 // Express + BigQuery backend; otherwise it uses the in-memory fake server.
@@ -51,6 +54,16 @@ const retailColumnGroups: DataGridColumnGroup[] = [
 ];
 
 function App() {
+  const gridApi = useRef<DataGridApi<RetailItem> | null>(null);
+  const assistantToolkit = useMemo(
+    () =>
+      createDataGridAgentToolkit({
+        api: gridApi,
+        permissions: { readData: true, changeView: true, changeFormatting: true },
+        limits: { maxRowsPerQuery: 100, maxCellsPerQuery: 2_000 },
+      }),
+    [],
+  );
   const [layoutMode, setLayoutMode] = useState<DataGridLayoutMode>("grid");
   const [dataMode, setDataMode] = useState<DataGridDataMode>("client");
   const [isDarkTheme, setIsDarkTheme] = useState(false);
@@ -211,10 +224,16 @@ function App() {
         </div>
       </header>
 
+      <AssistantDemo
+        toolkit={assistantToolkit}
+        disabled={layoutMode !== "grid" || isServer}
+      />
+
       <section
         className={`flex min-h-0 flex-1 p-3 sm:p-4 ${isDarkTheme ? "dg-theme-dark" : ""}`}
       >
         <DataGrid
+          apiRef={gridApi}
           data={isServer ? serverRows : rows}
           columns={themedRetailColumns}
           layoutMode={layoutMode}

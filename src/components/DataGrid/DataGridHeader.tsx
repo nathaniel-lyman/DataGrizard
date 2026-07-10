@@ -16,6 +16,7 @@ type DataGridHeaderProps<TData extends object> = {
   densityStyle: HeaderDensityStyle;
   headerWrap: boolean;
   currentSorting: SortingState;
+  selectedColumnIds: string[];
   headerFilterById: Map<string, GridFilter>;
   getColumnControlLabel: (column: Column<TData | PivotRow<TData>, unknown>) => string;
   getHeaderResizeLabel: (column: Column<TData | PivotRow<TData>, unknown>) => string;
@@ -38,6 +39,7 @@ export function DataGridHeader<TData extends object>({
   densityStyle,
   headerWrap,
   currentSorting,
+  selectedColumnIds,
   headerFilterById,
   getColumnControlLabel,
   getHeaderResizeLabel,
@@ -65,6 +67,7 @@ export function DataGridHeader<TData extends object>({
               (column) => column.id === header.column.id,
             );
             const isLeafHeader = headerColIndex >= 0;
+            const isSelectedColumn = isLeafHeader && selectedColumnIds.includes(header.column.id);
             const headerLabel = getColumnControlLabel(header.column);
             const headerTitle =
               typeof header.column.columnDef.header === "string"
@@ -94,6 +97,8 @@ export function DataGridHeader<TData extends object>({
                         : "none"
                     : undefined
                 }
+                aria-selected={isSelectedColumn ? true : undefined}
+                data-column-selected={isSelectedColumn ? "true" : undefined}
                 style={{
                   width: header.getSize(),
                   ...getPinnedColumnStyle(header.column, {
@@ -105,7 +110,9 @@ export function DataGridHeader<TData extends object>({
                 }}
                 className={`dg-header-cell ${densityStyle.header} ${
                   headerWrap ? "dg-header-cell--wrapped" : ""
-                } ${isPivotLayout ? "dg-header-cell--pivot" : "dg-header-cell--grid"}`}
+                } ${isPivotLayout ? "dg-header-cell--pivot" : "dg-header-cell--grid"} ${
+                  isSelectedColumn ? "dg-header-cell--selected" : ""
+                }`}
               >
                 {header.isPlaceholder ? null : (
                   <div

@@ -1,11 +1,24 @@
 export { DataGrid } from "./DataGrid";
 export type {
   DataGridApi,
+  DataGridAggregateGroup,
+  DataGridAggregateMetric,
+  DataGridAggregateOperation,
+  DataGridAggregateQuery,
+  DataGridAggregateResult,
   DataGridColumnSnapshot,
   DataGridCommand,
   DataGridCommandError,
   DataGridCommandErrorCode,
   DataGridCommandResult,
+  DataGridDataAccessLimits,
+  DataGridDataError,
+  DataGridDataErrorCode,
+  DataGridQuery,
+  DataGridQueryResult,
+  DataGridQueryRow,
+  DataGridQueryScope,
+  DataGridSerializableValue,
   DataGridSnapshot,
 } from "./dataGridApi";
 export type {
@@ -13,8 +26,11 @@ export type {
   DataGridCellEdit,
   DataGridCellEditBatch,
   DataGridCellEditBatchSource,
+  DataGridCellRange,
   DataGridColumnGroup,
   DataGridColumnPinningState,
+  DataGridColumnPresentation,
+  DataGridColumnPresentationState,
   DataGridControlledState,
   DataGridDataSource,
   DataGridDataSourceRequest,
@@ -27,6 +43,8 @@ export type {
   DataGridGroupingState,
   DataGridLayoutMode,
   DataGridProps,
+  DataGridPresentationRule,
+  DataGridPresentationTone,
   DataGridSavedView,
   DataGridSavedViews,
   DataGridSummaryContext,
@@ -93,3 +111,10 @@ export {
   DEFAULT_FACET_THRESHOLD,
   type ResolveFilterTypeArgs,
 } from "./filterDefaults";
+export {
+  createDataGridAgentToolkit,
+  dataGridAgentToolDefinitions,
+  type DataGridAgentPermissions,
+  type DataGridAgentToolDefinition,
+  type DataGridAgentToolkitOptions,
+} from "./dataGridAgentToolkit";

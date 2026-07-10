@@ -1,7 +1,7 @@
 // Encapsulates the DataGrid's controlled/uncontrolled hybrid table state. Each
 // slice follows the same triad: a `current*` value (controlledState ?? internal),
 // an `emit*Change` that writes internal state ONLY while uncontrolled, persists
-// the four storage-backed slices, then fires the optional on*Change callback.
+// the storage-backed slices, then fires the optional on*Change callback.
 // DataGrid types are import-type-only (erased, no runtime cycle).
 import { useState } from "react";
 import type {
@@ -20,12 +20,18 @@ import type {
 import { normalizeColumnPinning, resolveUpdater } from "./gridHelpers";
 import { loadJson, saveJson } from "./storage";
 import type { DataGridPivotState } from "./pivot";
-import type { DataGridControlledState, DataGridSavedViews } from "./dataGridTypes";
+import type {
+  DataGridCellRange,
+  DataGridColumnPresentationState,
+  DataGridControlledState,
+  DataGridSavedViews,
+} from "./dataGridTypes";
 
 type StorageKeys = {
   columnSizing: string;
   columnOrder: string;
   columnPinning: string;
+  columnPresentation: string;
   savedViews: string;
 };
 
@@ -49,6 +55,9 @@ type UseGridStateOptions = {
   onColumnPinningChange?: (columnPinning: ColumnPinningState) => void;
   onPaginationChange?: (pagination: PaginationState) => void;
   onRowSelectionChange?: (rowSelection: RowSelectionState) => void;
+  onSelectedColumnIdsChange?: (selectedColumnIds: string[]) => void;
+  onCellSelectionChange?: (cellSelection: DataGridCellRange | null) => void;
+  onColumnPresentationChange?: (presentation: DataGridColumnPresentationState) => void;
   onGroupingChange?: (grouping: GroupingState) => void;
   onExpandedChange?: (expanded: ExpandedState) => void;
   onPivotChange?: (pivot: DataGridPivotState) => void;
@@ -104,6 +113,9 @@ export function useGridState({
   onColumnPinningChange,
   onPaginationChange,
   onRowSelectionChange,
+  onSelectedColumnIdsChange,
+  onCellSelectionChange,
+  onColumnPresentationChange,
   onGroupingChange,
   onExpandedChange,
   onPivotChange,
@@ -131,6 +143,11 @@ export function useGridState({
     pageSize: pageSizeOptions[1] ?? pageSizeOptions[0] ?? 50,
   });
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [selectedColumnIds, setSelectedColumnIds] = useState<string[]>([]);
+  const [cellSelection, setCellSelection] = useState<DataGridCellRange | null>(null);
+  const [columnPresentation, setColumnPresentation] = useState<DataGridColumnPresentationState>(() =>
+    loadJson<DataGridColumnPresentationState>(storageKeys?.columnPresentation, {}),
+  );
   const [grouping, setGrouping] = useState<GroupingState>(defaultGrouping);
   const [expanded, setExpanded] = useState<ExpandedState>(defaultExpanded);
   const [pivot, setPivot] = useState<DataGridPivotState>(defaultPivotState);
@@ -152,6 +169,9 @@ export function useGridState({
     : {};
   const currentPagination = controlledState?.pagination ?? pagination;
   const currentRowSelection = controlledState?.rowSelection ?? rowSelection;
+  const currentSelectedColumnIds = controlledState?.selectedColumnIds ?? selectedColumnIds;
+  const currentCellSelection = controlledState?.cellSelection ?? cellSelection;
+  const currentColumnPresentation = controlledState?.columnPresentation ?? columnPresentation;
   const currentGrouping = controlledState?.grouping ?? grouping;
   const currentExpanded = controlledState?.expanded ?? expanded;
   const currentPivot = controlledState?.pivot ?? pivot;
@@ -228,6 +248,28 @@ export function useGridState({
       onChange: onRowSelectionChange,
     });
   };
+  const emitSelectedColumnIdsChange = (updater: Updater<string[]>) => {
+    emitUpdaterChange(updater, currentSelectedColumnIds, {
+      isControlled: controlledState?.selectedColumnIds !== undefined,
+      setValue: setSelectedColumnIds,
+      onChange: onSelectedColumnIdsChange,
+    });
+  };
+  const emitCellSelectionChange = (updater: Updater<DataGridCellRange | null>) => {
+    emitUpdaterChange(updater, currentCellSelection, {
+      isControlled: controlledState?.cellSelection !== undefined,
+      setValue: setCellSelection,
+      onChange: onCellSelectionChange,
+    });
+  };
+  const emitColumnPresentationChange = (updater: Updater<DataGridColumnPresentationState>) => {
+    emitUpdaterChange(updater, currentColumnPresentation, {
+      isControlled: controlledState?.columnPresentation !== undefined,
+      setValue: setColumnPresentation,
+      storageKey: storageKeys?.columnPresentation,
+      onChange: onColumnPresentationChange,
+    });
+  };
   const emitGroupingChange = (updater: Updater<GroupingState>) => {
     emitUpdaterChange(updater, currentGrouping, {
       isControlled: controlledState?.grouping !== undefined,
@@ -275,6 +317,9 @@ export function useGridState({
     currentColumnPinning,
     currentPagination,
     currentRowSelection,
+    currentSelectedColumnIds,
+    currentCellSelection,
+    currentColumnPresentation,
     currentGrouping,
     currentExpanded,
     currentPivot,
@@ -289,6 +334,9 @@ export function useGridState({
     emitColumnPinningChange,
     emitPaginationChange,
     emitRowSelectionChange,
+    emitSelectedColumnIdsChange,
+    emitCellSelectionChange,
+    emitColumnPresentationChange,
     emitGroupingChange,
     emitExpandedChange,
     emitPivotChange,

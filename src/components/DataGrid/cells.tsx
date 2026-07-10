@@ -13,9 +13,11 @@ import {
   formatNumber,
   formatPercent,
   formatStatusLabel,
+  toDate,
   type FormatOptions,
 } from "../../utils/formatters";
 import { renderIconSet, renderProgressBar } from "./cellEffectsRender";
+import type { DataGridPresentationRule } from "./dataGridTypes";
 
 // Widened, value-erased view of a column config used internally by the engine.
 // The public GridColumnConfig is a per-key union (value: TData[K]); the engine
@@ -34,6 +36,7 @@ export type AnyColumnConfig<TData> = {
   enableFiltering?: boolean;
   enableSorting?: boolean;
   dateFormat?: Intl.DateTimeFormatOptions;
+  numberFormat?: Intl.NumberFormatOptions;
   formatValue?: (value: unknown, row: TData) => ReactNode;
   formatGroupingValue?: (value: unknown, rows: TData[]) => ReactNode;
   getGroupingValue?: (row: TData) => unknown;
@@ -45,6 +48,7 @@ export type AnyColumnConfig<TData> = {
   dataBar?: GridDataBar;
   iconSet?: GridIconSet<unknown, TData>;
   progressBar?: boolean | GridProgressBar;
+  presentationRules?: DataGridPresentationRule[];
   flashOnChange?: boolean | GridFlashOnChange;
   editable?: boolean | ((row: TData) => boolean);
   validate?: (value: unknown, row: TData) => string | null;
@@ -75,10 +79,25 @@ export const reactNodeToText = (value: ReactNode): string => {
 export const isNumericDataType = (dataType: GridDataType) =>
   dataType === "currency" || dataType === "number" || dataType === "percent";
 
-const formatNumericValue = (dataType: GridDataType, value: unknown, formatOptions: FormatOptions) => {
+const formatNumericValue = (
+  dataType: GridDataType,
+  value: unknown,
+  formatOptions: FormatOptions,
+  numberFormat?: Intl.NumberFormatOptions,
+) => {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
     return "";
+  }
+  if (numberFormat) {
+    return new Intl.NumberFormat(formatOptions.locale ?? "en-US", {
+      ...(dataType === "currency"
+        ? { style: "currency", currency: formatOptions.currency ?? "USD" }
+        : dataType === "percent"
+          ? { style: "percent" }
+          : {}),
+      ...numberFormat,
+    }).format(numericValue);
   }
   if (dataType === "currency") {
     return formatCurrency(numericValue, formatOptions);
@@ -114,7 +133,7 @@ const renderBaseCellValue = <TData extends object>(
   }
 
   if (isNumericDataType(column.dataType)) {
-    return formatNumericValue(column.dataType, value, formatOptions);
+    return formatNumericValue(column.dataType, value, formatOptions, column.numberFormat);
   }
 
   if (column.dataType === "status") {
@@ -202,7 +221,7 @@ export const getColumnSearchText = <TData extends object>(
     return formatStatusLabel(String(value));
   }
   if (isNumericDataType(column.dataType)) {
-    return formatNumericValue(column.dataType, value, formatOptions);
+    return formatNumericValue(column.dataType, value, formatOptions, column.numberFormat);
   }
   if (column.dataType === "date") {
     return formatDate(value, {
@@ -228,5 +247,57 @@ export const getCellClasses = <TData extends object>(
     .map((rule) => rule.className)
     .join(" ");
 
-  return `${alignment} dg-cell--content ${column.getCellClassName?.(value, row) ?? ""} ${conditional}`.trim();
+  const presentation = (column.presentationRules ?? [])
+    .filter((rule) => matchesPresentationRule(value, rule))
+    .map((rule) => `dg-presentation--${rule.tone}`)
+    .join(" ");
+
+  return `${alignment} dg-cell--content ${column.getCellClassName?.(value, row) ?? ""} ${conditional} ${presentation}`.trim();
 };
+
+function matchesPresentationRule(raw: unknown, rule: DataGridPresentationRule) {
+  const empty = raw == null || raw === "";
+  if (rule.operator === "isEmpty") return empty;
+  if (rule.operator === "isNotEmpty") return !empty;
+  const target = rule.value;
+  if (rule.operator === "isAnyOf" || rule.operator === "isNoneOf") {
+    const included = Array.isArray(target) && target.map(String).includes(String(raw ?? ""));
+    return rule.operator === "isNoneOf" ? !included : included;
+  }
+  const numericRaw = Number(raw);
+  const numericTarget = Number(target);
+  if (["gt", "gte", "lt", "lte"].includes(rule.operator)) {
+    if (!Number.isFinite(numericRaw) || !Number.isFinite(numericTarget)) return false;
+    if (rule.operator === "gt") return numericRaw > numericTarget;
+    if (rule.operator === "gte") return numericRaw >= numericTarget;
+    if (rule.operator === "lt") return numericRaw < numericTarget;
+    return numericRaw <= numericTarget;
+  }
+  if (rule.operator === "between") {
+    const bounds = target && typeof target === "object"
+      ? target as { min?: unknown; max?: unknown }
+      : {};
+    const min = Number(bounds.min);
+    const max = Number(bounds.max);
+    return Number.isFinite(numericRaw) &&
+      (!Number.isFinite(min) || numericRaw >= min) &&
+      (!Number.isFinite(max) || numericRaw <= max);
+  }
+  if (["before", "onOrBefore", "after", "onOrAfter"].includes(rule.operator)) {
+    const rawTime = toDate(raw)?.getTime();
+    const targetTime = toDate(target)?.getTime();
+    if (rawTime == null || targetTime == null) return false;
+    if (rule.operator === "before") return rawTime < targetTime;
+    if (rule.operator === "onOrBefore") return rawTime <= targetTime;
+    if (rule.operator === "after") return rawTime > targetTime;
+    return rawTime >= targetTime;
+  }
+  const haystack = String(raw ?? "").toLowerCase();
+  const needle = String(target ?? "").toLowerCase();
+  if (rule.operator === "contains") return haystack.includes(needle);
+  if (rule.operator === "notContains") return !haystack.includes(needle);
+  if (rule.operator === "startsWith") return haystack.startsWith(needle);
+  if (rule.operator === "endsWith") return haystack.endsWith(needle);
+  if (rule.operator === "isNot" || rule.operator === "notEquals") return haystack !== needle;
+  return haystack === needle;
+}

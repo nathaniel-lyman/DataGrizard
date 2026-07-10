@@ -7,7 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { Column, Row, Table } from "@tanstack/react-table";
+import type { Column, Row, Table, Updater } from "@tanstack/react-table";
 import type { FormatOptions } from "../../utils/formatters";
 import { toTsv, writeClipboardText } from "../../utils/export";
 import { normalizeClipboardInput, parseClipboardTsv } from "./clipboard";
@@ -16,6 +16,7 @@ import { getColumnSearchText, type AnyColumnConfig } from "./cells";
 import type {
   DataGridCellEdit,
   DataGridCellEditBatchSource,
+  DataGridCellRange,
   DataGridFeatures,
   DataGridFocusedCell,
   DataGridProps,
@@ -23,11 +24,6 @@ import type {
 import { ROW_ACTIONS_COLUMN_ID, SELECT_COLUMN_ID } from "./gridConstants";
 import { isPivotRow } from "./gridHelpers";
 import type { PivotRow } from "./pivot";
-
-type CellRange = {
-  anchor: Exclude<DataGridFocusedCell, null>;
-  focus: Exclude<DataGridFocusedCell, null>;
-};
 
 type NormalizedCellRange = {
   rowIds: string[];
@@ -49,6 +45,8 @@ type CellRangeInteractionsArgs<TData extends object> = {
   navColumnIds: string[];
   rowById: Map<string, Row<TData | PivotRow<TData>>>;
   activeTabCell: Exclude<DataGridFocusedCell, null> | null;
+  cellSelection: DataGridCellRange | null;
+  onCellSelectionChange: (updater: Updater<DataGridCellRange | null>) => void;
   cellKey: (rowId: string, columnId: string) => string;
   focusCell: (rowId: string, columnId: string) => void;
   editingCell: DataGridFocusedCell;
@@ -72,6 +70,8 @@ export function useCellRangeInteractions<TData extends object>({
   navColumnIds,
   rowById,
   activeTabCell,
+  cellSelection,
+  onCellSelectionChange: setCellSelection,
   cellKey,
   focusCell,
   editingCell,
@@ -84,7 +84,6 @@ export function useCellRangeInteractions<TData extends object>({
 }: CellRangeInteractionsArgs<TData>) {
   const cellSelectionEnabled = features.cellSelection && !isPivotLayout;
   const fillHandleEnabled = features.fillHandle && cellSelectionEnabled;
-  const [cellSelection, setCellSelection] = useState<CellRange | null>(null);
   const [clipboardNotice, setClipboardNotice] = useState<{
     id: number;
     message: string;
@@ -94,10 +93,10 @@ export function useCellRangeInteractions<TData extends object>({
   const isSelectingCellsRef = useRef(false);
   const suppressNextCellClickRef = useRef(false);
   const isFillDraggingRef = useRef(false);
-  const fillSourceRef = useRef<CellRange | null>(null);
-  const [fillPreview, setFillPreview] = useState<CellRange | null>(null);
-  const fillPreviewRef = useRef<CellRange | null>(null);
-  const commitFillRef = useRef<(source: CellRange, target: CellRange) => void>(() => {});
+  const fillSourceRef = useRef<DataGridCellRange | null>(null);
+  const [fillPreview, setFillPreview] = useState<DataGridCellRange | null>(null);
+  const fillPreviewRef = useRef<DataGridCellRange | null>(null);
+  const commitFillRef = useRef<(source: DataGridCellRange, target: DataGridCellRange) => void>(() => {});
 
   useEffect(() => {
     fillPreviewRef.current = fillPreview;
@@ -126,7 +125,7 @@ export function useCellRangeInteractions<TData extends object>({
     edits.forEach((edit) => onCellEdit?.(edit));
   };
 
-  const normalizeCellRange = (range: CellRange | null): NormalizedCellRange | null => {
+  const normalizeCellRange = (range: DataGridCellRange | null): NormalizedCellRange | null => {
     if (!range) return null;
     const anchorRowIdx = navRowIds.indexOf(range.anchor.rowId);
     const focusRowIdx = navRowIds.indexOf(range.focus.rowId);
@@ -151,9 +150,9 @@ export function useCellRangeInteractions<TData extends object>({
   };
 
   const clampToDownRight = (
-    source: CellRange,
+    source: DataGridCellRange,
     hovered: Exclude<DataGridFocusedCell, null>,
-  ): CellRange | null => {
+  ): DataGridCellRange | null => {
     const normalizedSource = normalizeCellRange(source);
     if (!normalizedSource) return null;
     const hoveredRowIdx = navRowIds.indexOf(hovered.rowId);
@@ -237,7 +236,7 @@ export function useCellRangeInteractions<TData extends object>({
     });
   };
 
-  const commitFill = (source: CellRange, target: CellRange) => {
+  const commitFill = (source: DataGridCellRange, target: DataGridCellRange) => {
     if (!features.editing || (!onCellEdit && !onCellEditBatch)) return;
     const normalizedSource = normalizeCellRange(source);
     const normalizedTarget = normalizeCellRange(target);

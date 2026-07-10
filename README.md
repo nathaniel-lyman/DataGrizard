@@ -364,16 +364,18 @@ const [sorting, setSorting] = useState([]);
 
 Controllable slices: `sorting`, `globalFilter`, `columnFilters`,
 `columnVisibility`, `columnSizing`, `columnOrder`, `columnPinning`,
-`pagination`, `rowSelection`, `grouping`, `expanded`, `pivot`, `savedViews`,
-`activeViewName`. When a slice is controlled, the grid never writes it to
+`pagination`, `rowSelection`, `selectedColumnIds`, `cellSelection`,
+`columnPresentation`, `grouping`, `expanded`, `pivot`, `savedViews`,
+`activeViewName`. Use `onSelectedColumnIdsChange`, `onCellSelectionChange`, and
+`onColumnPresentationChange` for the corresponding new slices. When a slice is controlled, the grid never writes it to
 `localStorage` — persistence is yours.
 
 ## Programmatic grid API
 
 Pass an `apiRef` when an assistant, application command palette, or other
 automation needs to inspect and manipulate the grid. The API exposes detached
-snapshots and domain-neutral commands; it does not expose the internal TanStack
-Table instance or row data.
+snapshots, bounded data reads, aggregations, and domain-neutral commands; it
+does not expose the internal TanStack Table instance.
 
 ```tsx
 import { useRef } from "react";
@@ -384,6 +386,20 @@ const gridApi = useRef<DataGridApi<Product>>(null);
 <DataGrid apiRef={gridApi} data={data} columns={columns} getRowId={(row) => row.id} />;
 
 const snapshot = gridApi.current?.getSnapshot();
+const rows = gridApi.current?.query({
+  scope: "filtered",
+  columnIds: ["product", "revenue", "margin"],
+  limit: 50,
+});
+const totals = gridApi.current?.aggregate({
+  scope: "filtered",
+  metrics: [
+    { operation: "count", as: "products" },
+    { operation: "sum", columnId: "revenue", as: "revenue" },
+    { operation: "average", columnId: "margin", as: "margin" },
+  ],
+  groupBy: ["category"],
+});
 const result = gridApi.current?.dispatch([
   { type: "set_column_visibility", columnIds: ["margin"], visible: false },
   { type: "move_columns", columnIds: ["revenue"], beforeColumnId: "category" },
@@ -397,9 +413,48 @@ emitters as visible grid controls, so controlled callbacks and scoped
 column-state persistence keep their existing behavior.
 
 The first API surface supports column visibility, ordering, pinning, sizing and
-reset; sorting; global and column filters; row selection; grouping; and pivot
-state. The snapshot reports column capabilities, current view state, feature
-flags, layout/data modes, and loaded/filtered/selected/visible row counts.
+reset; sorting; global and column filters; pagination; row, column, and cell
+selection; declarative column presentation; grouping; and pivot state. The
+snapshot reports column capabilities, current view state, feature flags,
+layout/data modes, and loaded/filtered/selected/visible row counts.
+
+`query()` supports `all`, `filtered`, `selected_rows`, and `visible_page`.
+`aggregate()` supports count, sum, average, min, max, min/max, distinct count,
+top values, and grouped metrics. Results contain plain serializable values.
+Reads default to 100 rows / 2,000 cells and can be tightened with
+`dataAccessLimits`. In server mode, `all` and `filtered` explicitly return
+`scope_unavailable`; DataGrizard never summarizes a loaded page as though it
+were the complete server dataset.
+
+## Agent toolkit
+
+`createDataGridAgentToolkit()` provides provider-neutral JSON schemas plus one
+executor. Provider SDKs stay in the consumer layer:
+
+```tsx
+import { createDataGridAgentToolkit } from "datagrizard";
+
+const toolkit = createDataGridAgentToolkit({
+  api: gridApi,
+  permissions: {
+    readData: true,
+    changeView: true,
+    changeFormatting: true,
+  },
+  limits: { maxRowsPerQuery: 100, maxCellsPerQuery: 2_000 },
+});
+
+// Give toolkit.tools to any tool-calling provider, then route calls here.
+const output = toolkit.execute(toolCall.name, toolCall.arguments);
+```
+
+The MVP tools are `grid_get_context`, `grid_query_rows`, `grid_aggregate`,
+`grid_update_view`, `grid_update_selection`, and `grid_format_columns`.
+Formatting is serializable through `columnPresentation`: number/date formats,
+color scales, data bars, progress bars, and operator/tone rules. The schema does
+not accept CSS class names, JavaScript predicates, arbitrary formulas, or code.
+Presentation is included in snapshots, scoped persistence, commands, and saved
+views.
 
 ## Server data
 

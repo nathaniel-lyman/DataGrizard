@@ -17,13 +17,21 @@ import type { DataGridDisplayMode } from "../../types/grid";
 import type { AnyColumnConfig } from "./cells";
 import type {
   DataGridApi,
+  DataGridAggregateQuery,
+  DataGridAggregateResult,
   DataGridCommand,
   DataGridCommandError,
   DataGridCommandErrorCode,
   DataGridCommandResult,
+  DataGridDataAccessLimits,
+  DataGridQuery,
+  DataGridQueryResult,
+  DataGridQueryScope,
   DataGridSnapshot,
 } from "./dataGridApi";
 import type {
+  DataGridCellRange,
+  DataGridColumnPresentationState,
   DataGridControlledState,
   DataGridDataMode,
   DataGridFeatures,
@@ -32,6 +40,13 @@ import type {
 import { ROW_ACTIONS_COLUMN_ID, SELECT_COLUMN_ID } from "./gridConstants";
 import { removeJson } from "./storage";
 import type { DataGridPivotState, PivotRow } from "./pivot";
+import {
+  aggregateMetric,
+  getAnalysisValue,
+  metricResultKey,
+  toSerializableValue,
+  type DataGridAnalysisRow,
+} from "./dataGridAnalysis";
 
 type GridState = {
   sorting: SortingState;
@@ -43,6 +58,9 @@ type GridState = {
   columnPinning: ColumnPinningState;
   pagination: PaginationState;
   rowSelection: RowSelectionState;
+  selectedColumnIds: string[];
+  cellSelection: DataGridCellRange | null;
+  columnPresentation: DataGridColumnPresentationState;
   grouping: GroupingState;
   expanded: ExpandedState;
   pivot: DataGridPivotState;
@@ -56,7 +74,11 @@ type GridEmitters = {
   columnSizing: (updater: Updater<ColumnSizingState>) => void;
   columnOrder: (updater: Updater<ColumnOrderState>) => void;
   columnPinning: (updater: Updater<ColumnPinningState>) => void;
+  pagination: (updater: Updater<PaginationState>) => void;
   rowSelection: (updater: Updater<RowSelectionState>) => void;
+  selectedColumnIds: (updater: Updater<string[]>) => void;
+  cellSelection: (updater: Updater<DataGridCellRange | null>) => void;
+  columnPresentation: (updater: Updater<DataGridColumnPresentationState>) => void;
   grouping: (updater: Updater<GroupingState>) => void;
   pivot: (updater: Updater<DataGridPivotState>) => void;
 };
@@ -65,6 +87,7 @@ type StorageKeys = {
   columnSizing: string;
   columnOrder: string;
   columnPinning: string;
+  columnPresentation: string;
 };
 
 type UseDataGridApiOptions<TData extends object> = {
@@ -87,6 +110,8 @@ type UseDataGridApiOptions<TData extends object> = {
   controlledState?: DataGridControlledState;
   storageKeys?: StorageKeys;
   getColumnLabel: (columnId: string) => string;
+  scopeRows: Record<DataGridQueryScope, DataGridAnalysisRow<TData>[]>;
+  dataAccessLimits: DataGridDataAccessLimits;
 };
 
 const hasDuplicates = (ids: string[]) => new Set(ids).size !== ids.length;
@@ -112,6 +137,93 @@ const clonePivot = (pivot: DataGridPivotState): DataGridPivotState => ({
   measures: [...pivot.measures],
   expanded: pivot.expanded == null ? pivot.expanded : cloneExpanded(pivot.expanded),
 });
+
+const PRESENTATION_KEYS = new Set([
+  "numberFormat",
+  "dateFormat",
+  "colorScale",
+  "dataBar",
+  "progressBar",
+  "rules",
+]);
+const PRESENTATION_TONES = new Set(["positive", "negative", "warning", "accent", "muted"]);
+const PRESENTATION_OPERATORS = new Set([
+  "is", "isNot", "isAnyOf", "isNoneOf", "contains", "notContains", "startsWith",
+  "endsWith", "equals", "notEquals", "gt", "gte", "lt", "lte", "between",
+  "before", "onOrBefore", "after", "onOrAfter", "isEmpty", "isNotEmpty",
+]);
+const NUMBER_FORMAT_KEYS = new Set([
+  "localeMatcher", "style", "currency", "currencyDisplay", "currencySign", "useGrouping",
+  "minimumIntegerDigits", "minimumFractionDigits", "maximumFractionDigits",
+  "minimumSignificantDigits", "maximumSignificantDigits", "compactDisplay", "notation",
+  "signDisplay", "unit", "unitDisplay", "roundingMode", "roundingPriority",
+  "roundingIncrement", "trailingZeroDisplay",
+]);
+const DATE_FORMAT_KEYS = new Set([
+  "dateStyle", "timeStyle", "calendar", "dayPeriod", "numberingSystem", "localeMatcher",
+  "timeZone", "hour12", "hourCycle", "formatMatcher", "weekday", "era", "year", "month",
+  "day", "hour", "minute", "second", "timeZoneName", "fractionalSecondDigits",
+]);
+
+const isSerializableInput = (value: unknown, seen = new WeakSet<object>()): boolean => {
+  if (value == null || ["string", "number", "boolean"].includes(typeof value)) return true;
+  if (Array.isArray(value)) return value.every((item) => isSerializableInput(item, seen));
+  if (typeof value !== "object" || value instanceof Date || seen.has(value)) return false;
+  seen.add(value);
+  const valid = Object.values(value).every((item) => isSerializableInput(item, seen));
+  seen.delete(value);
+  return valid;
+};
+
+const validatePresentationValue = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "Column presentation must be an object.";
+  }
+  const presentation = value as Record<string, unknown>;
+  const unexpected = Object.keys(presentation).find((key) => !PRESENTATION_KEYS.has(key));
+  if (unexpected) return `Unsupported presentation property: ${unexpected}.`;
+  if (!isSerializableInput(presentation)) return "Column presentation must contain only serializable values.";
+  const validateObjectKeys = (property: string, allowed: Set<string>) => {
+    const nested = presentation[property];
+    if (nested == null) return null;
+    if (typeof nested !== "object" || Array.isArray(nested)) return `${property} must be an object.`;
+    const invalid = Object.keys(nested).find((key) => !allowed.has(key));
+    return invalid ? `Unsupported ${property} property: ${invalid}.` : null;
+  };
+  const nestedError =
+    validateObjectKeys("numberFormat", NUMBER_FORMAT_KEYS) ??
+    validateObjectKeys("dateFormat", DATE_FORMAT_KEYS) ??
+    validateObjectKeys("colorScale", new Set(["colors", "domain", "autoTextColor"])) ??
+    validateObjectKeys("dataBar", new Set(["color", "negativeColor", "domain", "showValue"]));
+  if (nestedError) return nestedError;
+  if (presentation.colorScale != null) {
+    const colors = (presentation.colorScale as Record<string, unknown>).colors;
+    if (
+      !Array.isArray(colors) ||
+      (colors.length !== 2 && colors.length !== 3) ||
+      colors.some((color) => typeof color !== "string")
+    ) {
+      return "colorScale.colors must contain two or three color strings.";
+    }
+  }
+  if (presentation.progressBar != null && typeof presentation.progressBar !== "boolean") {
+    return "progressBar must be a boolean.";
+  }
+  if (presentation.rules != null) {
+    if (!Array.isArray(presentation.rules)) return "rules must be an array.";
+    const invalidRule = presentation.rules.find((rule) => {
+      if (!rule || typeof rule !== "object" || Array.isArray(rule)) return true;
+      const item = rule as Record<string, unknown>;
+      return typeof item.operator !== "string" ||
+        !PRESENTATION_OPERATORS.has(item.operator) ||
+        typeof item.tone !== "string" ||
+        !PRESENTATION_TONES.has(item.tone) ||
+        Object.keys(item).some((key) => !["operator", "value", "tone"].includes(key));
+    });
+    if (invalidRule) return "Each presentation rule requires a supported operator and tone.";
+  }
+  return null;
+};
 
 const addError = (
   errors: DataGridCommandError[],
@@ -171,6 +283,8 @@ export function useDataGridApi<TData extends object>({
   controlledState,
   storageKeys,
   getColumnLabel,
+  scopeRows,
+  dataAccessLimits,
 }: UseDataGridApiOptions<TData>) {
   const revisionInputs = [
     table.options.data,
@@ -188,6 +302,9 @@ export function useDataGridApi<TData extends object>({
     state.columnPinning,
     state.pagination,
     state.rowSelection,
+    state.selectedColumnIds,
+    state.cellSelection,
+    state.columnPresentation,
     state.grouping,
     state.expanded,
     state.pivot,
@@ -261,11 +378,232 @@ export function useDataGridApi<TData extends object>({
       },
       pagination: { ...state.pagination },
       rowSelection: { ...state.rowSelection },
+      selectedColumnIds: [...state.selectedColumnIds],
+      cellSelection: state.cellSelection
+        ? {
+            anchor: { ...state.cellSelection.anchor },
+            focus: { ...state.cellSelection.focus },
+          }
+        : null,
+      columnPresentation: cloneSnapshotValue(state.columnPresentation) as DataGridColumnPresentationState,
       grouping: [...state.grouping],
       expanded: cloneExpanded(state.expanded),
       pivot: clonePivot(state.pivot),
     },
   });
+
+  const unavailableScope = (scope: DataGridQueryScope) =>
+    dataMode === "server" && (scope === "all" || scope === "filtered");
+
+  const resolveQueryColumnIds = (requested?: string[]) => {
+    if (requested) return requested;
+    const sourceOrder = [...columnsById.keys()];
+    if (state.cellSelection) {
+      const anchor = sourceOrder.indexOf(state.cellSelection.anchor.columnId);
+      const focus = sourceOrder.indexOf(state.cellSelection.focus.columnId);
+      if (anchor >= 0 && focus >= 0) {
+        return sourceOrder.slice(Math.min(anchor, focus), Math.max(anchor, focus) + 1);
+      }
+    }
+    if (state.selectedColumnIds.length > 0) return state.selectedColumnIds;
+    const visible = dataColumns
+      .filter((column) => sourceColumnIdSet.has(column.id) && column.getIsVisible())
+      .map((column) => column.id);
+    return visible.length > 0 ? visible : sourceOrder;
+  };
+
+  const invalidColumn = (scope: DataGridQueryScope, columnId: string) => ({
+    ok: false as const,
+    scope,
+    error: {
+      code: "invalid_column" as const,
+      message: `Unknown source column id: ${columnId}`,
+      id: columnId,
+    },
+  });
+
+  const query = (input: DataGridQuery): DataGridQueryResult => {
+    if (unavailableScope(input.scope)) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: {
+          code: "scope_unavailable",
+          message: `${input.scope} is unavailable in server mode without a server-wide analysis adapter.`,
+        },
+      };
+    }
+    const columnIds = resolveQueryColumnIds(input.columnIds);
+    if (columnIds.length === 0) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: { code: "invalid_query", message: "At least one column is required." },
+      };
+    }
+    if (hasDuplicates(columnIds)) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: { code: "invalid_query", message: "Duplicate column ids are not allowed." },
+      };
+    }
+    const unknownColumn = columnIds.find((columnId) => !sourceColumnIdSet.has(columnId));
+    if (unknownColumn) return invalidColumn(input.scope, unknownColumn);
+    const offset = input.offset ?? 0;
+    const limit = input.limit ?? dataAccessLimits.maxRowsPerQuery;
+    if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 0) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: { code: "invalid_query", message: "offset and limit must be non-negative integers." },
+      };
+    }
+    if (
+      limit > dataAccessLimits.maxRowsPerQuery ||
+      limit * columnIds.length > dataAccessLimits.maxCellsPerQuery
+    ) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: {
+          code: "limit_exceeded",
+          message: `Query exceeds the ${dataAccessLimits.maxRowsPerQuery}-row or ${dataAccessLimits.maxCellsPerQuery}-cell limit.`,
+        },
+      };
+    }
+    const rows = scopeRows[input.scope];
+    const page = rows.slice(offset, offset + limit);
+    return {
+      ok: true,
+      scope: input.scope,
+      columns: columnIds.map((id) => ({
+        id,
+        label: columnsById.get(id)?.header ?? id,
+        dataType: columnsById.get(id)?.dataType,
+      })),
+      rows: page.map(({ rowId, data }) => ({
+        rowId,
+        values: Object.fromEntries(
+          columnIds.map((columnId) => [columnId, toSerializableValue(getAnalysisValue(data, columnId))]),
+        ),
+      })),
+      rowCount: rows.length,
+      returnedRowCount: page.length,
+      offset,
+      truncated: offset + page.length < rows.length,
+    };
+  };
+
+  const aggregate = (input: DataGridAggregateQuery): DataGridAggregateResult => {
+    if (unavailableScope(input.scope)) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: {
+          code: "scope_unavailable",
+          message: `${input.scope} is unavailable in server mode without a server-wide analysis adapter.`,
+        },
+      };
+    }
+    if (input.metrics.length === 0) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: { code: "invalid_query", message: "At least one aggregate metric is required." },
+      };
+    }
+    const referencedColumnIds = [
+      ...(input.groupBy ?? []),
+      ...input.metrics.flatMap((metric) => (metric.columnId ? [metric.columnId] : [])),
+    ];
+    const unknownColumn = referencedColumnIds.find((columnId) => !sourceColumnIdSet.has(columnId));
+    if (unknownColumn) return invalidColumn(input.scope, unknownColumn);
+    const missingMetricColumn = input.metrics.find(
+      (metric) => metric.operation !== "count" && !metric.columnId,
+    );
+    if (missingMetricColumn) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: {
+          code: "invalid_query",
+          message: `${missingMetricColumn.operation} requires a columnId.`,
+        },
+      };
+    }
+    const metricKeys = input.metrics.map(metricResultKey);
+    if (hasDuplicates(metricKeys)) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: { code: "invalid_query", message: "Aggregate result keys must be unique." },
+      };
+    }
+    const rows = scopeRows[input.scope];
+    if (input.metrics.length > dataAccessLimits.maxCellsPerQuery) {
+      return {
+        ok: false,
+        scope: input.scope,
+        error: {
+          code: "limit_exceeded",
+          message: `Aggregate output exceeds the ${dataAccessLimits.maxCellsPerQuery}-cell limit.`,
+        },
+      };
+    }
+    const compute = (groupRows: DataGridAnalysisRow<TData>[]) =>
+      Object.fromEntries(
+        input.metrics.map((metric) => [
+          metricResultKey(metric),
+          aggregateMetric(groupRows, metric, dataAccessLimits.maxTopValues),
+        ]),
+      );
+    const groupBy = input.groupBy ?? [];
+    if (groupBy.length === 0) {
+      return {
+        ok: true,
+        scope: input.scope,
+        rowCount: rows.length,
+        metrics: compute(rows),
+        groups: [],
+        truncated: false,
+      };
+    }
+    const grouped = new Map<string, { key: Record<string, ReturnType<typeof toSerializableValue>>; rows: DataGridAnalysisRow<TData>[] }>();
+    rows.forEach((row) => {
+      const key = Object.fromEntries(
+        groupBy.map((columnId) => [columnId, toSerializableValue(getAnalysisValue(row.data, columnId))]),
+      );
+      const serialized = JSON.stringify(key);
+      const current = grouped.get(serialized);
+      if (current) current.rows.push(row);
+      else grouped.set(serialized, { key, rows: [row] });
+    });
+    const groups = [...grouped.values()];
+    const maxGroupsByCells = Math.max(
+      1,
+      Math.floor(
+        dataAccessLimits.maxCellsPerQuery /
+          Math.max(1, input.metrics.length + groupBy.length),
+      ),
+    );
+    const limitedGroups = groups.slice(
+      0,
+      Math.min(dataAccessLimits.maxGroupsPerAggregate, maxGroupsByCells),
+    );
+    return {
+      ok: true,
+      scope: input.scope,
+      rowCount: rows.length,
+      metrics: compute(rows),
+      groups: limitedGroups.map((group) => ({
+        key: group.key,
+        rowCount: group.rows.length,
+        metrics: compute(group.rows),
+      })),
+      truncated: limitedGroups.length < groups.length,
+    };
+  };
 
   const dispatch = (commands: DataGridCommand[]): DataGridCommandResult => {
     if (commands.length === 0) {
@@ -434,9 +772,48 @@ export function useDataGridApi<TData extends object>({
             }
           });
           break;
+        case "set_pagination":
+          requireFeature(features.pagination, commandIndex, "Pagination");
+          if (
+            !Number.isInteger(command.pagination.pageIndex) ||
+            command.pagination.pageIndex < 0 ||
+            !Number.isInteger(command.pagination.pageSize) ||
+            command.pagination.pageSize < 1
+          ) {
+            addError(errors, commandIndex, "invalid_value", "Pagination requires a non-negative pageIndex and positive pageSize.");
+          }
+          break;
         case "set_row_selection":
           requireFeature(features.rowSelection, commandIndex, "Row selection");
           validateIds(command.rowIds, loadedRowIdSet, errors, commandIndex, "row", true);
+          break;
+        case "set_selected_columns":
+          validateIds(command.columnIds, sourceColumnIdSet, errors, commandIndex, "column", true);
+          break;
+        case "set_cell_selection":
+          requireFeature(features.cellSelection, commandIndex, "Cell selection");
+          if (command.selection) {
+            [command.selection.anchor.columnId, command.selection.focus.columnId].forEach((id) =>
+              validateIds([id], sourceColumnIdSet, errors, commandIndex, "column"),
+            );
+            [command.selection.anchor.rowId, command.selection.focus.rowId].forEach((id) =>
+              validateIds([id], loadedRowIdSet, errors, commandIndex, "row"),
+            );
+          }
+          break;
+        case "set_column_presentation":
+          validateIds(
+            Object.keys(command.presentation),
+            sourceColumnIdSet,
+            errors,
+            commandIndex,
+            "column",
+            true,
+          );
+          Object.entries(command.presentation).forEach(([columnId, presentation]) => {
+            const message = validatePresentationValue(presentation);
+            if (message) addError(errors, commandIndex, "invalid_value", message, columnId);
+          });
           break;
         case "set_grouping":
           requireFeature(features.grouping, commandIndex, "Grouping");
@@ -517,7 +894,11 @@ export function useDataGridApi<TData extends object>({
     let nextColumnSizing = state.columnSizing;
     let nextColumnOrder = state.columnOrder;
     let nextColumnPinning = state.columnPinning;
+    let nextPagination = state.pagination;
     let nextRowSelection = state.rowSelection;
+    let nextSelectedColumnIds = state.selectedColumnIds;
+    let nextCellSelection = state.cellSelection;
+    let nextColumnPresentation = state.columnPresentation;
     let nextGrouping = state.grouping;
     let nextPivot = state.pivot;
     const changed = new Set<keyof GridEmitters>();
@@ -603,6 +984,10 @@ export function useDataGridApi<TData extends object>({
           nextColumnFilters = command.filters.map((filter) => ({ ...filter }));
           changed.add("columnFilters");
           break;
+        case "set_pagination":
+          nextPagination = { ...command.pagination };
+          changed.add("pagination");
+          break;
         case "set_row_selection": {
           const selection = command.mode === "replace" || command.mode == null
             ? {}
@@ -618,6 +1003,37 @@ export function useDataGridApi<TData extends object>({
           changed.add("rowSelection");
           break;
         }
+        case "set_selected_columns": {
+          const selection = command.mode === "replace" || command.mode == null
+            ? []
+            : [...nextSelectedColumnIds];
+          const selected = new Set(selection);
+          command.columnIds.forEach((columnId) => {
+            if (command.mode === "remove") selected.delete(columnId);
+            else selected.add(columnId);
+          });
+          nextSelectedColumnIds = [...columnsById.keys()].filter((columnId) => selected.has(columnId));
+          changed.add("selectedColumnIds");
+          break;
+        }
+        case "set_cell_selection":
+          nextCellSelection = command.selection
+            ? {
+                anchor: { ...command.selection.anchor },
+                focus: { ...command.selection.focus },
+              }
+            : null;
+          changed.add("cellSelection");
+          break;
+        case "set_column_presentation":
+          nextColumnPresentation = command.mode === "replace"
+            ? cloneSnapshotValue(command.presentation) as DataGridColumnPresentationState
+            : {
+                ...nextColumnPresentation,
+                ...cloneSnapshotValue(command.presentation) as DataGridColumnPresentationState,
+              };
+          changed.add("columnPresentation");
+          break;
         case "set_grouping":
           nextGrouping = [...command.columnIds];
           changed.add("grouping");
@@ -636,7 +1052,11 @@ export function useDataGridApi<TData extends object>({
     if (changed.has("columnSizing")) emitters.columnSizing(nextColumnSizing);
     if (changed.has("columnOrder")) emitters.columnOrder(nextColumnOrder);
     if (changed.has("columnPinning")) emitters.columnPinning(nextColumnPinning);
+    if (changed.has("pagination")) emitters.pagination(nextPagination);
     if (changed.has("rowSelection")) emitters.rowSelection(nextRowSelection);
+    if (changed.has("selectedColumnIds")) emitters.selectedColumnIds(nextSelectedColumnIds);
+    if (changed.has("cellSelection")) emitters.cellSelection(nextCellSelection);
+    if (changed.has("columnPresentation")) emitters.columnPresentation(nextColumnPresentation);
     if (changed.has("grouping")) emitters.grouping(nextGrouping);
     if (changed.has("pivot")) emitters.pivot(nextPivot);
 
@@ -653,5 +1073,5 @@ export function useDataGridApi<TData extends object>({
     return { ok: true, appliedCommandCount: commands.length, errors: [] };
   };
 
-  useImperativeHandle(apiRef, () => ({ getSnapshot, dispatch }));
+  useImperativeHandle(apiRef, () => ({ getSnapshot, query, aggregate, dispatch }));
 }

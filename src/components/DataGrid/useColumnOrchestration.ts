@@ -95,6 +95,7 @@ export function useColumnOrchestration<TData extends object>({
             columnSizing: `${storageKey}.columnSizing`,
             columnOrder: `${storageKey}.columnOrder`,
             columnPinning: `${storageKey}.columnPinning`,
+            columnPresentation: `${storageKey}.columnPresentation`,
             savedViews: `${storageKey}.savedViews`,
           }
         : undefined,

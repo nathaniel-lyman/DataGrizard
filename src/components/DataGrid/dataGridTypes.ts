@@ -14,13 +14,16 @@ import type {
 } from "@tanstack/react-table";
 import type {
   DataGridCardView,
+  GridColorScale,
   GridColumnConfig,
+  GridDataBar,
   GridFilterConfig,
+  GridFilterOperator,
 } from "../../types/grid";
 import type { DataGridColumnGroup } from "./columnGroups";
 import type { DataGridRowActions } from "./RowActionsMenu";
 import type { DataGridPivotConfig, DataGridPivotState } from "./pivot";
-import type { DataGridApi } from "./dataGridApi";
+import type { DataGridApi, DataGridDataAccessLimits } from "./dataGridApi";
 
 export type DataGridFeatures = {
   toolbar: boolean;
@@ -80,6 +83,30 @@ export type DataGridDataMode = "client" | "server";
 export type DataGridGroupSummaryDisplay = "inline" | "columns";
 export type DataGridDensity = "compact" | "standard" | "comfortable";
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
+export type DataGridCellRange = {
+  anchor: Exclude<DataGridFocusedCell, null>;
+  focus: Exclude<DataGridFocusedCell, null>;
+};
+
+export type DataGridPresentationTone = "positive" | "negative" | "warning" | "accent" | "muted";
+
+export type DataGridPresentationRule = {
+  operator: GridFilterOperator;
+  value?: unknown;
+  tone: DataGridPresentationTone;
+};
+
+/** Serializable, agent-safe presentation. No class names, callbacks, or generated code. */
+export type DataGridColumnPresentation = {
+  numberFormat?: Intl.NumberFormatOptions;
+  dateFormat?: Intl.DateTimeFormatOptions;
+  colorScale?: GridColorScale;
+  dataBar?: GridDataBar;
+  progressBar?: boolean;
+  rules?: DataGridPresentationRule[];
+};
+
+export type DataGridColumnPresentationState = Record<string, DataGridColumnPresentation>;
 
 export type DataGridCellEdit<TData extends object> = {
   rowId: string;
@@ -124,6 +151,7 @@ export type DataGridSavedView = {
   columnPinning?: ColumnPinningState;
   grouping?: GroupingState;
   pivot?: DataGridPivotState;
+  columnPresentation?: DataGridColumnPresentationState;
 };
 
 export type DataGridSavedViews = Record<string, DataGridSavedView>;
@@ -138,6 +166,9 @@ export type DataGridControlledState = {
   columnPinning?: ColumnPinningState;
   pagination?: PaginationState;
   rowSelection?: RowSelectionState;
+  selectedColumnIds?: string[];
+  cellSelection?: DataGridCellRange | null;
+  columnPresentation?: DataGridColumnPresentationState;
   grouping?: GroupingState;
   expanded?: ExpandedState;
   pivot?: DataGridPivotState;
@@ -191,6 +222,8 @@ export type DataGridProps<TData extends object> = {
   loadingState?: ReactNode;
   /** Imperative, provider-neutral inspection and command surface for automation. */
   apiRef?: Ref<DataGridApi<TData>>;
+  /** Hard caps for direct API reads and aggregation result cardinality. */
+  dataAccessLimits?: Partial<DataGridDataAccessLimits>;
   state?: DataGridControlledState;
   onSortingChange?: (sorting: SortingState) => void;
   onGlobalFilterChange?: (globalFilter: string) => void;
@@ -201,6 +234,9 @@ export type DataGridProps<TData extends object> = {
   onColumnPinningChange?: (columnPinning: ColumnPinningState) => void;
   onPaginationChange?: (pagination: PaginationState) => void;
   onRowSelectionChange?: (rowSelection: RowSelectionState) => void;
+  onSelectedColumnIdsChange?: (selectedColumnIds: string[]) => void;
+  onCellSelectionChange?: (cellSelection: DataGridCellRange | null) => void;
+  onColumnPresentationChange?: (presentation: DataGridColumnPresentationState) => void;
   onGroupingChange?: (grouping: GroupingState) => void;
   onExpandedChange?: (expanded: ExpandedState) => void;
   onPivotChange?: (pivot: DataGridPivotState) => void;

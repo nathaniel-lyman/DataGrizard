@@ -83,6 +83,7 @@ import { useColumnOrchestration } from "./useColumnOrchestration";
 import { useDataSourceController } from "./useDataSourceController";
 import { useGridState } from "./useGridState";
 import { useDataGridApi } from "./useDataGridApi";
+import type { DataGridDataAccessLimits, DataGridQueryScope } from "./dataGridApi";
 import { usePivotOrchestration } from "./usePivotOrchestration";
 import { ROW_ACTIONS_COLUMN_ID, SELECT_COLUMN_ID } from "./gridConstants";
 import { MinusIcon, PlusIcon } from "./icons";
@@ -109,8 +110,11 @@ export type {
   DataGridCellEdit,
   DataGridCellEditBatch,
   DataGridCellEditBatchSource,
+  DataGridCellRange,
   DataGridColumnGroup,
   DataGridColumnPinningState,
+  DataGridColumnPresentation,
+  DataGridColumnPresentationState,
   DataGridControlledState,
   DataGridDataSource,
   DataGridDataSourceRequest,
@@ -123,6 +127,8 @@ export type {
   DataGridGroupingState,
   DataGridLayoutMode,
   DataGridProps,
+  DataGridPresentationRule,
+  DataGridPresentationTone,
   DataGridSavedView,
   DataGridSavedViews,
   DataGridSummaryContext,
@@ -132,11 +138,24 @@ export type {
 } from "./dataGridTypes";
 export type {
   DataGridApi,
+  DataGridAggregateGroup,
+  DataGridAggregateMetric,
+  DataGridAggregateOperation,
+  DataGridAggregateQuery,
+  DataGridAggregateResult,
   DataGridColumnSnapshot,
   DataGridCommand,
   DataGridCommandError,
   DataGridCommandErrorCode,
   DataGridCommandResult,
+  DataGridDataAccessLimits,
+  DataGridDataError,
+  DataGridDataErrorCode,
+  DataGridQuery,
+  DataGridQueryResult,
+  DataGridQueryRow,
+  DataGridQueryScope,
+  DataGridSerializableValue,
   DataGridSnapshot,
 } from "./dataGridApi";
 
@@ -174,6 +193,13 @@ const defaultFeatures: DataGridFeatures = {
 // that filtering is auto-provisioned) don't get a fresh array identity each
 // render, which would re-run the per-column facet/extent scans every render.
 const EMPTY_FILTERS: never[] = [];
+
+const DEFAULT_DATA_ACCESS_LIMITS: DataGridDataAccessLimits = {
+  maxRowsPerQuery: 100,
+  maxCellsPerQuery: 2_000,
+  maxGroupsPerAggregate: 100,
+  maxTopValues: 20,
+};
 
 const densityStyles: Record<DataGridDensity, { header: string; cell: string; rowHeight: number }> = {
   compact: {
@@ -265,6 +291,7 @@ export function DataGrid<TData extends object>({
   emptyState,
   loadingState,
   apiRef,
+  dataAccessLimits,
   state: externalControlledState,
   onSortingChange: externalOnSortingChange,
   onGlobalFilterChange: externalOnGlobalFilterChange,
@@ -275,6 +302,9 @@ export function DataGrid<TData extends object>({
   onColumnPinningChange,
   onPaginationChange: externalOnPaginationChange,
   onRowSelectionChange,
+  onSelectedColumnIdsChange,
+  onCellSelectionChange,
+  onColumnPresentationChange,
   onGroupingChange,
   onExpandedChange,
   onPivotChange,
@@ -455,6 +485,9 @@ export function DataGrid<TData extends object>({
     currentColumnPinning,
     currentPagination,
     currentRowSelection,
+    currentSelectedColumnIds,
+    currentCellSelection,
+    currentColumnPresentation,
     currentGrouping,
     currentExpanded,
     currentPivot,
@@ -469,6 +502,9 @@ export function DataGrid<TData extends object>({
     emitColumnPinningChange,
     emitPaginationChange,
     emitRowSelectionChange,
+    emitSelectedColumnIdsChange,
+    emitCellSelectionChange,
+    emitColumnPresentationChange,
     emitGroupingChange,
     emitExpandedChange,
     emitPivotChange,
@@ -494,12 +530,40 @@ export function DataGrid<TData extends object>({
     onColumnPinningChange,
     onPaginationChange,
     onRowSelectionChange,
+    onSelectedColumnIdsChange,
+    onCellSelectionChange,
+    onColumnPresentationChange,
     onGroupingChange,
     onExpandedChange,
     onPivotChange,
     onSavedViewsChange,
     onActiveViewNameChange,
   });
+  const presentedColumnList = useMemo(
+    () =>
+      columnList.map((column) => {
+        const presentation = currentColumnPresentation[column.accessorKey];
+        return presentation
+          ? ({
+              ...column,
+              ...presentation,
+              // A newly declared bar/progress treatment replaces an inherited
+              // color scale unless the presentation explicitly supplies both.
+              colorScale:
+                presentation.colorScale ??
+                (presentation.dataBar || presentation.progressBar !== undefined
+                  ? undefined
+                  : column.colorScale),
+              presentationRules: presentation.rules,
+            } satisfies AnyColumnConfig<TData>)
+          : column;
+      }),
+    [columnList, currentColumnPresentation],
+  );
+  const presentedColumnsById = useMemo<Map<string, AnyColumnConfig<TData>>>(
+    () => new Map(presentedColumnList.map((column) => [column.accessorKey, column])),
+    [presentedColumnList],
+  );
   const [activeRow, setActiveRow] = useState<TData | null>(null);
   const [horizontalScrollLeft, setHorizontalScrollLeft] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -533,14 +597,14 @@ export function DataGrid<TData extends object>({
       const filterType = filterTypeByColumnId.get(columnId);
       const operator = filterOperatorByColumnId.get(columnId);
       const raw = row.getValue(columnId);
-      const column = columnsById.get(columnId);
+      const column = presentedColumnsById.get(columnId);
       const searchText =
         filterType === "text" && column
           ? getColumnSearchText(column, raw, row.original, formatOptions)
           : undefined;
       return matchesFilterValue(raw, filterValue, { filterType, operator, searchText });
     },
-    [columnsById, filterOperatorByColumnId, filterTypeByColumnId, formatOptions],
+    [presentedColumnsById, filterOperatorByColumnId, filterTypeByColumnId, formatOptions],
   );
   const showDetailPanel = features.detailPanel && Boolean(renderDetailPanel);
   const hasLeafRowAction = showDetailPanel || Boolean(onRowClick);
@@ -610,7 +674,7 @@ export function DataGrid<TData extends object>({
             } satisfies ColumnDef<TData>,
           ]
         : []),
-      ...columnList.map<ColumnDef<TData>>((column) => ({
+      ...presentedColumnList.map<ColumnDef<TData>>((column) => ({
         accessorKey: column.accessorKey,
         header: column.header,
         size: column.width,
@@ -633,7 +697,7 @@ export function DataGrid<TData extends object>({
       })),
     ],
     [
-      columnList,
+      presentedColumnList,
       columnFilterFn,
       features.columnPinning,
       features.columnResizing,
@@ -691,14 +755,14 @@ export function DataGrid<TData extends object>({
         return true;
       }
       const value = row.getValue(columnId);
-      const column = columnsById.get(columnId);
+      const column = presentedColumnsById.get(columnId);
       const text = column ? getColumnSearchText(column, value, row.original, formatOptions) : "";
       // Date columns match the formatted text only; the raw value (which may be a
       // Date object) would otherwise pollute the haystack with toString() noise.
       const haystack = column?.dataType === "date" ? text : `${value ?? ""} ${text}`;
       return haystack.toLowerCase().includes(needle);
     },
-    [columnsById, formatOptions],
+    [presentedColumnsById, formatOptions],
   );
 
   // ----- 5-6. Pivot materialization + generated-column reconciliation -----
@@ -1015,6 +1079,8 @@ export function DataGrid<TData extends object>({
     emitGlobalFilterChange("");
     emitColumnFiltersChange([]);
     emitRowSelectionChange({});
+    emitSelectedColumnIdsChange([]);
+    emitCellSelectionChange(null);
     emitGroupingChange(defaultGrouping);
     emitExpandedChange(defaultExpanded);
     emitPivotChange(defaultPivotState);
@@ -1041,6 +1107,7 @@ export function DataGrid<TData extends object>({
         columnSizing: currentColumnSizing,
         columnOrder: effectiveColumnOrder,
         columnPinning: effectiveColumnPinning,
+        columnPresentation: currentColumnPresentation,
         grouping: currentGrouping,
         pivot: currentPivot,
       },
@@ -1064,6 +1131,7 @@ export function DataGrid<TData extends object>({
     emitColumnSizingChange(view.columnSizing);
     emitColumnOrderChange(view.columnOrder ?? effectiveDefaultColumnOrder);
     emitColumnPinningChange(view.columnPinning ?? defaultPinningState);
+    emitColumnPresentationChange(view.columnPresentation ?? {});
     emitGroupingChange(view.grouping ?? []);
     emitPivotChange(
       view.pivot ?? {
@@ -1125,7 +1193,7 @@ export function DataGrid<TData extends object>({
 
   const getGroupLabels = (row: Row<TData>) => {
     const groupingColumnId = row.groupingColumnId;
-    const groupingColumn = groupingColumnId ? columnsById.get(groupingColumnId) : undefined;
+    const groupingColumn = groupingColumnId ? presentedColumnsById.get(groupingColumnId) : undefined;
     const leafRows = row
       .getLeafRows()
       .filter((leafRow) => !leafRow.getIsGrouped())
@@ -1292,7 +1360,7 @@ export function DataGrid<TData extends object>({
         </td>
         {visibleLeafColumns.slice(firstSummaryColumnIndex).map((column) => {
           const item = summaryItemByColumnId.get(column.id as Extract<keyof TData, string>);
-          const columnConfig = columnsById.get(column.id);
+          const columnConfig = presentedColumnsById.get(column.id);
           const isNumeric =
             columnConfig?.dataType === "currency" ||
             columnConfig?.dataType === "number" ||
@@ -1339,6 +1407,14 @@ export function DataGrid<TData extends object>({
   // Server mode: the page total comes from the server (rowCount), not from the
   // in-memory page (data.length). Undefined when an unknown-total server page.
   const displayedTotalRowCount = isServerMode ? rowCount : data.length;
+  const agentSelectedRows = isPivotLayout && pivotSelectionMode === "sourceRows"
+    ? data.filter((row) => pivotSelectedSourceIds.has(getSourceRowId(row)))
+    : table
+        .getSelectedRowModel()
+        .flatRows
+        .flatMap((row) =>
+          isPivotRow(row.original) ? row.original.__sourceRows : [row.original as TData],
+        );
   const showSelectAllBanner =
     features.rowSelection &&
     !isPivotLayout &&
@@ -1371,6 +1447,62 @@ export function DataGrid<TData extends object>({
         : flattenExpandedRows(table.getExpandedRowModel().rows)
     : table.getRowModel().rows;
 
+  const analysisRowByData = new Map(
+    data.map((row, index) => [
+      row,
+      { rowId: getRowId?.(row, index) ?? String(index), data: row },
+    ] as const),
+  );
+  const toAnalysisRows = (rows: TData[]) => {
+    const seen = new Set<string>();
+    return rows.flatMap((row) => {
+      const analysisRow = analysisRowByData.get(row);
+      if (!analysisRow || seen.has(analysisRow.rowId)) return [];
+      seen.add(analysisRow.rowId);
+      return [analysisRow];
+    });
+  };
+  const visibleSourceRows = visibleRows.flatMap((row) => {
+    if (row.getIsGrouped()) return [];
+    if (isPivotRow(row.original)) {
+      return row.original.__sourceRows as TData[];
+    }
+    return [row.original as TData];
+  });
+  const boundedVisibleSourceRows =
+    features.pagination && visibleSourceRows.length > currentPagination.pageSize
+      ? visibleSourceRows.slice(
+          currentPagination.pageIndex * currentPagination.pageSize,
+          (currentPagination.pageIndex + 1) * currentPagination.pageSize,
+        )
+      : visibleSourceRows;
+  const scopeRows = {
+    all: toAnalysisRows(data),
+    filtered: toAnalysisRows(filteredSummaryRows),
+    selected_rows: toAnalysisRows(agentSelectedRows),
+    visible_page: toAnalysisRows(boundedVisibleSourceRows),
+  } satisfies Record<DataGridQueryScope, Array<{ rowId: string; data: TData }>>;
+  const resolvedDataAccessLimits: DataGridDataAccessLimits = {
+    maxRowsPerQuery: Math.max(
+      1,
+      Math.floor(dataAccessLimits?.maxRowsPerQuery ?? DEFAULT_DATA_ACCESS_LIMITS.maxRowsPerQuery),
+    ),
+    maxCellsPerQuery: Math.max(
+      1,
+      Math.floor(dataAccessLimits?.maxCellsPerQuery ?? DEFAULT_DATA_ACCESS_LIMITS.maxCellsPerQuery),
+    ),
+    maxGroupsPerAggregate: Math.max(
+      1,
+      Math.floor(
+        dataAccessLimits?.maxGroupsPerAggregate ?? DEFAULT_DATA_ACCESS_LIMITS.maxGroupsPerAggregate,
+      ),
+    ),
+    maxTopValues: Math.max(
+      1,
+      Math.floor(dataAccessLimits?.maxTopValues ?? DEFAULT_DATA_ACCESS_LIMITS.maxTopValues),
+    ),
+  };
+
   useDataGridApi({
     apiRef,
     table,
@@ -1392,6 +1524,9 @@ export function DataGrid<TData extends object>({
       columnPinning: effectiveColumnPinning,
       pagination: currentPagination,
       rowSelection: currentRowSelection,
+      selectedColumnIds: currentSelectedColumnIds,
+      cellSelection: currentCellSelection,
+      columnPresentation: currentColumnPresentation,
       grouping: currentGrouping,
       expanded: currentExpanded,
       pivot: currentPivot,
@@ -1404,7 +1539,11 @@ export function DataGrid<TData extends object>({
       columnSizing: emitColumnSizingChange,
       columnOrder: emitColumnOrderChange,
       columnPinning: emitColumnPinningChange,
+      pagination: emitPaginationChange,
       rowSelection: emitRowSelectionChange,
+      selectedColumnIds: emitSelectedColumnIdsChange,
+      cellSelection: emitCellSelectionChange,
+      columnPresentation: emitColumnPresentationChange,
       grouping: emitGroupingChange,
       pivot: emitPivotChange,
     },
@@ -1424,6 +1563,8 @@ export function DataGrid<TData extends object>({
       const column = table.getColumn(columnId);
       return column ? getColumnControlLabel(column) : columnId;
     },
+    scopeRows,
+    dataAccessLimits: resolvedDataAccessLimits,
   });
 
   // Card layout renders leaf rows only (grouping defaults off in card mode,
@@ -1458,11 +1599,11 @@ export function DataGrid<TData extends object>({
     () =>
       composeCardRoles(
         visibleLeafColumns
-          .map((column) => columnsById.get(column.id))
+          .map((column) => presentedColumnsById.get(column.id))
           .filter((column): column is AnyColumnConfig<TData> => Boolean(column)),
         cardView?.card,
       ),
-    [visibleLeafColumns, columnsById, cardView?.card],
+    [visibleLeafColumns, presentedColumnsById, cardView?.card],
   );
   const compactSortColumns = useMemo<CompactSortColumn[]>(
     () =>
@@ -1514,7 +1655,7 @@ export function DataGrid<TData extends object>({
     const sampleRows = visibleRows.slice(0, 100);
     const longestText = sampleRows.reduce((longest, row) => {
       const raw = row.getValue(column.id);
-      const columnConfig = columnsById.get(column.id);
+      const columnConfig = presentedColumnsById.get(column.id);
       const text =
         columnConfig && !isPivotRow(row.original)
           ? getColumnSearchText(columnConfig, raw, row.original, formatOptions)
@@ -1582,7 +1723,7 @@ export function DataGrid<TData extends object>({
     statusEditOptions,
   } = useCellEditing({
     editingEnabled: features.editing,
-    columnsById,
+    columnsById: presentedColumnsById,
     data,
     navColumnIds,
     onCellEdit,
@@ -1604,13 +1745,15 @@ export function DataGrid<TData extends object>({
     isPivotLayout,
     table,
     data,
-    columnsById,
+    columnsById: presentedColumnsById,
     formatOptions,
     locale,
     navRowIds,
     navColumnIds,
     rowById,
     activeTabCell,
+    cellSelection: currentCellSelection,
+    onCellSelectionChange: emitCellSelectionChange,
     cellKey,
     focusCell,
     editingCell,
@@ -1651,7 +1794,7 @@ export function DataGrid<TData extends object>({
     if (isPivotRow(row.original)) {
       return value == null ? "" : String(value);
     }
-    const columnConfig = columnsById.get(column.id);
+    const columnConfig = presentedColumnsById.get(column.id);
     return columnConfig
       ? getColumnSearchText(columnConfig, value, row.original as TData, formatOptions)
       : value == null
@@ -1688,8 +1831,8 @@ export function DataGrid<TData extends object>({
   // colorScale/dataBar columns that did not pin an explicit domain. In server mode
   // the filtered model is the loaded page, so the domain is page-scoped.
   const effectColumns = useMemo(
-    () => columnList.filter((column) => column.colorScale || column.dataBar),
-    [columnList],
+    () => presentedColumnList.filter((column) => column.colorScale || column.dataBar),
+    [presentedColumnList],
   );
   const filteredRowModel = table.getFilteredRowModel();
   const columnDomains = useMemo(() => {
@@ -1718,8 +1861,8 @@ export function DataGrid<TData extends object>({
   // virtualization), diffed in an effect keyed on `data` to avoid render-time
   // hazards. The first run seeds silently so nothing flashes on mount.
   const flashColumns = useMemo(
-    () => columnList.filter((column) => column.flashOnChange),
-    [columnList],
+    () => presentedColumnList.filter((column) => column.flashOnChange),
+    [presentedColumnList],
   );
   const flashEnabled = flashColumns.length > 0;
   type FlashEntry = { direction: FlashDirection; token: number; className?: string; duration: number };
@@ -1898,7 +2041,7 @@ export function DataGrid<TData extends object>({
         className={rowClassName}
       >
         {row.getVisibleCells().map((cell) => {
-          const columnConfig = !pivotRow ? columnsById.get(cell.column.id) : undefined;
+          const columnConfig = !pivotRow ? presentedColumnsById.get(cell.column.id) : undefined;
           const isPivotMeasure =
             Boolean(pivotRow) &&
             cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID &&
@@ -1986,6 +2129,9 @@ export function DataGrid<TData extends object>({
               }
               aria-selected={isCellRangeSelected ? true : undefined}
               data-cell-selected={isCellRangeSelected ? "true" : undefined}
+              data-column-selected={
+                currentSelectedColumnIds.includes(cell.column.id) ? "true" : undefined
+              }
               data-fill-preview={isFillPreviewCell ? "true" : undefined}
               style={{
                 width: cell.column.getSize(),
@@ -2011,6 +2157,8 @@ export function DataGrid<TData extends object>({
                     ? getCellClasses(columnConfig, cell.getValue(), sourceRow as TData)
                     : "dg-cell--text dg-cell--strong"
               } ${isCellRangeSelected ? "dg-cell--selected" : ""} ${
+                currentSelectedColumnIds.includes(cell.column.id) ? "dg-cell--column-selected" : ""
+              } ${
                 cellSelectionEnabled ? "dg-cell--selection-enabled" : ""
               } ${
                 isEditingCell ? "dg-cell--editing" : ""
@@ -2360,6 +2508,7 @@ export function DataGrid<TData extends object>({
               densityStyle={densityStyle}
               headerWrap={headerWrap}
               currentSorting={currentSorting}
+              selectedColumnIds={currentSelectedColumnIds}
               headerFilterById={headerFilterById}
               getColumnControlLabel={getColumnControlLabel}
               getHeaderResizeLabel={getHeaderResizeLabel}
