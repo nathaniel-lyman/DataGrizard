@@ -28,6 +28,15 @@ DataGrizard has no regular runtime dependencies. Its UI icons are local SVG
 components, and its internal row-virtualization implementation is bundled, so
 consumers do not install `lucide-react` or `@tanstack/react-virtual`.
 
+## Compatibility
+
+- React and React DOM 18.2.x or 19.x.
+- Chrome and Edge 111+, Firefox 121+, and Safari 16.2+ (including iOS Safari).
+
+The package CSS is shipped as modern CSS without legacy fallbacks or
+autoprefixing. Its browser floor is set by features including `color-mix()`,
+`:has()`, and dynamic viewport units such as `dvh`.
+
 ## Styling
 
 Import the package stylesheet once, before your own overrides:

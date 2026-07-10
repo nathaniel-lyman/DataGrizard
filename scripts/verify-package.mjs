@@ -282,6 +282,12 @@ run(process.execPath, [join(smokeRoot, "consumer-render.mjs")], {
 });
 
 const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+const expectedReactPeerRange = "^18.2 || ^19";
+for (const peer of ["react", "react-dom"]) {
+  if (packageJson.peerDependencies?.[peer] !== expectedReactPeerRange) {
+    fail(`${peer} peer range must be ${expectedReactPeerRange}`);
+  }
+}
 if (packageJson.exports?.["./styles.css"] !== "./dist/datagrid.css") {
   fail("styles.css export does not point at dist/datagrid.css");
 }

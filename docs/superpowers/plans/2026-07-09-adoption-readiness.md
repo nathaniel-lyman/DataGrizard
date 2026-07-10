@@ -28,9 +28,9 @@ it caught and closed a missing card/filter/menu CSS batch before final gates.
 | Q2 dark mode | Opt-in `.dg-theme-dark` class only. No `theme` prop in v1. Demo gets a toggle button (demo layer). |
 | Q3 lucide | Inline all icons as local SVG components; delete `lucide-react` entirely. `trendIconSet` keeps its public API shape, icons become local SVGs. |
 | Q4 react-virtual | Keep bundling `@tanstack/react-virtual`; remove it from `dependencies`. |
-| Q5 React 18 | Keep `react`/`react-dom` peers at `>=18` and add a React 18 leg to CI (the package currently claims 18; user directed: test what we claim). If the suite proves red under 18 and the fix is non-trivial, STOP and escalate — the fallback is peers `>=19`. |
+| Q5 React 18 | Support React/React DOM 18.2.x and 19.x with bounded peers (`^18.2 || ^19`), and test the minimum supported React 18 runtime in CI. Future React majors require an explicit compatibility update. |
 | Q8 CJS | Keep dual ESM+CJS. |
-| Q9 browser floor | Modern floor (2022+ evergreen). No autoprefixer in the lib CSS pipeline. |
+| Q9 browser floor | Chrome/Edge 111+, Firefox 121+, Safari 16.2+ (including iOS Safari). No autoprefixer or legacy fallbacks in the lib CSS pipeline. |
 
 ### Deviation from spec § 7: packaging (B) lands before de-Tailwind (A)
 

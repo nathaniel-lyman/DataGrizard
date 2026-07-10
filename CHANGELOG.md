@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   popover; blur with an invalid inline edit reverts instead of trapping the
   editor open.
 
+### Changed
+
+- Defined the supported compatibility range as React and React DOM 18.2.x or
+  19.x, excluding untested future majors. Documented the modern browser floor
+  as Chrome/Edge 111+, Firefox 121+, and Safari 16.2+ (including iOS Safari),
+  based on the shipped CSS use of `color-mix()`, `:has()`, and dynamic viewport
+  units.
+
 ## [0.1.0] - 2026-06-27
 
 Initial public release of the `DataGrid` component — a domain-neutral analytical
