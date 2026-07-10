@@ -125,6 +125,29 @@ describe("DataGrid grid layout — grouping + pagination (bug #1)", () => {
     errorSpy.mockRestore();
   });
 
+  it("keeps groups expanded when an edit replaces the data array", () => {
+    const { rerender } = render(
+      <DataGrid data={rows} columns={columns} defaultGrouping={["dept"]} getRowId={(r) => r.id} />,
+    );
+
+    const groceryToggle = screen.getByRole("button", { name: /Toggle Dept Grocery group/ });
+    fireEvent.click(groceryToggle);
+    expect(screen.getByText("Almond Butter")).toBeInTheDocument();
+
+    const updatedRows = rows.map((row) =>
+      row.id === "1" ? { ...row, units: row.units + 1 } : row,
+    );
+    rerender(
+      <DataGrid data={updatedRows} columns={columns} defaultGrouping={["dept"]} getRowId={(r) => r.id} />,
+    );
+
+    expect(screen.getByText("Almond Butter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Toggle Dept Grocery group/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
   it("can place group summary values in their matching columns", () => {
     const groupSummaryItems: DataGridSummaryItem<Row>[] = [
       {

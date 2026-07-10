@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
 import type { GridColumnConfig } from "../../types/grid";
@@ -39,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  Reflect.deleteProperty(document, "execCommand");
   cleanup();
   window.localStorage.clear();
 });
@@ -174,5 +175,20 @@ describe("DataGrid clipboard copy", () => {
     fireEvent.keyDown(start, { key: "c", ctrlKey: true });
 
     expect(writeText).toHaveBeenCalledWith("Alpha\t$1,200\r\nBravo\t$900");
+  });
+
+  it("falls back to the legacy copy path when async clipboard permission is denied", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    Object.defineProperty(document, "execCommand", { value: execCommand, configurable: true });
+
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} features={{ rowSelection: false }} />);
+    const cell = cellOf("Alpha");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+    expect(screen.getByRole("status")).toHaveTextContent("Copied 1 cell.");
   });
 });

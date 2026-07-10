@@ -249,6 +249,40 @@ type GridColumnConfig<TData> = {
 - `pinned` sets an initial frozen side for a column. Set `enablePinning: false`
   to keep a column out of the Columns menu pin controls.
 
+## Clipboard, range selection, and batch editing
+
+With `editing`, `cellSelection`, and `clipboard` enabled (the grid defaults),
+users can drag or Shift+Arrow to select a rectangle, copy it with Ctrl/Cmd-C,
+and paste spreadsheet TSV with Ctrl/Cmd-V. Quoted tabs, escaped quotes, embedded
+newlines, CRLF input, localized currency/number text, percentages, and common
+boolean labels are parsed. Paste uses the browser's native `paste` event, so it
+does not require async Clipboard API read permission. The status bar reports how
+many cells were copied, pasted, or skipped.
+
+Every pasted value still passes through the column's `parseValue` and `validate`
+contracts. A custom `parseValue` receives the original clipboard text; otherwise
+the built-in numeric/boolean normalization runs first. Read-only, invalid, and
+out-of-bounds cells are skipped without blocking valid cells in the same paste.
+
+Existing consumers can keep handling edits one cell at a time:
+
+```tsx
+<DataGrid onCellEdit={(edit) => updateCell(edit)} />
+```
+
+For an atomic store or server transaction, provide `onCellEditBatch`. It takes
+precedence for paste and fill operations while ordinary inline edits continue
+to use `onCellEdit`:
+
+```tsx
+<DataGrid
+  onCellEdit={(edit) => updateCell(edit)}
+  onCellEditBatch={({ source, edits, skippedCellCount }) => {
+    applyCellTransaction({ source, edits, skippedCellCount });
+  }}
+/>
+```
+
 ## Filters
 
 ```ts
@@ -536,6 +570,10 @@ For a bare table with only sortable, resizable columns:
 | `pagination`         | ✅           | ✅            |
 | `rowSelection`       | ✅           | ✅            |
 | `detailPanel`        | ✅           | ✅            |
+| `editing`            | ✅           | ❌            |
+| `cellSelection`      | ✅           | ❌            |
+| `fillHandle`         | ✅           | ❌            |
+| `clipboard`          | ✅           | ❌            |
 | `rowActions`         | ✅           | ✅            |
 | `headerMenu`         | ✅           | ✅            |
 | `collapsibleToolbar` | ✅           | ✅            |

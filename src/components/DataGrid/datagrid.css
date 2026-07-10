@@ -261,6 +261,8 @@
 .dg-status-bar { gap: 0.5rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--dg-border); background: var(--dg-surface); font-size: 0.75rem; line-height: 1rem; color: var(--dg-text-muted); }
 .dg-status-actions, .dg-pagination-group { display: flex; align-items: center; }
 .dg-status-actions { gap: 0.75rem; }
+.dg-clipboard-status { font-weight: 600; color: var(--dg-success); }
+.dg-clipboard-status[data-tone="error"] { color: var(--dg-danger); }
 .dg-link-button, .dg-selection-banner-action { text-decoration: underline; text-underline-offset: 2px; transition: color 150ms; }
 .dg-link-button { font-weight: 500; color: var(--dg-text-muted); }
 .dg-link-button:hover { color: var(--dg-text); }

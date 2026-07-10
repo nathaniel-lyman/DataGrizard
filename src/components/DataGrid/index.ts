@@ -2,6 +2,8 @@ export { DataGrid } from "./DataGrid";
 export type {
   DataGridFeatures,
   DataGridCellEdit,
+  DataGridCellEditBatch,
+  DataGridCellEditBatchSource,
   DataGridColumnGroup,
   DataGridColumnPinningState,
   DataGridControlledState,

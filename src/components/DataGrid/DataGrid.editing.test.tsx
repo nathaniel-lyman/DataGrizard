@@ -266,8 +266,6 @@ describe("DataGrid cell editing", () => {
 
   it("pastes clipboard text into the focused editable cell through parse and validate", async () => {
     const onCellEdit = vi.fn();
-    const readText = vi.fn().mockResolvedValue("12");
-    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
 
     render(
       <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
@@ -275,7 +273,7 @@ describe("DataGrid cell editing", () => {
 
     const qtyCell = cellOf("5");
     qtyCell.focus();
-    fireEvent.keyDown(qtyCell, { key: "v", ctrlKey: true });
+    fireEvent.paste(qtyCell, { clipboardData: { getData: () => "12" } });
 
     await waitFor(() =>
       expect(onCellEdit).toHaveBeenCalledWith(
@@ -286,8 +284,6 @@ describe("DataGrid cell editing", () => {
 
   it("pastes a TSV matrix into a selected cell range", async () => {
     const onCellEdit = vi.fn();
-    const readText = vi.fn().mockResolvedValue("Delta\t10\nEcho\t20");
-    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
 
     render(
       <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
@@ -297,7 +293,7 @@ describe("DataGrid cell editing", () => {
     fireEvent.mouseDown(start, { button: 0, buttons: 1 });
     fireEvent.mouseEnter(cellOf("9"), { buttons: 1 });
     fireEvent.mouseUp(document);
-    fireEvent.keyDown(start, { key: "v", metaKey: true });
+    fireEvent.paste(start, { clipboardData: { getData: () => "Delta\t10\nEcho\t20" } });
 
     await waitFor(() => expect(onCellEdit).toHaveBeenCalledTimes(4));
     expect(onCellEdit).toHaveBeenNthCalledWith(
@@ -318,6 +314,59 @@ describe("DataGrid cell editing", () => {
     );
     expect(start).toHaveAttribute("data-cell-selected", "true");
     expect(cellOf("9")).toHaveAttribute("data-cell-selected", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Pasted 4 cells.");
+  });
+
+  it("normalizes formatted currency pasted through the native paste event", async () => {
+    const onCellEdit = vi.fn();
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    render(
+      <DataGrid data={makeData()} columns={columns} getRowId={(r) => r.id} onCellEdit={onCellEdit} features={{ rowSelection: false }} />,
+    );
+
+    const priceCell = cellOf("$100");
+    const handled = fireEvent.paste(priceCell, {
+      clipboardData: { getData: () => "$1,200" },
+    });
+
+    expect(handled).toBe(false);
+    await waitFor(() =>
+      expect(onCellEdit).toHaveBeenCalledWith(
+        expect.objectContaining({ rowId: "1", columnId: "price", value: 1200 }),
+      ),
+    );
+  });
+
+  it("uses the atomic batch callback and reports skipped invalid cells", async () => {
+    const onCellEdit = vi.fn();
+    const onCellEditBatch = vi.fn();
+    render(
+      <DataGrid
+        data={makeData()}
+        columns={columns}
+        getRowId={(r) => r.id}
+        onCellEdit={onCellEdit}
+        onCellEditBatch={onCellEditBatch}
+        features={{ rowSelection: false }}
+      />,
+    );
+
+    const start = cellOf("Alpha");
+    fireEvent.paste(start, {
+      clipboardData: { getData: () => "Delta\t-5\nEcho\t20" },
+    });
+
+    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onCellEditBatch).toHaveBeenCalledWith({
+      source: "paste",
+      edits: [
+        expect.objectContaining({ rowId: "1", columnId: "name", value: "Delta" }),
+        expect.objectContaining({ rowId: "2", columnId: "name", value: "Echo" }),
+        expect.objectContaining({ rowId: "2", columnId: "qty", value: 20 }),
+      ],
+      skippedCellCount: 1,
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Pasted 3 cells; skipped 1.");
   });
 
   it("cancelling an edit with Escape does not close an open detail panel", () => {

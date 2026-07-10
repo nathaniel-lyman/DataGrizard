@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -71,6 +72,7 @@ import {
   type EditCellColumn,
 } from "./cellEditor";
 import { downloadTextFile, toCsv, toTsv, writeClipboardText } from "../../utils/export";
+import { normalizeClipboardInput, parseClipboardTsv } from "./clipboard";
 import { removeJson } from "./storage";
 import {
   booleanSortingFn,
@@ -216,6 +218,15 @@ export type DataGridCellEdit<TData extends object> = {
   columnId: string;
   value: unknown;
   previousValue: unknown;
+};
+
+export type DataGridCellEditBatchSource = "paste" | "fill";
+
+export type DataGridCellEditBatch<TData extends object> = {
+  source: DataGridCellEditBatchSource;
+  edits: DataGridCellEdit<TData>[];
+  /** Cells omitted because they were outside the grid, read-only, unparseable, or invalid. */
+  skippedCellCount: number;
 };
 
 export type { DataGridColumnGroup } from "./columnGroups";
@@ -379,6 +390,12 @@ export type DataGridProps<TData extends object> = {
   onActiveRowChange?: (row: TData | null) => void;
   onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
   onCellEdit?: (edit: DataGridCellEdit<TData>) => void;
+  /**
+   * Atomic callback for multi-cell paste and fill operations. When supplied it
+   * receives the complete operation instead of repeated `onCellEdit` calls.
+   * Inline single-cell editing continues to use `onCellEdit`.
+   */
+  onCellEditBatch?: (batch: DataGridCellEditBatch<TData>) => void;
   getExportFileName?: (context: { rowCount: number; selectedCount: number }) => string;
   renderDataSourceError?: (error: unknown) => ReactNode;
   onDataSourceError?: (error: unknown) => void;
@@ -435,15 +452,6 @@ const densityStyles: Record<DataGridDensity, { header: string; cell: string; row
     cell: "dg-density-cell--comfortable",
     rowHeight: 44,
   },
-};
-
-const parseClipboardTsv = (text: string): string[][] => {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const rows = normalized.split("\n");
-  if (rows[rows.length - 1] === "") {
-    rows.pop();
-  }
-  return rows.map((row) => row.split("\t"));
 };
 
 const getColumnControlLabel = <TData extends object>(
@@ -558,6 +566,7 @@ export function DataGrid<TData extends object>({
   onActiveRowChange,
   onFocusedCellChange,
   onCellEdit,
+  onCellEditBatch,
   getExportFileName,
   renderDataSourceError,
   onDataSourceError,
@@ -1641,6 +1650,9 @@ export function DataGrid<TData extends object>({
     columnResizeMode: "onChange",
     groupedColumnMode: "remove",
     paginateExpandedRows: false,
+    // Editing and server refreshes replace the data array. Preserve the user's
+    // expanded working context instead of collapsing groups after every edit.
+    autoResetExpanded: false,
     manualSorting: isServerMode,
     manualFiltering: isServerMode,
     manualPagination: isServerMode || isTopLevelPivotPagination,
@@ -2392,6 +2404,12 @@ export function DataGrid<TData extends object>({
   const cellSelectionEnabled = features.cellSelection && !isPivotLayout;
   const fillHandleEnabled = features.fillHandle && cellSelectionEnabled;
   const [cellSelection, setCellSelection] = useState<DataGridCellRange | null>(null);
+  const [clipboardNotice, setClipboardNotice] = useState<{
+    id: number;
+    message: string;
+    tone: "success" | "error";
+  } | null>(null);
+  const clipboardNoticeIdRef = useRef(0);
   const isSelectingCellsRef = useRef(false);
   const suppressNextCellClickRef = useRef(false);
   const isFillDraggingRef = useRef(false);
@@ -2402,6 +2420,31 @@ export function DataGrid<TData extends object>({
     fillPreviewRef.current = fillPreview;
   }, [fillPreview]);
   const commitFillRef = useRef<(source: DataGridCellRange, target: DataGridCellRange) => void>(() => {});
+
+  useEffect(() => {
+    if (!clipboardNotice) {
+      return;
+    }
+    const timeout = window.setTimeout(() => setClipboardNotice(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [clipboardNotice]);
+
+  const announceClipboard = (message: string, tone: "success" | "error" = "success") => {
+    clipboardNoticeIdRef.current += 1;
+    setClipboardNotice({ id: clipboardNoticeIdRef.current, message, tone });
+  };
+
+  const emitCellEditBatch = (
+    source: DataGridCellEditBatchSource,
+    edits: DataGridCellEdit<TData>[],
+    skippedCellCount: number,
+  ) => {
+    if (onCellEditBatch) {
+      onCellEditBatch({ source, edits, skippedCellCount });
+      return;
+    }
+    edits.forEach((edit) => onCellEdit?.(edit));
+  };
 
   const normalizeCellRange = (range: DataGridCellRange | null) => {
     if (!range) {
@@ -2602,7 +2645,7 @@ export function DataGrid<TData extends object>({
     row: Row<TData | PivotRow<TData>>,
     columnId: string,
   ) => {
-    if (!features.editing || !onCellEdit) {
+    if (!features.editing || (!onCellEdit && !onCellEditBatch)) {
       return;
     }
     const matrix = parseClipboardTsv(text);
@@ -2620,11 +2663,13 @@ export function DataGrid<TData extends object>({
     const rowCount = rangeTarget?.rowIds.length ?? matrix.length;
     const columnCount = rangeTarget?.columnIds.length ?? Math.max(...matrix.map((matrixRow) => matrixRow.length));
     const edits: DataGridCellEdit<TData>[] = [];
+    let skippedCellCount = 0;
 
     for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
       const targetRowId = navRowIds[startRowIdx + rowOffset];
       const targetRow = targetRowId ? rowById.get(targetRowId) : undefined;
       if (!targetRow) {
+        skippedCellCount += columnCount;
         continue;
       }
       for (let columnOffset = 0; columnOffset < columnCount; columnOffset += 1) {
@@ -2632,16 +2677,23 @@ export function DataGrid<TData extends object>({
         const columnConfig = targetColumnId ? columnsById.get(targetColumnId) : undefined;
         const input = singleClipboardCell ? matrix[0][0] : matrix[rowOffset]?.[columnOffset];
         if (!targetColumnId || !columnConfig || input === undefined || !isCellEditable(targetRow, targetColumnId)) {
+          skippedCellCount += 1;
           continue;
         }
         let value: unknown;
         try {
-          value = parseEditValue(columnConfig as unknown as EditCellColumn<TData>, input);
+          const editColumn = columnConfig as unknown as EditCellColumn<TData>;
+          const clipboardInput = editColumn.parseValue
+            ? input
+            : normalizeClipboardInput(input, editColumn.dataType, locale);
+          value = parseEditValue(editColumn, clipboardInput);
         } catch {
+          skippedCellCount += 1;
           continue;
         }
         const source = targetRow.original as TData;
         if (computeEditError(columnConfig as unknown as EditCellColumn<TData>, value, source)) {
+          skippedCellCount += 1;
           continue;
         }
         edits.push({
@@ -2654,23 +2706,42 @@ export function DataGrid<TData extends object>({
       }
     }
 
-    edits.forEach((edit) => onCellEdit(edit));
+    emitCellEditBatch("paste", edits, skippedCellCount);
+    if (edits.length === 0) {
+      announceClipboard(
+        skippedCellCount > 0
+          ? `Nothing pasted; ${skippedCellCount} ${skippedCellCount === 1 ? "cell was" : "cells were"} invalid, read-only, or outside the grid.`
+          : "Nothing pasted.",
+        "error",
+      );
+    } else {
+      announceClipboard(
+        `Pasted ${edits.length} ${edits.length === 1 ? "cell" : "cells"}${
+          skippedCellCount > 0 ? `; skipped ${skippedCellCount}` : ""
+        }.`,
+      );
+    }
   };
 
-  const pasteFromClipboard = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
-    if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
+  const onCellPaste = (
+    event: ReactClipboardEvent<HTMLTableCellElement>,
+    row: Row<TData | PivotRow<TData>>,
+    columnId: string,
+  ) => {
+    if (!features.clipboard || !features.editing || (!onCellEdit && !onCellEditBatch)) {
       return;
     }
-    navigator.clipboard
-      .readText()
-      .then((text) => pasteTextIntoCell(text, row, columnId))
-      .catch(() => {
-        /* denied clipboard access */
-      });
+    const text = event.clipboardData.getData("text/plain");
+    if (text === "") {
+      announceClipboard("Clipboard does not contain text to paste.", "error");
+      return;
+    }
+    pasteTextIntoCell(text, row, columnId);
+    event.preventDefault();
   };
 
   const commitFill = (source: DataGridCellRange, target: DataGridCellRange) => {
-    if (!features.editing || !onCellEdit) {
+    if (!features.editing || (!onCellEdit && !onCellEditBatch)) {
       return;
     }
     const normalizedSource = normalizeCellRange(source);
@@ -2687,6 +2758,7 @@ export function DataGrid<TData extends object>({
       });
     });
     const edits: DataGridCellEdit<TData>[] = [];
+    let skippedCellCount = 0;
     normalizedTarget.rowIds.forEach((targetRowId, rowIdx) => {
       const targetRow = rowById.get(targetRowId);
       if (!targetRow) {
@@ -2698,6 +2770,7 @@ export function DataGrid<TData extends object>({
         }
         const columnConfig = columnsById.get(targetColumnId);
         if (!columnConfig || !isCellEditable(targetRow, targetColumnId)) {
+          skippedCellCount += 1;
           return;
         }
         const sourceRowId = sourceRowIds[rowIdx % sourceRowIds.length];
@@ -2711,6 +2784,7 @@ export function DataGrid<TData extends object>({
         const value = (sourceOriginal as Record<string, unknown>)[sourceColumnId];
         const targetOriginal = targetRow.original as TData;
         if (computeEditError(columnConfig as unknown as EditCellColumn<TData>, value, targetOriginal)) {
+          skippedCellCount += 1;
           return; // skip, consistent with pasteTextIntoCell's semantics
         }
         edits.push({
@@ -2722,7 +2796,7 @@ export function DataGrid<TData extends object>({
         });
       });
     });
-    edits.forEach((edit) => onCellEdit(edit));
+    emitCellEditBatch("fill", edits, skippedCellCount);
   };
   useEffect(() => {
     commitFillRef.current = commitFill;
@@ -2769,13 +2843,9 @@ export function DataGrid<TData extends object>({
       }
       return;
     }
-    if (ctrl && (event.key === "v" || event.key === "V")) {
-      if (features.clipboard && features.editing) {
-        pasteFromClipboard(row, columnId);
-        event.preventDefault();
-      }
-      return;
-    }
+    // Paste is handled by the native `paste` event on the cell. Reading
+    // `event.clipboardData` works when the async Clipboard API is unavailable
+    // or permission is denied, and it avoids suppressing the browser fallback.
     // Ctrl/Cmd-D and Ctrl/Cmd-R fill the top row / left column of the current
     // cell-range selection into the rest of the selection. commitFill is called
     // directly (not via commitFillRef) because this closure is fresh every
@@ -2933,7 +3003,15 @@ export function DataGrid<TData extends object>({
         ? [[getExportText(row, focusedColumn)]]
         : [];
     if (matrix.length) {
-      writeClipboardText(toTsv(matrix));
+      const cellCount = matrix.reduce((count, matrixRow) => count + matrixRow.length, 0);
+      void writeClipboardText(toTsv(matrix)).then((copied) => {
+        announceClipboard(
+          copied
+            ? `Copied ${cellCount} ${cellCount === 1 ? "cell" : "cells"}.`
+            : "Copy failed. Allow clipboard access and try again.",
+          copied ? "success" : "error",
+        );
+      });
     }
   };
 
@@ -3254,6 +3332,11 @@ export function DataGrid<TData extends object>({
               aria-colindex={colIndex >= 0 ? colIndex + 1 : undefined}
               tabIndex={isNavCell ? (isTabStop ? 0 : -1) : undefined}
               onKeyDown={isNavCell ? (event) => onCellKeyDown(event, row, cell.column.id) : undefined}
+              onPaste={
+                isNavCell
+                  ? (event) => onCellPaste(event, row, cell.column.id)
+                  : undefined
+              }
               onFocus={
                 isNavCell
                   ? () => updateFocusedCell({ rowId: row.id, columnId: cell.column.id })
@@ -3507,6 +3590,18 @@ export function DataGrid<TData extends object>({
               : `${filteredRowCount} ${rowLabel}`}
           </span>
           <div className="dg-status-actions">
+            {clipboardNotice ? (
+              <span
+                key={clipboardNotice.id}
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-tone={clipboardNotice.tone}
+                className="dg-clipboard-status"
+              >
+                {clipboardNotice.message}
+              </span>
+            ) : null}
             {features.sorting && currentSorting.length > 0 ? (
               <button
                 type="button"

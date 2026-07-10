@@ -38,15 +38,9 @@ export const downloadTextFile = (filename: string, mime: string, content: string
 
 // Writes text to the clipboard, preferring the async Clipboard API and falling
 // back to execCommand. Never throws (mirrors the persistence helpers).
-export const writeClipboardText = (text: string): void => {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {
-      /* swallow — insecure context or denied permission */
-    });
-    return;
-  }
+const writeClipboardTextLegacy = (text: string): boolean => {
   if (typeof document === "undefined") {
-    return;
+    return false;
   }
   try {
     const textarea = document.createElement("textarea");
@@ -55,9 +49,22 @@ export const writeClipboardText = (text: string): void => {
     textarea.style.opacity = "0";
     document.body.appendChild(textarea);
     textarea.select();
-    document.execCommand("copy");
+    const copied = document.execCommand("copy");
     textarea.remove();
+    return copied;
   } catch {
-    /* swallow */
+    return false;
   }
+};
+
+export const writeClipboardText = async (text: string): Promise<boolean> => {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return writeClipboardTextLegacy(text);
+    }
+  }
+  return writeClipboardTextLegacy(text);
 };
