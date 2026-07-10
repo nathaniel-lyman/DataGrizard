@@ -246,6 +246,7 @@ describe("DataGrid data access API", () => {
         warnings: [
           { code: "offset_applied", actual: 1 },
           { code: "rows_truncated", limit: 1, actual: 3 },
+          { code: "supporting_rows_truncated", limit: 1, actual: 3 },
         ],
       },
     });
@@ -259,11 +260,14 @@ describe("DataGrid data access API", () => {
       ok: true,
       truncated: true,
       receipt: {
-        supportingRowIds: ["1", "2", "3"],
+        supportingRowIds: ["1", "2"],
+        supportingRowCount: 3,
+        supportingRowIdsTruncated: true,
         supportingGroupKeys: [{ department: "Grocery" }],
         warnings: [
           { code: "limit_clamped", limit: 1, actual: 5 },
           { code: "top_values_truncated", limit: 1, actual: 3 },
+          { code: "supporting_rows_truncated", limit: 2, actual: 3 },
           { code: "groups_truncated", limit: 1, actual: 2 },
         ],
         replay: {
@@ -544,7 +548,86 @@ describe("live agent tool schemas", () => {
     expect(formattingSchema).not.toContain('"privateNote"');
   });
 
-  it("recomputes schemas from operation, scope, and column policies", () => {
+  it("derives query and aggregate tools independently from policy-filtered analysis capabilities", async () => {
+    const apiRef = createRef<DataGridApi<AgentRow>>();
+    render(
+      <DataGrid
+        apiRef={apiRef}
+        data={agentRows}
+        columns={agentColumns}
+        getRowId={(row) => row.id}
+      />,
+    );
+    const mountedApi = apiRef.current!;
+    const api = {
+      ...mountedApi,
+      getSnapshot: () => ({
+        ...mountedApi.getSnapshot(),
+        analysis: {
+          queryScopes: ["all"] as const,
+          aggregateScopes: ["filtered"] as const,
+          remote: true,
+        },
+      }),
+    } as DataGridApi<AgentRow>;
+    let policy: DataGridAgentPolicy = {
+      operations: allAgentOperations,
+      scopes: ["all", "filtered", "visible_page"],
+    };
+    const toolkit = createDataGridAgentToolkit({ api, policy: () => policy });
+
+    const queryTool = toolkit.tools.find((tool) => tool.name === "grid_query_rows");
+    const aggregateTool = toolkit.tools.find((tool) => tool.name === "grid_aggregate");
+    expect((queryTool?.inputSchema.properties as { scope: { enum: string[] } }).scope.enum)
+      .toEqual(["all"]);
+    expect((aggregateTool?.inputSchema.properties as { scope: { enum: string[] } }).scope.enum)
+      .toEqual(["filtered"]);
+
+    policy = { operations: allAgentOperations, scopes: ["all"] };
+    const contextPromise = toolkit.execute("grid_get_context");
+    expect(contextPromise).toBeInstanceOf(Promise);
+    const context = await contextPromise as {
+      analysis: { queryScopes: string[]; aggregateScopes: string[]; remote: boolean };
+    };
+    expect(context.analysis).toEqual({
+      queryScopes: ["all"],
+      aggregateScopes: [],
+      remote: true,
+    });
+  });
+
+  it("re-reads policy immediately before async read dispatch", async () => {
+    const apiRef = createRef<DataGridApi<AgentRow>>();
+    render(
+      <DataGrid
+        apiRef={apiRef}
+        data={agentRows}
+        columns={agentColumns}
+        getRowId={(row) => row.id}
+      />,
+    );
+    const mountedApi = apiRef.current!;
+    const queryAsync = vi.fn(async (input) => mountedApi.query(input));
+    const api = { ...mountedApi, queryAsync } as DataGridApi<AgentRow>;
+    let policyRead = 0;
+    const toolkit = createDataGridAgentToolkit({
+      api,
+      policy: () => ({
+        operations: policyRead++ === 0
+          ? allAgentOperations
+          : allAgentOperations.filter((operation) => operation !== "query_rows"),
+      }),
+    });
+
+    expect(await toolkit.execute("grid_query_rows", {
+      scope: "visible_page",
+      columnIds: ["category"],
+      limit: 1,
+    })).toMatchObject({ ok: false, error: { code: "policy_denied" } });
+    expect(queryAsync).not.toHaveBeenCalled();
+  });
+
+  it("recomputes schemas from operation, scope, and column policies", async () => {
     const apiRef = createRef<DataGridApi<AgentRow>>();
     render(
       <DataGrid
@@ -566,18 +649,18 @@ describe("live agent tool schemas", () => {
       toolkit.tools.find((tool) => tool.name === "grid_plan_actions")?.inputSchema,
     );
     expect(initialPlanSchema).not.toContain('"presentation"');
-    const context = toolkit.execute("grid_get_context") as {
+    const context = await toolkit.execute("grid_get_context") as {
       policy: { allowedOperations: DataGridAgentOperation[] };
       sourceColumns: Array<{ id: string }>;
     };
     expect(context.policy.allowedOperations).not.toContain("set_column_presentation");
     expect(context.sourceColumns.map((column) => column.id)).not.toContain("privateNote");
-    expect(toolkit.execute("grid_query_rows", {
+    expect(await toolkit.execute("grid_query_rows", {
       scope: "visible_page",
       columnIds: ["privateNote"],
     })).toMatchObject({ ok: false, error: { code: "invalid_tool_input" } });
 
-    const defaultRead = toolkit.execute("grid_query_rows", {
+    const defaultRead = await toolkit.execute("grid_query_rows", {
       scope: "visible_page",
       limit: 1,
     }) as { ok: true; rows: Array<{ values: Record<string, unknown> }> };
@@ -591,7 +674,7 @@ describe("live agent tool schemas", () => {
     };
     expect(JSON.stringify(toolkit.tools)).toContain('"presentation"');
     expect(JSON.stringify(toolkit.tools)).toContain("privateNote");
-    expect(toolkit.execute("grid_plan_actions", {
+    expect(await toolkit.execute("grid_plan_actions", {
       presentation: { category: { numberFormat: { maximumFractionDigits: 0 } } },
     })).toMatchObject({ ok: false, error: { code: "invalid_tool_input" } });
 
@@ -600,11 +683,11 @@ describe("live agent tool schemas", () => {
       operations: allAgentOperations.filter((operation) => operation !== "query_rows"),
     };
     expect(toolkit.tools.map((tool) => tool.name)).not.toContain("grid_query_rows");
-    expect(toolkit.execute("grid_query_rows", { scope: "visible_page" }))
+    expect(await toolkit.execute("grid_query_rows", { scope: "visible_page" }))
       .toMatchObject({ ok: false, error: { code: "policy_denied" } });
   });
 
-  it("keeps agent actions preview-only until apply and rejects stale plans", () => {
+  it("keeps agent actions preview-only until apply and rejects stale plans", async () => {
     const apiRef = createRef<DataGridApi<AgentRow>>();
     render(
       <DataGrid
@@ -619,7 +702,7 @@ describe("live agent tool schemas", () => {
       api: apiRef,
       policy: { operations: allAgentOperations, scopes: ["visible_page"] },
     });
-    const proposed = toolkit.execute("grid_plan_actions", {
+    const proposed = await toolkit.execute("grid_plan_actions", {
       sorting: [{ id: "amount", desc: true }],
       presentation: { amount: { dataBar: { color: "#8b5cf6" } } },
     });
@@ -638,12 +721,12 @@ describe("live agent tool schemas", () => {
     });
     expect(apiRef.current?.getSnapshot().state.sorting).toEqual([]);
     const planId = (proposed as { ok: true; plan: { planId: string } }).plan.planId;
-    expect(toolkit.execute("grid_validate_plan", { planId })).toMatchObject({ ok: true });
+    expect(await toolkit.execute("grid_validate_plan", { planId })).toMatchObject({ ok: true });
 
     act(() => {
       apiRef.current?.dispatch([{ type: "set_global_filter", value: "A" }]);
     });
-    expect(toolkit.execute("grid_apply_plan", { planId })).toMatchObject({
+    expect(await toolkit.execute("grid_apply_plan", { planId })).toMatchObject({
       ok: false,
       errors: [{ code: "stale_revision" }],
     });

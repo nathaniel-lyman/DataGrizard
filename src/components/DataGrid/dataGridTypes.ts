@@ -24,6 +24,7 @@ import type { DataGridColumnGroup } from "./columnGroups";
 import type { DataGridRowActions } from "./RowActionsMenu";
 import type { DataGridPivotConfig, DataGridPivotState } from "./pivot";
 import type { DataGridApi, DataGridDataAccessLimits } from "./dataGridApi";
+import type { DataGridServerAnalysisAdapter } from "./dataGridAnalysisContract";
 
 export type DataGridFeatures = {
   toolbar: boolean;
@@ -200,6 +201,8 @@ export type DataGridProps<TData extends object> = {
   columns: GridColumnConfig<TData>[];
   /** Convenience server adapter layered over the controlled server API. */
   dataSource?: DataGridDataSource<TData>;
+  /** Complete-dataset query/aggregate adapter for server mode. */
+  serverAnalysis?: DataGridServerAnalysisAdapter;
   layoutMode?: DataGridLayoutMode;
   dataMode?: DataGridDataMode;
   rowCount?: number;

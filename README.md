@@ -413,6 +413,17 @@ const totals = gridApi.current?.aggregate({
   ],
   groupBy: ["category"],
 });
+
+// Canonical integration path when the grid may use a complete remote dataset.
+const remoteRows = await gridApi.current?.queryAsync({
+  scope: "filtered",
+  columnIds: ["product", "revenue", "margin"],
+  limit: 50,
+});
+const remoteTotals = await gridApi.current?.aggregateAsync({
+  scope: "filtered",
+  metrics: [{ operation: "sum", columnId: "revenue", as: "revenue" }],
+});
 const proposed = gridApi.current?.plan([
   { type: "set_column_visibility", columnIds: ["margin"], visible: false },
   { type: "move_columns", columnIds: ["revenue"], beforeColumnId: "category" },
@@ -447,7 +458,11 @@ top values, and grouped metrics. Results contain plain serializable values.
 Reads default to 100 rows / 2,000 cells and can be tightened with
 `dataAccessLimits`. In server mode, `all` and `filtered` explicitly return
 `scope_unavailable`; DataGrizard never summarizes a loaded page as though it
-were the complete server dataset.
+were the complete server dataset. `queryAsync()` and `aggregateAsync()` return
+the same result unions, but may route `all` and `filtered` through an opt-in
+`serverAnalysis` adapter. They accept `{ signal }` for caller cancellation.
+Use the async methods for assistants and integrations that may cross a remote
+boundary; the synchronous methods remain local-only.
 
 ## Agent toolkit
 
@@ -500,7 +515,7 @@ const toolkit = createDataGridAgentToolkit({
 // `tools` is a live getter. Read it when preparing each provider request.
 // Tools, scopes, and column choices disappear when policy/features no longer allow them.
 const tools = toolkit.tools;
-const output = toolkit.execute(toolCall.name, toolCall.arguments);
+const output = await toolkit.execute(toolCall.name, toolCall.arguments);
 ```
 
 The available tools are drawn from `grid_get_context`, `grid_query_rows`,
@@ -544,6 +559,59 @@ renders in server mode:
 responses are ignored. Sort/filter/search changes reset pagination to page 1.
 Throw from the adapter to show the error overlay, or customize it with
 `renderDataSourceError`.
+
+Complete-dataset analysis is a separate contract. `dataSource` fetches the page
+that the grid renders; `serverAnalysis` answers bounded queries and aggregates
+over the whole server dataset. They can use different endpoints, permissions,
+caches, and backend services:
+
+```tsx
+import type {
+  DataGridServerAnalysisAdapter,
+  DataGridServerAnalysisPayload,
+} from "datagrizard";
+
+const productsAnalysis: DataGridServerAnalysisAdapter = {
+  id: "products-warehouse",
+  capabilities: {
+    queryScopes: ["all", "filtered"],
+    aggregateScopes: ["all", "filtered"],
+  },
+  async execute({ signal, ...request }) {
+    const response = await fetch("/api/products/analysis", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // The runtime AbortSignal is deliberately not part of the JSON body.
+      signal,
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error("Product analysis failed");
+    return response.json() as Promise<DataGridServerAnalysisPayload>;
+  },
+};
+
+<DataGrid
+  columns={columns}
+  getRowId={(row) => row.id}
+  dataSource={productsPageDataSource}
+  serverAnalysis={productsAnalysis}
+/>;
+```
+
+The request body is a provider-neutral envelope containing the normalized
+projection or metrics, complete-dataset scope, typed filter/search query spec,
+source-column metadata, limits, query ID, and starting grid revision. It does
+not contain row objects, accessors, formatters, predicates, provider SDK types,
+or the `AbortSignal`. The endpoint must independently authorize and validate the
+user, dataset, columns, operation, and limits; browser-side tool schemas are not
+a security boundary. The adapter returns only the query/aggregate payload and
+optional remote provenance. DataGrizard validates it and builds the canonical
+receipt.
+
+`serverAnalysis` is inert in client mode. In server mode, only the adapter's
+advertised `all`/`filtered` capabilities appear in snapshots and agent tools.
+Without a capable adapter, async complete-dataset reads return
+`scope_unavailable` and never fall back to the loaded page.
 
 For custom orchestration, keep using the lower-level controlled API:
 

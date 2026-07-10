@@ -25,6 +25,11 @@ import type {
   DataGridLayoutMode,
 } from "./dataGridTypes";
 import type { DataGridPivotState } from "./pivot";
+import type {
+  DataGridAnalysisCapabilities,
+  DataGridAnalysisExecution,
+  DataGridAnalysisExecutionOptions,
+} from "./dataGridAnalysisContract";
 
 export type DataGridQueryScope = "all" | "filtered" | "selected_rows" | "visible_page";
 
@@ -75,7 +80,10 @@ export type DataGridAnalysisWarningCode =
   | "rows_truncated"
   | "groups_truncated"
   | "top_values_truncated"
-  | "limit_clamped";
+  | "limit_clamped"
+  | "supporting_rows_truncated"
+  | "view_changed_during_execution"
+  | "provider_limit_applied";
 
 export type DataGridAnalysisWarning = {
   code: DataGridAnalysisWarningCode;
@@ -122,13 +130,21 @@ export type DataGridAnalysisReceipt = {
   warnings: DataGridAnalysisWarning[];
   timing: DataGridAnalysisTiming;
   replay: DataGridQueryReplay | DataGridAggregateReplay;
+  completedGridRevision: number;
+  execution: DataGridAnalysisExecution;
+  limits: DataGridDataAccessLimits;
+  supportingRowCount: number;
+  supportingRowIdsTruncated: boolean;
 };
 
 export type DataGridDataErrorCode =
   | "invalid_column"
   | "invalid_query"
   | "limit_exceeded"
-  | "scope_unavailable";
+  | "scope_unavailable"
+  | "analysis_aborted"
+  | "analysis_failed"
+  | "invalid_analysis_response";
 
 export type DataGridDataError = {
   code: DataGridDataErrorCode;
@@ -254,6 +270,7 @@ export type DataGridSnapshot = {
     visible: number;
     total?: number;
   };
+  analysis: DataGridAnalysisCapabilities;
   state: {
     sorting: SortingState;
     globalFilter: string;
@@ -419,6 +436,16 @@ export type DataGridApi<TData extends object> = {
   query: (input: DataGridQuery) => DataGridQueryResult;
   /** Computes bounded, serializable metrics over a well-defined grid scope. */
   aggregate: (input: DataGridAggregateQuery) => DataGridAggregateResult;
+  /** Reads through the local executor or a mounted complete-dataset adapter. */
+  queryAsync: (
+    input: DataGridQuery,
+    options?: DataGridAnalysisExecutionOptions,
+  ) => Promise<DataGridQueryResult>;
+  /** Aggregates through the local executor or a mounted complete-dataset adapter. */
+  aggregateAsync: (
+    input: DataGridAggregateQuery,
+    options?: DataGridAnalysisExecutionOptions,
+  ) => Promise<DataGridAggregateResult>;
   /** Builds a detached preview without mutating the grid. */
   plan: (commands: DataGridCommand[]) => DataGridPlanResult;
   /** Revalidates commands and rejects a plan whose base revision is stale. */

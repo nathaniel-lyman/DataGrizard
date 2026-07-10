@@ -5,7 +5,7 @@ import type {
 } from "../components/DataGrid";
 
 type ToolkitExecutor = {
-  execute: (name: DataGridAgentToolDefinition["name"], input?: unknown) => unknown;
+  execute: (name: DataGridAgentToolDefinition["name"], input?: unknown) => Promise<unknown>;
 };
 
 export type RetailAssistantWorkflowResult = {
@@ -26,13 +26,13 @@ export async function runRetailAssistantWorkflow(
   toolkit: ToolkitExecutor,
 ): Promise<RetailAssistantWorkflowResult> {
   const toolCalls: RetailAssistantWorkflowResult["toolCalls"] = [];
-  const call = (name: DataGridAgentToolDefinition["name"], input: unknown = {}) => {
+  const call = async (name: DataGridAgentToolDefinition["name"], input: unknown = {}) => {
     toolCalls.push({ name, input });
-    return toolkit.execute(name, input);
+    return await toolkit.execute(name, input);
   };
 
-  call("grid_get_context");
-  const planResult = call("grid_plan_actions", {
+  await call("grid_get_context");
+  const planResult = await call("grid_plan_actions", {
     filters: [{ id: "department", value: { operator: "isAnyOf", value: ["Grocery"] } }],
     sorting: [{ id: "sales", desc: true }],
     grouping: [],
@@ -45,11 +45,11 @@ export async function runRetailAssistantWorkflow(
     throw new Error(`grid_plan_actions failed: ${JSON.stringify(planResult)}`);
   }
   const planId = (planResult as unknown as { plan: { planId: string } }).plan.planId;
-  const validation = call("grid_validate_plan", { planId });
+  const validation = await call("grid_validate_plan", { planId });
   if (!validation || typeof validation !== "object" || !("ok" in validation) || !validation.ok) {
     throw new Error(`grid_validate_plan failed: ${JSON.stringify(validation)}`);
   }
-  const applied = call("grid_apply_plan", { planId });
+  const applied = await call("grid_apply_plan", { planId });
   if (!applied || typeof applied !== "object" || !("ok" in applied) || !applied.ok) {
     throw new Error(`grid_apply_plan failed: ${JSON.stringify(applied)}`);
   }
@@ -58,27 +58,27 @@ export async function runRetailAssistantWorkflow(
   // TanStack resets pagination after filter/group changes. Plan the page-size
   // change against that committed revision so it cannot be overwritten by the
   // table's own reset lifecycle.
-  const pagePlan = call("grid_plan_actions", { pageIndex: 0, pageSize: 5 });
+  const pagePlan = await call("grid_plan_actions", { pageIndex: 0, pageSize: 5 });
   if (!pagePlan || typeof pagePlan !== "object" || !("ok" in pagePlan) || !pagePlan.ok) {
     throw new Error(`grid_plan_actions failed: ${JSON.stringify(pagePlan)}`);
   }
   const pagePlanId = (pagePlan as unknown as { plan: { planId: string } }).plan.planId;
-  const pageValidation = call("grid_validate_plan", { planId: pagePlanId });
+  const pageValidation = await call("grid_validate_plan", { planId: pagePlanId });
   if (!pageValidation || typeof pageValidation !== "object" || !("ok" in pageValidation) || !pageValidation.ok) {
     throw new Error(`grid_validate_plan failed: ${JSON.stringify(pageValidation)}`);
   }
-  const pageApplied = call("grid_apply_plan", { planId: pagePlanId });
+  const pageApplied = await call("grid_apply_plan", { planId: pagePlanId });
   if (!pageApplied || typeof pageApplied !== "object" || !("ok" in pageApplied) || !pageApplied.ok) {
     throw new Error(`grid_apply_plan failed: ${JSON.stringify(pageApplied)}`);
   }
   await afterGridRender();
 
-  const query = call("grid_query_rows", {
+  const query = await call("grid_query_rows", {
     scope: "visible_page",
     columnIds: ["item_name", "sales", "margin_rate"],
     limit: 5,
   }) as DataGridQueryResult;
-  const aggregation = call("grid_aggregate", {
+  const aggregation = await call("grid_aggregate", {
     scope: "visible_page",
     metrics: [
       { operation: "count", as: "products" },

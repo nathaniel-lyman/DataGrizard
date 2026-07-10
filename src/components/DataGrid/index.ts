@@ -41,6 +41,34 @@ export type {
   DataGridUndoResult,
 } from "./dataGridApi";
 export type {
+  DataGridAnalysisCapabilities,
+  DataGridAnalysisContext,
+  DataGridAnalysisExecution,
+  DataGridAnalysisExecutionOptions,
+  DataGridServerAggregatePayload,
+  DataGridServerAggregateRequest,
+  DataGridServerAnalysisAdapter,
+  DataGridServerAnalysisCapabilities,
+  DataGridServerAnalysisPayload,
+  DataGridServerAnalysisProvenance,
+  DataGridServerAnalysisRequest,
+  DataGridServerAnalysisScope,
+  DataGridServerQueryPayload,
+  DataGridServerQueryRequest,
+} from "./dataGridAnalysisContract";
+export {
+  isDataGridSerializableValue,
+  normalizeDataGridAggregateQuery,
+  normalizeDataGridQuery,
+  validateDataGridServerAggregatePayload,
+  validateDataGridServerAnalysisPayload,
+  validateDataGridServerQueryPayload,
+  type DataGridAnalysisValidationResult,
+  type DataGridNormalizedAggregateQuery,
+  type NormalizeDataGridAggregateQueryOptions,
+  type NormalizeDataGridQueryOptions,
+} from "./dataGridAnalysisValidation";
+export type {
   DataGridFeatures,
   DataGridCellEdit,
   DataGridCellEditBatch,
@@ -118,7 +146,9 @@ export { trendIconSet, type TrendIconSetOptions } from "./trendIconSet";
 // column/filter config into a dialect-neutral query spec. SQL/transport stay
 // consumer-side (see server/README.md).
 export {
+  buildDataGridAnalysisQuerySpec,
   requestToQuerySpec,
+  type DataGridAnalysisQuerySpec,
   type QueryFilterClause,
   type QueryRequestSlices,
   type QuerySearchClause,

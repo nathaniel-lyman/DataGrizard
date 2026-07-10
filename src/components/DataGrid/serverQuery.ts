@@ -12,6 +12,11 @@ import type {
 } from "../../types/grid";
 import { isFilterValueActive, resolveFilterClause } from "./filterMatch";
 import { resolveFilterType } from "./filterDefaults";
+import type {
+  DataGridAnalysisFilterSnapshot,
+  DataGridSourceColumnSnapshot,
+} from "./dataGridApi";
+import type { DataGridServerAnalysisScope } from "./dataGridAnalysisContract";
 
 /**
  * Dialect-neutral translation of a grid query (the `dataSource` request slices)
@@ -48,6 +53,12 @@ export type QuerySpec = {
   search: QuerySearchClause | null;
   sort: QuerySortClause[];
   page: { limit: number; offset: number };
+};
+
+export type DataGridAnalysisQuerySpec = {
+  filters: QueryFilterClause[];
+  search: QuerySearchClause | null;
+  orderBy: QuerySortClause[];
 };
 
 /** The request slices the spec needs (a subset of DataGridDataSourceRequest). */
@@ -140,5 +151,47 @@ export function requestToQuerySpec<TData>(
     search,
     sort,
     page: { limit: pageSize, offset: pageIndex * pageSize },
+  };
+}
+
+/**
+ * Builds the detached predicate sent to a complete-dataset analysis adapter.
+ * Analysis intentionally does not inherit view sorting: adapters provide a
+ * deterministic backend order when an offset query has an empty `orderBy`.
+ */
+export function buildDataGridAnalysisQuerySpec(
+  scope: DataGridServerAnalysisScope,
+  filtersSnapshot: DataGridAnalysisFilterSnapshot,
+  columns: readonly DataGridSourceColumnSnapshot[],
+): DataGridAnalysisQuerySpec {
+  if (scope === "all") {
+    return { filters: [], search: null, orderBy: [] };
+  }
+
+  const columnById = new Map(columns.map((column) => [column.id, column]));
+  const filters: QueryFilterClause[] = [];
+  for (const columnFilter of filtersSnapshot.columnFilters) {
+    const column = columnById.get(columnFilter.id);
+    if (!column?.filter) continue;
+    const filterType = column.filter.type;
+    if (!isFilterValueActive(columnFilter.value, { filterType })) continue;
+    const resolved = resolveFilterClause(columnFilter.value, { filterType });
+    filters.push({
+      column: column.id,
+      filterType,
+      operator: resolved.operator,
+      value: resolved.value,
+    });
+  }
+
+  const term = filtersSnapshot.globalFilter.trim();
+  const searchColumns = columns
+    .filter((column) => SEARCHABLE_DATA_TYPES.has(column.dataType))
+    .map((column) => column.id);
+
+  return {
+    filters,
+    search: term ? { term, columns: searchColumns } : null,
+    orderBy: [],
   };
 }

@@ -63,6 +63,18 @@ import {
   toSerializableValue,
   type DataGridAnalysisRow,
 } from "./dataGridAnalysis";
+import type {
+  DataGridAnalysisExecutionOptions,
+  DataGridAnalysisContext,
+  DataGridServerAnalysisAdapter,
+  DataGridServerAnalysisProvenance,
+} from "./dataGridAnalysisContract";
+import {
+  normalizeDataGridAggregateQuery,
+  normalizeDataGridQuery,
+  validateDataGridServerAnalysisPayload,
+} from "./dataGridAnalysisValidation";
+import { buildDataGridAnalysisQuerySpec } from "./serverQuery";
 
 let analysisQuerySequence = 0;
 let actionPlanSequence = 0;
@@ -70,6 +82,7 @@ let transactionSequence = 0;
 
 type AnalysisStart = {
   queryId: string;
+  gridRevision: number;
   startedAt: Date;
   startedAtMs: number;
 };
@@ -81,6 +94,7 @@ const beginAnalysis = (
   gridRevision: number,
 ): AnalysisStart => ({
   queryId: `dg-${operation}-${gridRevision}-${Date.now().toString(36)}-${++analysisQuerySequence}`,
+  gridRevision,
   startedAt: new Date(),
   startedAtMs: monotonicNow(),
 });
@@ -165,6 +179,7 @@ type UseDataGridApiOptions<TData extends object> = {
   getColumnLabel: (columnId: string) => string;
   scopeRows: Record<DataGridQueryScope, DataGridAnalysisRow<TData>[]>;
   dataAccessLimits: DataGridDataAccessLimits;
+  serverAnalysis?: DataGridServerAnalysisAdapter;
 };
 
 const hasDuplicates = (ids: string[]) => new Set(ids).size !== ids.length;
@@ -363,6 +378,7 @@ export function useDataGridApi<TData extends object>({
   getColumnLabel,
   scopeRows,
   dataAccessLimits,
+  serverAnalysis,
 }: UseDataGridApiOptions<TData>) {
   const revisionInputs = [
     table.options.data,
@@ -391,6 +407,7 @@ export function useDataGridApi<TData extends object>({
     counts.selected,
     counts.visible,
     counts.total,
+    serverAnalysis,
   ];
   const revisionRef = useRef<{ inputs: unknown[]; value: number }>({ inputs: [], value: 0 });
   const pendingApplyBaseRevisionRef = useRef<number | null>(null);
@@ -425,37 +442,65 @@ export function useDataGridApi<TData extends object>({
   const pivotMeasureIdSet = new Set(pivotMeasureIds);
   const lockedLeftColumnIdSet = new Set(lockedLeftColumnIds);
 
+  const sourceColumns = [...columnsById.entries()].map(([id, column]) => {
+    const renderedColumn = table.getColumn(id);
+    const filter = filterByColumnId.get(id);
+    return {
+      id,
+      label: column.header,
+      dataType: column.dataType,
+      semantic: cloneSemanticMetadata(column),
+      visible: renderedColumn?.getIsVisible() ?? false,
+      canHide: layoutMode === "grid" && Boolean(renderedColumn?.getCanHide()),
+      canSort: layoutMode === "grid" && Boolean(renderedColumn?.getCanSort()),
+      canFilter: filterableColumnIdSet.has(id),
+      canGroup: layoutMode === "grid" && groupableColumnIdSet.has(id),
+      filter: filter
+        ? {
+            type: filter.filterType,
+            operators: [...filter.operators],
+            allowedValues: filter.allowedValues ? [...filter.allowedValues] : undefined,
+            min: filter.min,
+            max: filter.max,
+          }
+        : undefined,
+      aggregateOperations: aggregateOperationsForDataType(column.dataType),
+    };
+  });
+  const localAnalysisScopes: DataGridQueryScope[] = [
+    ...(features.rowSelection ? ["selected_rows" as const] : []),
+    "visible_page",
+  ];
+  const remoteQueryScopes = dataMode === "server" && serverAnalysis
+    ? serverAnalysis.capabilities.queryScopes.filter(
+        (scope, index, scopes) => scopes.indexOf(scope) === index,
+      )
+    : [];
+  const remoteAggregateScopes = dataMode === "server" && serverAnalysis
+    ? serverAnalysis.capabilities.aggregateScopes.filter(
+        (scope, index, scopes) => scopes.indexOf(scope) === index,
+      )
+    : [];
+  const clientCompleteScopes: DataGridQueryScope[] = dataMode === "client"
+    ? ["all", "filtered"]
+    : [];
+  const analysis = {
+    queryScopes: dataMode === "client"
+      ? [...clientCompleteScopes, ...localAnalysisScopes]
+      : [...localAnalysisScopes, ...remoteQueryScopes],
+    aggregateScopes: dataMode === "client"
+      ? [...clientCompleteScopes, ...localAnalysisScopes]
+      : [...localAnalysisScopes, ...remoteAggregateScopes],
+    remote: dataMode === "server" && Boolean(serverAnalysis),
+  };
+
   const getSnapshot = (): DataGridSnapshot => ({
     revision: revisionRef.current.value,
     layoutMode,
     dataMode,
     displayMode,
     features: { ...features },
-    sourceColumns: [...columnsById.entries()].map(([id, column]) => {
-      const renderedColumn = table.getColumn(id);
-      const filter = filterByColumnId.get(id);
-      return {
-        id,
-        label: column.header,
-        dataType: column.dataType,
-        semantic: cloneSemanticMetadata(column),
-        visible: renderedColumn?.getIsVisible() ?? false,
-        canHide: layoutMode === "grid" && Boolean(renderedColumn?.getCanHide()),
-        canSort: layoutMode === "grid" && Boolean(renderedColumn?.getCanSort()),
-        canFilter: filterableColumnIdSet.has(id),
-        canGroup: layoutMode === "grid" && groupableColumnIdSet.has(id),
-        filter: filter
-          ? {
-              type: filter.filterType,
-              operators: [...filter.operators],
-              allowedValues: filter.allowedValues ? [...filter.allowedValues] : undefined,
-              min: filter.min,
-              max: filter.max,
-            }
-          : undefined,
-        aggregateOperations: aggregateOperationsForDataType(column.dataType),
-      };
-    }),
+    sourceColumns,
     columns: dataColumns.map((column, order) => ({
       id: column.id,
       label: getColumnLabel(column.id),
@@ -475,6 +520,7 @@ export function useDataGridApi<TData extends object>({
       canGroup: column.getCanGroup(),
     })),
     rowCounts: { ...counts },
+    analysis,
     state: {
       sorting: state.sorting.map((sort) => ({ ...sort })),
       globalFilter: state.globalFilter,
@@ -561,24 +607,41 @@ export function useDataGridApi<TData extends object>({
     columnIds,
     aggregateBy = [],
     supportingRowIds,
+    supportingRowCount,
+    supportingRowIdsTruncated,
     supportingGroupKeys = [],
     warnings,
     replay,
+    execution = { mode: "client" },
+    capturedFilters,
   }: {
     start: AnalysisStart;
     scope: DataGridQueryScope;
     columnIds: string[];
     aggregateBy?: string[];
     supportingRowIds: string[];
+    supportingRowCount: number;
+    supportingRowIdsTruncated: boolean;
     supportingGroupKeys?: DataGridAnalysisReceipt["supportingGroupKeys"];
     warnings: DataGridAnalysisWarning[];
     replay: DataGridAnalysisReceipt["replay"];
+    execution?: DataGridAnalysisReceipt["execution"];
+    capturedFilters?: DataGridAnalysisReceipt["filters"];
   }): DataGridAnalysisReceipt => ({
     queryId: start.queryId,
-    gridRevision: revisionRef.current.value,
+    gridRevision: start.gridRevision,
+    completedGridRevision: revisionRef.current.value,
     scope,
     columns: receiptColumns(columnIds),
-    filters: receiptFilters(scope),
+    filters: capturedFilters
+      ? {
+          globalFilter: capturedFilters.globalFilter,
+          columnFilters: capturedFilters.columnFilters.map((filter) => ({
+            id: filter.id,
+            value: toSerializableValue(filter.value),
+          })),
+        }
+      : receiptFilters(scope),
     sorting: scope === "visible_page"
       ? state.sorting.map((sort) => ({ ...sort }))
       : [],
@@ -587,12 +650,16 @@ export function useDataGridApi<TData extends object>({
       aggregateBy: [...aggregateBy],
     },
     supportingRowIds: [...supportingRowIds],
+    supportingRowCount,
+    supportingRowIdsTruncated,
     supportingGroupKeys: supportingGroupKeys.map((key) =>
       toSerializableValue(key) as Record<string, ReturnType<typeof toSerializableValue>>,
     ),
     warnings,
     timing: completeAnalysisTiming(start),
     replay,
+    execution,
+    limits: { ...dataAccessLimits },
   });
 
   const query = (input: DataGridQuery): DataGridQueryResult => {
@@ -607,46 +674,17 @@ export function useDataGridApi<TData extends object>({
         },
       };
     }
-    const columnIds = resolveQueryColumnIds(input.columnIds);
-    if (columnIds.length === 0) {
-      return {
-        ok: false,
-        scope: input.scope,
-        error: { code: "invalid_query", message: "At least one column is required." },
-      };
-    }
-    if (hasDuplicates(columnIds)) {
-      return {
-        ok: false,
-        scope: input.scope,
-        error: { code: "invalid_query", message: "Duplicate column ids are not allowed." },
-      };
-    }
-    const unknownColumn = columnIds.find((columnId) => !sourceColumnIdSet.has(columnId));
-    if (unknownColumn) return invalidColumn(input.scope, unknownColumn);
-    const offset = input.offset ?? 0;
-    const limit = input.limit ?? dataAccessLimits.maxRowsPerQuery;
-    if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 0) {
-      return {
-        ok: false,
-        scope: input.scope,
-        error: { code: "invalid_query", message: "offset and limit must be non-negative integers." },
-      };
-    }
-    if (
-      limit > dataAccessLimits.maxRowsPerQuery ||
-      limit * columnIds.length > dataAccessLimits.maxCellsPerQuery
-    ) {
-      return {
-        ok: false,
-        scope: input.scope,
-        error: {
-          code: "limit_exceeded",
-          message: `Query exceeds the ${dataAccessLimits.maxRowsPerQuery}-row or ${dataAccessLimits.maxCellsPerQuery}-cell limit.`,
-        },
-      };
-    }
-    const rows = scopeRows[input.scope];
+    const normalized = normalizeDataGridQuery(input, {
+      columns: sourceColumns,
+      defaultColumnIds: resolveQueryColumnIds(input.columnIds),
+      limits: dataAccessLimits,
+    });
+    if (!normalized.ok) return { ok: false, scope: input.scope, error: normalized.error };
+    const normalizedInput = normalized.value;
+    const columnIds = normalizedInput.columnIds as string[];
+    const offset = normalizedInput.offset as number;
+    const limit = normalizedInput.limit as number;
+    const rows = scopeRows[normalizedInput.scope];
     const page = rows.slice(offset, offset + limit);
     const warnings: DataGridAnalysisWarning[] = [];
     if (offset > 0) {
@@ -664,13 +702,22 @@ export function useDataGridApi<TData extends object>({
         actual: rows.length,
       });
     }
+    const supportingRowIdsTruncated = page.length < rows.length;
+    if (supportingRowIdsTruncated) {
+      warnings.push({
+        code: "supporting_rows_truncated",
+        message: "The receipt contains only the bounded row IDs returned by this query.",
+        limit: page.length,
+        actual: rows.length,
+      });
+    }
     const replay = {
       operation: "query" as const,
-      payload: { scope: input.scope, columnIds: [...columnIds], offset, limit },
+      payload: { scope: normalizedInput.scope, columnIds: [...columnIds], offset, limit },
     };
     return {
       ok: true,
-      scope: input.scope,
+      scope: normalizedInput.scope,
       columns: columnIds.map((id) => ({
         id,
         label: columnsById.get(id)?.header ?? id,
@@ -688,9 +735,11 @@ export function useDataGridApi<TData extends object>({
       truncated: offset + page.length < rows.length,
       receipt: createReceipt({
         start,
-        scope: input.scope,
+        scope: normalizedInput.scope,
         columnIds,
         supportingRowIds: page.map((row) => row.rowId),
+        supportingRowCount: rows.length,
+        supportingRowIdsTruncated,
         warnings,
         replay,
       }),
@@ -709,13 +758,12 @@ export function useDataGridApi<TData extends object>({
         },
       };
     }
-    if (input.metrics.length === 0) {
-      return {
-        ok: false,
-        scope: input.scope,
-        error: { code: "invalid_query", message: "At least one aggregate metric is required." },
-      };
-    }
+    const normalized = normalizeDataGridAggregateQuery(input, {
+      columns: sourceColumns,
+      limits: dataAccessLimits,
+    });
+    if (!normalized.ok) return { ok: false, scope: input.scope, error: normalized.error };
+    input = normalized.value;
     const referencedColumnIds = [
       ...(input.groupBy ?? []),
       ...input.metrics.flatMap((metric) => (metric.columnId ? [metric.columnId] : [])),
@@ -769,7 +817,7 @@ export function useDataGridApi<TData extends object>({
           limit: Math.max(1, Math.min(metric.limit ?? 10, dataAccessLimits.maxTopValues)),
         }
       : { ...metric });
-    const warnings: DataGridAnalysisWarning[] = [];
+    const warnings: DataGridAnalysisWarning[] = [...normalized.warnings];
     input.metrics.forEach((metric) => {
       if (metric.operation !== "top_values" || !metric.columnId) return;
       const effectiveLimit = Math.max(
@@ -807,6 +855,16 @@ export function useDataGridApi<TData extends object>({
         groupBy: [...groupBy],
       },
     };
+    const supportingRows = rows.slice(0, dataAccessLimits.maxRowsPerQuery);
+    const supportingRowIdsTruncated = supportingRows.length < rows.length;
+    if (supportingRowIdsTruncated) {
+      warnings.push({
+        code: "supporting_rows_truncated",
+        message: `The receipt includes ${supportingRows.length} bounded evidence row IDs for ${rows.length} analyzed rows.`,
+        limit: dataAccessLimits.maxRowsPerQuery,
+        actual: rows.length,
+      });
+    }
     if (groupBy.length === 0) {
       return {
         ok: true,
@@ -819,7 +877,9 @@ export function useDataGridApi<TData extends object>({
           start,
           scope: input.scope,
           columnIds,
-          supportingRowIds: rows.map((row) => row.rowId),
+          supportingRowIds: supportingRows.map((row) => row.rowId),
+          supportingRowCount: rows.length,
+          supportingRowIdsTruncated,
           warnings,
           replay,
         }),
@@ -871,10 +931,361 @@ export function useDataGridApi<TData extends object>({
         scope: input.scope,
         columnIds,
         aggregateBy: groupBy,
-        supportingRowIds: rows.map((row) => row.rowId),
+        supportingRowIds: supportingRows.map((row) => row.rowId),
+        supportingRowCount: rows.length,
+        supportingRowIdsTruncated,
         supportingGroupKeys: limitedGroups.map((group) => group.key),
         warnings,
         replay,
+      }),
+    };
+  };
+
+  const analysisError = (
+    scope: DataGridQueryScope,
+    code: "scope_unavailable" | "analysis_aborted" | "analysis_failed" | "invalid_analysis_response",
+    message: string,
+  ) => ({ ok: false as const, scope, error: { code, message } });
+
+  const supportsRemoteScope = (
+    operation: "query" | "aggregate",
+    scope: DataGridQueryScope,
+  ) => Boolean(
+    serverAnalysis &&
+    dataMode === "server" &&
+    (scope === "all" || scope === "filtered") &&
+    serverAnalysis.capabilities[operation === "query" ? "queryScopes" : "aggregateScopes"]
+      .includes(scope),
+  );
+
+  const detachedSourceColumns = () => sourceColumns.map((column) => ({
+    ...column,
+    semantic: column.semantic
+      ? {
+          ...column.semantic,
+          synonyms: column.semantic.synonyms ? [...column.semantic.synonyms] : undefined,
+          allowedValues: column.semantic.allowedValues
+            ? [...column.semantic.allowedValues]
+            : undefined,
+        }
+      : undefined,
+    filter: column.filter
+      ? {
+          ...column.filter,
+          operators: [...column.filter.operators],
+          allowedValues: column.filter.allowedValues
+            ? [...column.filter.allowedValues]
+            : undefined,
+        }
+      : undefined,
+    aggregateOperations: [...column.aggregateOperations],
+  }));
+
+  const createServerContext = (
+    start: AnalysisStart,
+    scope: "all" | "filtered",
+  ): DataGridAnalysisContext => {
+    const filters = receiptFilters(scope);
+    return {
+      queryId: start.queryId,
+      gridRevision: start.gridRevision,
+      scope,
+      columns: detachedSourceColumns(),
+      filters,
+      querySpec: buildDataGridAnalysisQuerySpec(scope, filters, sourceColumns),
+      limits: { ...dataAccessLimits },
+    };
+  };
+
+  const cloneServerContext = (
+    context: DataGridAnalysisContext,
+  ): DataGridAnalysisContext => ({
+    ...context,
+    columns: context.columns.map((column) => ({
+      ...column,
+      semantic: column.semantic
+        ? {
+            ...column.semantic,
+            synonyms: column.semantic.synonyms ? [...column.semantic.synonyms] : undefined,
+            allowedValues: column.semantic.allowedValues
+              ? [...column.semantic.allowedValues]
+              : undefined,
+          }
+        : undefined,
+      filter: column.filter
+        ? {
+            ...column.filter,
+            operators: [...column.filter.operators],
+            allowedValues: column.filter.allowedValues
+              ? [...column.filter.allowedValues]
+              : undefined,
+          }
+        : undefined,
+      aggregateOperations: [...column.aggregateOperations],
+    })),
+    filters: {
+      globalFilter: context.filters.globalFilter,
+      columnFilters: context.filters.columnFilters.map((filter) => ({
+        id: filter.id,
+        value: toSerializableValue(filter.value),
+      })),
+    },
+    querySpec: {
+      filters: context.querySpec.filters.map((filter) => ({
+        ...filter,
+        value: toSerializableValue(filter.value),
+      })),
+      search: context.querySpec.search
+        ? { ...context.querySpec.search, columns: [...context.querySpec.search.columns] }
+        : null,
+      orderBy: context.querySpec.orderBy.map((sort) => ({ ...sort })),
+    },
+    limits: { ...context.limits },
+  });
+
+  const freezeDetachedAnalysisValue = <T,>(value: T): T => {
+    if (value == null || typeof value !== "object" || Object.isFrozen(value)) return value;
+    Object.values(value).forEach((item) => freezeDetachedAnalysisValue(item));
+    return Object.freeze(value);
+  };
+
+  const serverWarnings = (
+    start: AnalysisStart,
+    supportingRowCount: number,
+    supportingRowIds: string[],
+    warnings: DataGridAnalysisWarning[],
+  ) => {
+    const result = warnings.map((warning) => ({ ...warning }));
+    if (
+      supportingRowIds.length < supportingRowCount &&
+      !result.some((warning) => warning.code === "supporting_rows_truncated")
+    ) {
+      result.push({
+        code: "supporting_rows_truncated",
+        message: `The receipt includes ${supportingRowIds.length} evidence row IDs for ${supportingRowCount} analyzed rows.`,
+        limit: supportingRowIds.length,
+        actual: supportingRowCount,
+      });
+    }
+    if (
+      revisionRef.current.value !== start.gridRevision &&
+      !result.some((warning) => warning.code === "view_changed_during_execution")
+    ) {
+      result.push({
+        code: "view_changed_during_execution",
+        message: "The grid view changed while this analysis was running; the receipt preserves the starting view.",
+      });
+    }
+    return result;
+  };
+
+  const serverExecution = (
+    provenance?: DataGridServerAnalysisProvenance,
+  ): DataGridAnalysisReceipt["execution"] => ({
+    mode: "server",
+    adapterId: serverAnalysis?.id,
+    sourceRevision: provenance?.sourceRevision,
+    requestFingerprint: provenance?.requestFingerprint,
+    effectiveOrdering: provenance?.effectiveOrdering,
+  });
+
+  const queryAsync = async (
+    input: DataGridQuery,
+    options?: DataGridAnalysisExecutionOptions,
+  ): Promise<DataGridQueryResult> => {
+    if (!unavailableScope(input.scope)) return query(input);
+    if (!supportsRemoteScope("query", input.scope) || !serverAnalysis) {
+      return analysisError(
+        input.scope,
+        "scope_unavailable",
+        `${input.scope} is unavailable because no mounted server analysis adapter supports queries for this scope.`,
+      );
+    }
+    const normalized = normalizeDataGridQuery(input, {
+      columns: sourceColumns,
+      defaultColumnIds: resolveQueryColumnIds(input.columnIds),
+      limits: dataAccessLimits,
+    });
+    if (!normalized.ok) return { ok: false, scope: input.scope, error: normalized.error };
+    const scope = input.scope as "all" | "filtered";
+    const start = beginAnalysis("query", revisionRef.current.value);
+    const signal = options?.signal ?? new AbortController().signal;
+    if (signal.aborted) {
+      return analysisError(scope, "analysis_aborted", "Server analysis was aborted before execution.");
+    }
+    const capturedContext = createServerContext(start, scope);
+    const request = {
+      operation: "query" as const,
+      input: freezeDetachedAnalysisValue({
+        ...normalized.value,
+        scope,
+        columnIds: [...normalized.value.columnIds],
+      }),
+      context: freezeDetachedAnalysisValue(cloneServerContext(capturedContext)),
+      signal,
+    };
+    let rawPayload: unknown;
+    try {
+      rawPayload = await serverAnalysis.execute(request);
+    } catch {
+      return signal.aborted
+        ? analysisError(scope, "analysis_aborted", "Server analysis was aborted.")
+        : analysisError(scope, "analysis_failed", "The server analysis adapter could not complete the query.");
+    }
+    if (signal.aborted) {
+      return analysisError(scope, "analysis_aborted", "Server analysis was aborted.");
+    }
+    const validated = validateDataGridServerAnalysisPayload(request, rawPayload);
+    if (!validated.ok) {
+      return analysisError(
+        scope,
+        "invalid_analysis_response",
+        "The server analysis adapter returned an invalid query response.",
+      );
+    }
+    if (validated.value.operation !== "query") {
+      return analysisError(scope, "invalid_analysis_response", "The server analysis response operation did not match the request.");
+    }
+    const payload = validated.value;
+    const supportingRowIds = payload.rows.map((row) => row.rowId);
+    const warnings = serverWarnings(
+      start,
+      payload.rowCount,
+      supportingRowIds,
+      [...normalized.warnings, ...(payload.warnings ?? [])],
+    );
+    const replay = {
+      operation: "query" as const,
+      payload: { ...normalized.value, columnIds: [...normalized.value.columnIds] },
+    };
+    return {
+      ok: true,
+      scope,
+      columns: receiptColumns(normalized.value.columnIds),
+      rows: payload.rows.map((row) => ({
+        rowId: row.rowId,
+        values: { ...row.values },
+      })),
+      rowCount: payload.rowCount,
+      returnedRowCount: payload.returnedRowCount,
+      offset: payload.offset,
+      truncated: payload.truncated,
+      receipt: createReceipt({
+        start,
+        scope,
+        columnIds: normalized.value.columnIds,
+        supportingRowIds,
+        supportingRowCount: payload.rowCount,
+        supportingRowIdsTruncated: supportingRowIds.length < payload.rowCount,
+        warnings,
+        replay,
+        execution: serverExecution(payload.provenance),
+        capturedFilters: capturedContext.filters,
+      }),
+    };
+  };
+
+  const aggregateAsync = async (
+    input: DataGridAggregateQuery,
+    options?: DataGridAnalysisExecutionOptions,
+  ): Promise<DataGridAggregateResult> => {
+    if (!unavailableScope(input.scope)) return aggregate(input);
+    if (!supportsRemoteScope("aggregate", input.scope) || !serverAnalysis) {
+      return analysisError(
+        input.scope,
+        "scope_unavailable",
+        `${input.scope} is unavailable because no mounted server analysis adapter supports aggregation for this scope.`,
+      );
+    }
+    const normalized = normalizeDataGridAggregateQuery(input, {
+      columns: sourceColumns,
+      limits: dataAccessLimits,
+    });
+    if (!normalized.ok) return { ok: false, scope: input.scope, error: normalized.error };
+    const scope = input.scope as "all" | "filtered";
+    const start = beginAnalysis("aggregate", revisionRef.current.value);
+    const signal = options?.signal ?? new AbortController().signal;
+    if (signal.aborted) {
+      return analysisError(scope, "analysis_aborted", "Server analysis was aborted before execution.");
+    }
+    const capturedContext = createServerContext(start, scope);
+    const request = {
+      operation: "aggregate" as const,
+      input: freezeDetachedAnalysisValue({
+        ...normalized.value,
+        scope,
+        metrics: normalized.value.metrics.map((metric) => ({ ...metric })),
+        groupBy: [...normalized.value.groupBy],
+      }),
+      context: freezeDetachedAnalysisValue(cloneServerContext(capturedContext)),
+      signal,
+    };
+    let rawPayload: unknown;
+    try {
+      rawPayload = await serverAnalysis.execute(request);
+    } catch {
+      return signal.aborted
+        ? analysisError(scope, "analysis_aborted", "Server analysis was aborted.")
+        : analysisError(scope, "analysis_failed", "The server analysis adapter could not complete the aggregate.");
+    }
+    if (signal.aborted) {
+      return analysisError(scope, "analysis_aborted", "Server analysis was aborted.");
+    }
+    const validated = validateDataGridServerAnalysisPayload(request, rawPayload);
+    if (!validated.ok) {
+      return analysisError(
+        scope,
+        "invalid_analysis_response",
+        "The server analysis adapter returned an invalid aggregate response.",
+      );
+    }
+    if (validated.value.operation !== "aggregate") {
+      return analysisError(scope, "invalid_analysis_response", "The server analysis response operation did not match the request.");
+    }
+    const payload = validated.value;
+    const supportingRowIds = [...(payload.supportingRowIds ?? [])];
+    const warnings = serverWarnings(
+      start,
+      payload.rowCount,
+      supportingRowIds,
+      [...normalized.warnings, ...(payload.warnings ?? [])],
+    );
+    const columnIds = [...new Set([
+      ...normalized.value.groupBy,
+      ...normalized.value.metrics.flatMap((metric) => metric.columnId ? [metric.columnId] : []),
+    ])];
+    const replay = {
+      operation: "aggregate" as const,
+      payload: {
+        ...normalized.value,
+        metrics: normalized.value.metrics.map((metric) => ({ ...metric })),
+        groupBy: [...normalized.value.groupBy],
+      },
+    };
+    return {
+      ok: true,
+      scope,
+      rowCount: payload.rowCount,
+      metrics: { ...payload.metrics },
+      groups: payload.groups.map((group) => ({
+        key: { ...group.key },
+        rowCount: group.rowCount,
+        metrics: { ...group.metrics },
+      })),
+      truncated: payload.truncated,
+      receipt: createReceipt({
+        start,
+        scope,
+        columnIds,
+        aggregateBy: normalized.value.groupBy,
+        supportingRowIds,
+        supportingRowCount: payload.rowCount,
+        supportingRowIdsTruncated: supportingRowIds.length < payload.rowCount,
+        supportingGroupKeys: payload.groups.map((group) => group.key),
+        warnings,
+        replay,
+        execution: serverExecution(payload.provenance),
+        capturedFilters: capturedContext.filters,
       }),
     };
   };
@@ -1715,6 +2126,8 @@ export function useDataGridApi<TData extends object>({
     getSnapshot,
     query,
     aggregate,
+    queryAsync,
+    aggregateAsync,
     plan,
     validatePlan,
     applyPlan,

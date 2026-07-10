@@ -273,6 +273,7 @@ export function DataGrid<TData extends object>({
   data: externalData = [],
   columns,
   dataSource,
+  serverAnalysis,
   layoutMode = "grid",
   dataMode = "client",
   rowCount: externalRowCount,
@@ -1574,6 +1575,7 @@ export function DataGrid<TData extends object>({
     },
     scopeRows,
     dataAccessLimits: resolvedDataAccessLimits,
+    serverAnalysis,
   });
 
   // Card layout renders leaf rows only (grouping defaults off in card mode,

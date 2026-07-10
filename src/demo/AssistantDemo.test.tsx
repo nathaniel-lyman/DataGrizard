@@ -45,7 +45,7 @@ describe("AssistantDemo", () => {
   it("reveals the receipt behind a completed assistant answer", async () => {
     let planSequence = 0;
     const toolkit = {
-      execute: (name: string) => {
+      execute: async (name: string) => {
         if (name === "grid_plan_actions") {
           planSequence += 1;
           return {

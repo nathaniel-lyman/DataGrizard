@@ -1,6 +1,6 @@
 # Server analysis contract and complete-dataset agent scope
 
-**Status:** Proposed implementation spec (2026-07-10)  
+**Status:** Implemented and verified (2026-07-10)
 **Component:** `src/components/DataGrid/` reusable `DataGrid` and agent toolkit  
 **Scope:** Provider-neutral, asynchronous query and aggregation over complete server datasets  
 **Depends on:** The agent API/toolkit work in `b7cf51c`, `e8361d9`, `3a37770`, and `cb8177f`
@@ -711,25 +711,25 @@ Ordering assertions must use a deterministic adapter order.
 
 ## Acceptance criteria
 
-- [ ] `DataGridApi` exposes local sync and canonical async analysis methods.
-- [ ] `DataGridProps` accepts an optional provider-neutral `serverAnalysis` adapter.
-- [ ] No adapter preserves the current `scope_unavailable` behavior and tool
+- [x] `DataGridApi` exposes local sync and canonical async analysis methods.
+- [x] `DataGridProps` accepts an optional provider-neutral `serverAnalysis` adapter.
+- [x] No adapter preserves the current `scope_unavailable` behavior and tool
       schema omission.
-- [ ] A capable adapter enables complete `all`/`filtered` scope only for the
+- [x] A capable adapter enables complete `all`/`filtered` scope only for the
       operations it advertises.
-- [ ] Client and server success results use the same public result unions.
-- [ ] Client and server receipts use the same shape and record execution mode,
+- [x] Client and server success results use the same public result unions.
+- [x] Client and server receipts use the same shape and record execution mode,
       limits, bounded evidence, timing, replay, and revision provenance.
-- [ ] Aggregate evidence IDs are bounded; complete remote ID enumeration is not
+- [x] Aggregate evidence IDs are bounded; complete remote ID enumeration is not
       required.
-- [ ] Request context is detached at start and cannot be rewritten by later view
+- [x] Request context is detached at start and cannot be rewritten by later view
       changes.
-- [ ] Inputs and adapter responses are both validated against capabilities,
+- [x] Inputs and adapter responses are both validated against capabilities,
       columns, types, and limits.
-- [ ] Agent toolkit execution is consistently asynchronous and policy-safe.
-- [ ] Existing page `dataSource`, local analysis, and transaction behavior do not
+- [x] Agent toolkit execution is consistently asynchronous and policy-safe.
+- [x] Existing page `dataSource`, local analysis, and transaction behavior do not
       regress.
-- [ ] Focused analysis tests, full Vitest, application build, package smoke,
+- [x] Focused analysis tests, full Vitest, application build, package smoke,
       publint, ATTW, and `git diff --check` pass.
 
 ## Risks and mitigations

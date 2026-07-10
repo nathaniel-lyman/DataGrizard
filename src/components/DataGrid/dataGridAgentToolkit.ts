@@ -253,12 +253,6 @@ const presentationSchemaForColumn = (column: DataGridSourceColumnSnapshot): Json
   };
 };
 
-const liveScopes = (snapshot: DataGridSnapshot): DataGridQueryScope[] => [
-  ...(snapshot.dataMode === "client" ? ["all", "filtered"] as const : []),
-  ...(snapshot.features.rowSelection ? ["selected_rows"] as const : []),
-  "visible_page",
-];
-
 const isOperationAllowed = (
   policy: DataGridAgentPolicy,
   operation: DataGridAgentOperation,
@@ -281,7 +275,9 @@ const availableScopes = (
   policy: DataGridAgentPolicy,
   operation: "query_rows" | "aggregate",
 ) => isOperationAllowed(policy, operation, snapshot)
-  ? liveScopes(snapshot).filter((scope) => isScopeAllowed(policy, operation, scope, snapshot))
+  ? snapshot.analysis[
+    operation === "query_rows" ? "queryScopes" : "aggregateScopes"
+  ].filter((scope) => isScopeAllowed(policy, operation, scope, snapshot))
   : [];
 
 const isColumnAllowed = (
@@ -579,6 +575,11 @@ const sanitizeSnapshot = (
     : null;
   return {
     ...snapshot,
+    analysis: {
+      ...snapshot.analysis,
+      queryScopes: availableScopes(snapshot, policy, "query_rows"),
+      aggregateScopes: availableScopes(snapshot, policy, "aggregate"),
+    },
     policy: {
       allowedOperations: ([
         "get_context", "query_rows", "aggregate", "set_column_visibility", "set_sorting",
@@ -687,7 +688,7 @@ export function createDataGridAgentToolkit<TData extends object>({
     return createToolDefinitions(api.getSnapshot(), getPolicy(), resolvedLimits);
   };
 
-  const execute = (toolName: DataGridAgentToolName, input: unknown = {}) => {
+  const execute = async (toolName: DataGridAgentToolName, input: unknown = {}) => {
     const api = getApi();
     if (!api) {
       return { ok: false as const, error: { code: "api_unavailable", message: "The grid API is not mounted." } };
@@ -727,12 +728,30 @@ export function createDataGridAgentToolkit<TData extends object>({
       return sanitizeSnapshot(snapshot, policy);
     }
     if (toolName === "grid_query_rows") {
-      const columns = getAllowedColumns(snapshot, policy, "query_rows");
-      const scopes = availableScopes(snapshot, policy, "query_rows");
       const query = value as DataGridQuery;
-      if (!scopes.includes(query.scope)) return invalidInput("A scope available in the live data mode is required.");
-      const columnIds = query.columnIds ?? defaultQueryColumns(snapshot, columns);
-      const columnError = validateColumnIds(columnIds, "query_rows");
+      const dispatchSnapshot = api.getSnapshot();
+      const dispatchPolicy = getPolicy();
+      if (!isOperationAllowed(dispatchPolicy, "query_rows", dispatchSnapshot)) {
+        return policyError("query_rows");
+      }
+      const scopes = availableScopes(dispatchSnapshot, dispatchPolicy, "query_rows");
+      if (!scopes.includes(query.scope)) {
+        return invalidInput("A scope available in the live data mode is required.");
+      }
+      const columns = getAllowedColumns(dispatchSnapshot, dispatchPolicy, "query_rows");
+      const requestedColumnIds = query.columnIds ?? defaultQueryColumns(dispatchSnapshot, columns);
+      if (
+        !Array.isArray(requestedColumnIds) ||
+        requestedColumnIds.some((columnId) => typeof columnId !== "string")
+      ) {
+        return invalidInput("Column ids must be an array of strings.");
+      }
+      const columnIds = requestedColumnIds as string[];
+      const allowedColumnIds = new Set(columns.map((column) => column.id));
+      const invalidColumnId = columnIds.find((columnId) => !allowedColumnIds.has(columnId));
+      const columnError = invalidColumnId == null
+        ? null
+        : `Column is unavailable for this operation: ${invalidColumnId}.`;
       if (columnError) return invalidInput(columnError);
       const limit = query.limit ?? resolvedLimits.maxRowsPerQuery;
       if (
@@ -741,19 +760,30 @@ export function createDataGridAgentToolkit<TData extends object>({
       ) {
         return invalidInput(`Query exceeds the toolkit's ${resolvedLimits.maxRowsPerQuery}-row or ${resolvedLimits.maxCellsPerQuery}-cell limit.`);
       }
-      return api.query({ ...query, columnIds, limit });
+      return await api.queryAsync({ ...query, columnIds, limit });
     }
     if (toolName === "grid_aggregate") {
-      const columns = getAllowedColumns(snapshot, policy, "aggregate");
+      const dispatchSnapshot = api.getSnapshot();
+      const dispatchPolicy = getPolicy();
+      if (!isOperationAllowed(dispatchPolicy, "aggregate", dispatchSnapshot)) {
+        return policyError("aggregate");
+      }
+      const columns = getAllowedColumns(dispatchSnapshot, dispatchPolicy, "aggregate");
       const columnById = new Map(columns.map((column) => [column.id, column]));
       if (
-        !availableScopes(snapshot, policy, "aggregate").includes(value.scope as DataGridQueryScope) ||
+        !availableScopes(dispatchSnapshot, dispatchPolicy, "aggregate")
+          .includes(value.scope as DataGridQueryScope) ||
         !Array.isArray(value.metrics) ||
         value.metrics.length === 0
       ) {
         return invalidInput("A scope available in the live data mode and at least one metric are required.");
       }
-      const groupError = value.groupBy == null ? null : validateColumnIds(value.groupBy, "aggregate");
+      const groupError = value.groupBy == null || (
+        Array.isArray(value.groupBy) &&
+        value.groupBy.every((columnId) => typeof columnId === "string" && columnById.has(columnId))
+      )
+        ? null
+        : "Group-by column ids must be an array of available column ids.";
       if (groupError) return invalidInput(groupError);
       for (const candidate of value.metrics) {
         if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
@@ -769,7 +799,7 @@ export function createDataGridAgentToolkit<TData extends object>({
           return invalidInput(`Operation ${metric.operation} is unavailable for column ${metric.columnId}.`);
         }
       }
-      return api.aggregate(value as DataGridAggregateQuery);
+      return await api.aggregateAsync(value as DataGridAggregateQuery);
     }
     if (toolName === "grid_validate_plan" || toolName === "grid_apply_plan") {
       if (typeof value.planId !== "string") return invalidInput("planId is required.");

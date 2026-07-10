@@ -7,7 +7,7 @@ import {
 
 type AssistantDemoProps = {
   toolkit: {
-    execute: (name: DataGridAgentToolDefinition["name"], input?: unknown) => unknown;
+      execute: (name: DataGridAgentToolDefinition["name"], input?: unknown) => Promise<unknown>;
   };
   disabled?: boolean;
 };
