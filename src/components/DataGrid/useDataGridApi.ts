@@ -443,7 +443,10 @@ export function useDataGridApi<TData extends object>({
   const lockedLeftColumnIdSet = new Set(lockedLeftColumnIds);
 
   const sourceColumns = [...columnsById.entries()].map(([id, column]) => {
-    const renderedColumn = table.getColumn(id);
+    // Pivot tables materialize generated columns, so asking TanStack directly
+    // for a source-only id logs a missing-column error. Resolve from the
+    // already materialized leaf set instead; grid-mode semantics are identical.
+    const renderedColumn = dataColumns.find((candidate) => candidate.id === id);
     const filter = filterByColumnId.get(id);
     return {
       id,

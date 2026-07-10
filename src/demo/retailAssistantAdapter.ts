@@ -10,6 +10,7 @@ type ToolkitExecutor = {
 
 export type RetailAssistantWorkflowResult = {
   toolCalls: Array<{ name: DataGridAgentToolDefinition["name"]; input: unknown }>;
+  transactionIds: string[];
   query: DataGridQueryResult;
   aggregation: DataGridAggregateResult;
   summary: string;
@@ -57,6 +58,9 @@ export async function runRetailAssistantWorkflow(
   if (!applied || typeof applied !== "object" || !("ok" in applied) || !applied.ok) {
     throw new Error(`grid_apply_plan failed: ${JSON.stringify(applied)}`);
   }
+  const firstTransactionId = (applied as unknown as {
+    receipt: { transactionId: string };
+  }).receipt.transactionId;
   await afterGridRender();
 
   // TanStack resets pagination after filter/group changes. Plan the page-size
@@ -75,6 +79,9 @@ export async function runRetailAssistantWorkflow(
   if (!pageApplied || typeof pageApplied !== "object" || !("ok" in pageApplied) || !pageApplied.ok) {
     throw new Error(`grid_apply_plan failed: ${JSON.stringify(pageApplied)}`);
   }
+  const pageTransactionId = (pageApplied as unknown as {
+    receipt: { transactionId: string };
+  }).receipt.transactionId;
   await afterGridRender();
 
   const query = await call("grid_query_rows", {
@@ -97,6 +104,7 @@ export async function runRetailAssistantWorkflow(
   const averageMargin = typeof metrics.averageMargin === "number" ? metrics.averageMargin : 0;
   return {
     toolCalls,
+    transactionIds: [firstTransactionId, pageTransactionId],
     query,
     aggregation,
     summary: `${products} Grocery products · ${new Intl.NumberFormat("en-US", {

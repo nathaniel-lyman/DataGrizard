@@ -20,6 +20,8 @@ const waitForGridUpdate = () => new Promise<void>((resolve) => setTimeout(resolv
 export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps) {
   const [result, setResult] = useState<RetailAssistantWorkflowResult | null>(null);
   const [workflowRunning, setWorkflowRunning] = useState(false);
+  const [undoRunning, setUndoRunning] = useState(false);
+  const [undoComplete, setUndoComplete] = useState(false);
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
             onClick={async () => {
               setWorkflowRunning(true);
               try {
+                setUndoComplete(false);
                 setResult(await runRetailAssistantWorkflow(toolkit));
               } finally {
                 setWorkflowRunning(false);
@@ -124,7 +127,7 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
           </button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2.5 text-slate-600">
-          <span className="font-medium text-slate-500">Video prompts:</span>
+          <span className="font-medium text-slate-500">Try an example:</span>
           {[
             "Show the highest-sales Grocery products and summarize the results.",
             "Which department has the strongest sales? Use evidence.",
@@ -147,7 +150,31 @@ export function AssistantDemo({ toolkit, disabled = false }: AssistantDemoProps)
         ) : null}
         {agentAnswer ? <output className="mt-3 block rounded-md border border-violet-100 bg-white px-3 py-2 font-medium leading-5 text-slate-700">{agentAnswer}</output> : null}
         {agentError ? <p role="alert" className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 font-medium text-rose-800">{agentError}</p> : null}
-        {result ? <output className="mt-3 block font-medium text-slate-700">{result.summary}</output> : null}
+        {result ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <output className="block font-medium text-slate-700">{result.summary}</output>
+            <button
+              type="button"
+              disabled={undoRunning || undoComplete}
+              onClick={async () => {
+                setUndoRunning(true);
+                try {
+                  const transactionId = result.transactionIds[result.transactionIds.length - 1];
+                  if (transactionId) {
+                    await toolkit.execute("grid_undo", { transactionId });
+                    await waitForGridUpdate();
+                  }
+                  setUndoComplete(true);
+                } finally {
+                  setUndoRunning(false);
+                }
+              }}
+              className="h-10 rounded-md border border-slate-300 bg-white px-4 font-semibold text-slate-700 transition hover:border-violet-300 hover:text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {undoRunning ? "Undoing…" : undoComplete ? "Latest change undone" : "Undo latest agent change"}
+            </button>
+          </div>
+        ) : null}
         {receipt ? (
           <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
             <summary className="cursor-pointer font-semibold text-slate-700">

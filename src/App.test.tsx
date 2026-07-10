@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 
@@ -8,77 +8,79 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("App server-mode demo", () => {
-  it("starts the grid at item level without grouping", () => {
-    const { container } = render(<App />);
+describe("DataGrizard product showcase", () => {
+  it("presents a narrative page with working section and playground navigation", () => {
+    render(<App />);
 
-    expect(container.querySelector(".dg-row--group")).not.toBeInTheDocument();
-    expect(screen.queryByText(/grouped$/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", {
+      level: 1,
+      name: "An analytical control plane for people and agents.",
+    })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Explore demos" })).toHaveAttribute(
+      "href",
+      "#everyday",
+    );
+    expect(screen.getAllByRole("link", { name: "Open playground" })[0]).toHaveAttribute(
+      "href",
+      "#playground",
+    );
+    expect(screen.getByRole("region", { name: "Find the decision, not the control." })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Let agents act. Keep the proof." })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "A loaded page is not the dataset." })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
   });
 
-  it("applies the dark preset through a demo wrapper", () => {
+  it("shows clean pivot measures and preserves the weighted-margin explanation", () => {
+    render(<App />);
+    const pivotSection = screen.getByRole("region", {
+      name: "Roll up the business without flattening the meaning.",
+    });
+
+    expect(within(pivotSection).getByRole("columnheader", { name: /Sales/ })).toBeInTheDocument();
+    expect(within(pivotSection).getByRole("columnheader", { name: /Units/ })).toBeInTheDocument();
+    expect(within(pivotSection).getByRole("columnheader", { name: /Margin/ })).toBeInTheDocument();
+    expect(within(pivotSection).getByRole("columnheader", { name: /Price Gap/ })).toBeInTheDocument();
+    expect(within(pivotSection).getByRole("columnheader", { name: /Status/ })).toBeInTheDocument();
+    expect(within(pivotSection).queryByRole("columnheader", { name: /Sum of Sales/ })).not.toBeInTheDocument();
+    expect(within(pivotSection).queryByRole("columnheader", { name: /Avg Margin/ })).not.toBeInTheDocument();
+    expect(within(pivotSection).getByText(/Σ\(sales × margin rate\) \/ Σ\(sales\)/)).toBeInTheDocument();
+  });
+
+  it("switches playground recipes into coherent agent and pivot configurations", () => {
+    render(<App />);
+    const playground = screen.getByRole("region", { name: "One surface. Five coherent recipes." });
+
+    expect(within(playground).queryByRole("region", { name: "Assistant workflow demo" })).not.toBeInTheDocument();
+    fireEvent.click(within(playground).getByRole("tab", { name: /Agent/ }));
+    expect(within(playground).getByRole("region", { name: "Assistant workflow demo" })).toBeInTheDocument();
+    expect(within(playground).getByRole("button", { name: "Ask live agent" })).toBeEnabled();
+
+    fireEvent.click(within(playground).getByRole("tab", { name: /Pivot/ }));
+    expect(within(playground).queryByRole("region", { name: "Assistant workflow demo" })).not.toBeInTheDocument();
+    expect(within(playground).getByRole("columnheader", { name: /Margin/ })).toBeInTheDocument();
+    expect(within(playground).getByRole("tab", { name: /Pivot/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("loads the server recipe and pins the responsive recipe to card mode", async () => {
+    render(<App />);
+    const playground = screen.getByRole("region", { name: "One surface. Five coherent recipes." });
+
+    fireEvent.click(within(playground).getByRole("tab", { name: /Server/ }));
+    expect(await within(playground).findByText(/of 500 items/)).toBeInTheDocument();
+    expect(screen.getByText("Page rows ≠ all rows")).toBeInTheDocument();
+
+    fireEvent.click(within(playground).getByRole("tab", { name: /Responsive/ }));
+    expect(within(playground).queryByRole("table")).not.toBeInTheDocument();
+    expect(within(playground).getByRole("list", { name: "Responsive playground" })).toBeInTheDocument();
+    expect(within(playground).getByRole("button", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("toggles the responsive theme at the consumer wrapper", () => {
     const { container } = render(<App />);
-    const toggle = screen.getByRole("button", { name: "Dark theme" });
-
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(container.querySelector(".dg-theme-dark .dg-root")).not.toBeInTheDocument();
-
+    const toggle = screen.getByRole("button", { name: "Use dark theme" });
     fireEvent.click(toggle);
 
     expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(container.querySelector(".dg-theme-dark .dg-root")).toBeInTheDocument();
-  });
-
-  it("loads a server page (total from the fake server) when toggled on", async () => {
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Grid" }));
-    fireEvent.click(screen.getByRole("button", { name: "Server" }));
-
-    // queryRetail resolves after ~300ms; findBy polls up to 1000ms.
-    expect(await screen.findByText(/of 500 items/)).toBeInTheDocument();
-  });
-
-  it("runs the agent proof in server mode", async () => {
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Server" }));
-
-    expect(await screen.findByText(/of 500 items/)).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Ask the live grid agent" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Ask live agent" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Run deterministic proof" })).toBeEnabled();
-    expect(screen.queryByText("Available in grid layout.")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Run deterministic proof" }));
-    expect(await screen.findByText(/5 Grocery products/)).toBeInTheDocument();
-    expect(screen.getByText("View analysis receipt")).toBeInTheDocument();
-  });
-
-  it("disables the Server toggle and removes inactive agent controls in pivot layout", () => {
-    render(<App />); // starts in grid
-    expect(screen.getByRole("region", { name: "Assistant workflow demo" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Pivot" }));
-
-    expect(screen.getByRole("button", { name: "Server" })).toBeDisabled();
-    expect(screen.queryByRole("region", { name: "Assistant workflow demo" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Ask live agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /Sales/ })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /Margin/ })).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: /Sum of Sales/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: /Avg Margin/ })).not.toBeInTheDocument();
-  });
-
-  it("shows Client as the active data source while pivot disables Server", () => {
-    render(<App />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Grid" }));
-    fireEvent.click(screen.getByRole("button", { name: "Server" }));
-    expect(screen.getByRole("button", { name: "Server" })).toHaveAttribute("aria-pressed", "true");
-
-    fireEvent.click(screen.getByRole("button", { name: "Pivot" }));
-
-    expect(screen.getByRole("button", { name: "Server" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Server" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: "Client" })).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelector("#responsive .dg-theme-dark .dg-root")).toBeInTheDocument();
   });
 });

@@ -43,6 +43,13 @@ const receipt = {
 };
 
 describe("AssistantDemo", () => {
+  it("labels prompt suggestions as examples rather than video prompts", () => {
+    render(<AssistantDemo toolkit={{ execute: vi.fn() }} />);
+
+    expect(screen.getByText("Try an example:")).toBeInTheDocument();
+    expect(screen.queryByText("Video prompts:")).not.toBeInTheDocument();
+  });
+
   it("executes model-selected tools through the toolkit before rendering the final answer", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -82,7 +89,7 @@ describe("AssistantDemo", () => {
   it("reveals the receipt behind a completed assistant answer", async () => {
     let planSequence = 0;
     const toolkit = {
-      execute: async (name: string) => {
+      execute: vi.fn(async (name: string) => {
         if (name === "grid_plan_actions") {
           planSequence += 1;
           return {
@@ -152,13 +159,17 @@ describe("AssistantDemo", () => {
         return name === "grid_get_context"
           ? {}
           : { ok: true, appliedCommandCount: 1, errors: [] };
-      },
+      }),
     };
 
     render(<AssistantDemo toolkit={toolkit} />);
     fireEvent.click(screen.getByRole("button", { name: "Run deterministic proof" }));
 
     expect(await screen.findByText(/\$4,200,000 sales/)).toBeInTheDocument();
+    const undo = screen.getByRole("button", { name: "Undo latest agent change" });
+    fireEvent.click(undo);
+    expect(await screen.findByRole("button", { name: "Latest change undone" })).toBeDisabled();
+    expect(toolkit.execute).toHaveBeenCalledWith("grid_undo", { transactionId: "tx-2" });
     const disclosure = screen.getByText("View analysis receipt");
     const details = disclosure.closest("details");
     expect(details).not.toHaveAttribute("open");
