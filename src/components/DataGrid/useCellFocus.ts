@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Row, Table } from "@tanstack/react-table";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { PivotRow } from "./pivot";
-import type { DataGridFocusedCell } from "./DataGrid";
+import type { DataGridFocusedCell } from "./dataGridTypes";
 
 type UseCellFocusOptions<TData extends object> = {
   visibleRows: Row<TData | PivotRow<TData>>[];

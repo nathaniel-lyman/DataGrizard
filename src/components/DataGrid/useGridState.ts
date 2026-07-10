@@ -20,7 +20,7 @@ import type {
 import { normalizeColumnPinning, resolveUpdater } from "./gridHelpers";
 import { loadJson, saveJson } from "./storage";
 import type { DataGridPivotState } from "./pivot";
-import type { DataGridControlledState, DataGridSavedViews } from "./DataGrid";
+import type { DataGridControlledState, DataGridSavedViews } from "./dataGridTypes";
 
 type StorageKeys = {
   columnSizing: string;

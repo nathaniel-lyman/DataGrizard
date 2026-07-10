@@ -8,7 +8,7 @@ import type { Row } from "@tanstack/react-table";
 import { isPivotRow, uniqueColumnValues } from "./gridHelpers";
 import type { AnyColumnConfig } from "./cells";
 import type { PivotRow } from "./pivot";
-import type { DataGridCellEdit } from "./DataGrid";
+import type { DataGridCellEdit } from "./dataGridTypes";
 
 type UseCellEditingOptions<TData extends object> = {
   editingEnabled: boolean;

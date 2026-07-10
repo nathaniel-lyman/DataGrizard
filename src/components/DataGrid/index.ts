@@ -24,7 +24,7 @@ export type {
   DataGridSummaryItem,
   DataGridSummaryScope,
   DataGridSummarySelectionMode,
-} from "./DataGrid";
+} from "./dataGridTypes";
 export type {
   DataGridPivotAggregation,
   DataGridPivotAggregationContext,
