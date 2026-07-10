@@ -56,6 +56,74 @@ export type DataGridQueryRow = {
   values: Record<string, DataGridSerializableValue>;
 };
 
+export type DataGridAnalysisColumn = {
+  id: string;
+  label: string;
+  dataType?: GridDataType;
+};
+
+export type DataGridAnalysisFilterSnapshot = {
+  globalFilter: string;
+  columnFilters: Array<{
+    id: string;
+    value: DataGridSerializableValue;
+  }>;
+};
+
+export type DataGridAnalysisWarningCode =
+  | "offset_applied"
+  | "rows_truncated"
+  | "groups_truncated"
+  | "top_values_truncated"
+  | "limit_clamped";
+
+export type DataGridAnalysisWarning = {
+  code: DataGridAnalysisWarningCode;
+  message: string;
+  limit?: number;
+  actual?: number;
+};
+
+export type DataGridAnalysisTiming = {
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+};
+
+export type DataGridQueryReplay = {
+  operation: "query";
+  payload: Required<DataGridQuery>;
+};
+
+export type DataGridAggregateReplay = {
+  operation: "aggregate";
+  payload: DataGridAggregateQuery & { groupBy: string[] };
+};
+
+/**
+ * Detached provenance for an analysis result. Consumers can render this beside
+ * an assistant answer and replay the normalized payload against the same grid.
+ */
+export type DataGridAnalysisReceipt = {
+  queryId: string;
+  gridRevision: number;
+  scope: DataGridQueryScope;
+  columns: DataGridAnalysisColumn[];
+  filters: DataGridAnalysisFilterSnapshot;
+  sorting: SortingState;
+  grouping: {
+    /** Grouping that shaped a visible-page scope. */
+    view: string[];
+    /** Grouping explicitly requested by an aggregate query. */
+    aggregateBy: string[];
+  };
+  supportingRowIds: string[];
+  supportingGroupKeys: Array<Record<string, DataGridSerializableValue>>;
+  warnings: DataGridAnalysisWarning[];
+  timing: DataGridAnalysisTiming;
+  replay: DataGridQueryReplay | DataGridAggregateReplay;
+};
+
 export type DataGridDataErrorCode =
   | "invalid_column"
   | "invalid_query"
@@ -78,6 +146,7 @@ export type DataGridQueryResult =
       returnedRowCount: number;
       offset: number;
       truncated: boolean;
+      receipt: DataGridAnalysisReceipt;
     }
   | { ok: false; scope: DataGridQueryScope; error: DataGridDataError };
 
@@ -145,6 +214,7 @@ export type DataGridAggregateResult =
       metrics: Record<string, DataGridSerializableValue>;
       groups: DataGridAggregateGroup[];
       truncated: boolean;
+      receipt: DataGridAnalysisReceipt;
     }
   | { ok: false; scope: DataGridQueryScope; error: DataGridDataError };
 

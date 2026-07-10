@@ -73,11 +73,12 @@ describe("DataGrid data access API", () => {
       }]);
     });
 
-    expect(apiRef.current?.query({
+    const queryResult = apiRef.current?.query({
       scope: "filtered",
       columnIds: ["product", "revenue", "margin"],
       limit: 10,
-    })).toEqual({
+    });
+    expect(queryResult).toMatchObject({
       ok: true,
       scope: "filtered",
       columns: [
@@ -94,8 +95,49 @@ describe("DataGrid data access API", () => {
       offset: 0,
       truncated: false,
     });
+    if (!queryResult?.ok) throw new Error("Expected the query to succeed.");
+    expect(queryResult.receipt).toMatchObject({
+      queryId: expect.stringMatching(/^dg-query-/),
+      gridRevision: apiRef.current?.getSnapshot().revision,
+      scope: "filtered",
+      columns: queryResult.columns,
+      filters: {
+        globalFilter: "",
+        columnFilters: [{
+          id: "department",
+          value: { operator: "is", value: "Grocery" },
+        }],
+      },
+      sorting: [],
+      grouping: { view: [], aggregateBy: [] },
+      supportingRowIds: ["1", "2"],
+      supportingGroupKeys: [],
+      warnings: [],
+      timing: {
+        startedAt: expect.any(String),
+        completedAt: expect.any(String),
+        durationMs: expect.any(Number),
+      },
+      replay: {
+        operation: "query",
+        payload: {
+          scope: "filtered",
+          columnIds: ["product", "revenue", "margin"],
+          offset: 0,
+          limit: 10,
+        },
+      },
+    });
+    if (queryResult.receipt.replay.operation !== "query") {
+      throw new Error("Expected a query replay payload.");
+    }
+    expect(apiRef.current?.query(queryResult.receipt.replay.payload)).toMatchObject({
+      ok: true,
+      rows: queryResult.rows,
+      rowCount: queryResult.rowCount,
+    });
 
-    expect(apiRef.current?.aggregate({
+    const aggregateResult = apiRef.current?.aggregate({
       scope: "filtered",
       metrics: [
         { operation: "count", as: "products" },
@@ -106,7 +148,8 @@ describe("DataGrid data access API", () => {
         { operation: "top_values", columnId: "product", as: "topProducts", limit: 1 },
       ],
       groupBy: ["department"],
-    })).toMatchObject({
+    });
+    expect(aggregateResult).toMatchObject({
       ok: true,
       rowCount: 2,
       metrics: {
@@ -118,6 +161,100 @@ describe("DataGrid data access API", () => {
         topProducts: [{ value: "Almond Butter", count: 1 }],
       },
       groups: [{ key: { department: "Grocery" }, rowCount: 2 }],
+    });
+    if (!aggregateResult?.ok) throw new Error("Expected the aggregate to succeed.");
+    expect(aggregateResult.receipt).toMatchObject({
+      queryId: expect.stringMatching(/^dg-aggregate-/),
+      gridRevision: apiRef.current?.getSnapshot().revision,
+      scope: "filtered",
+      columns: [
+        { id: "department", label: "Department", dataType: "text" },
+        { id: "revenue", label: "Revenue", dataType: "currency" },
+        { id: "margin", label: "Margin", dataType: "percent" },
+        { id: "product", label: "Product", dataType: "text" },
+      ],
+      filters: queryResult.receipt.filters,
+      sorting: [],
+      grouping: { view: [], aggregateBy: ["department"] },
+      supportingRowIds: ["1", "2"],
+      supportingGroupKeys: [{ department: "Grocery" }],
+      warnings: [{
+        code: "top_values_truncated",
+        limit: 1,
+        actual: 2,
+      }],
+      replay: {
+        operation: "aggregate",
+        payload: {
+          scope: "filtered",
+          groupBy: ["department"],
+        },
+      },
+    });
+    if (aggregateResult.receipt.replay.operation !== "aggregate") {
+      throw new Error("Expected an aggregate replay payload.");
+    }
+    expect(apiRef.current?.aggregate(aggregateResult.receipt.replay.payload)).toMatchObject({
+      ok: true,
+      metrics: aggregateResult.metrics,
+      groups: aggregateResult.groups,
+    });
+  });
+
+  it("reports every bounded analysis result in its receipt", () => {
+    const apiRef = createRef<DataGridApi<Row>>();
+    render(
+      <DataGrid
+        apiRef={apiRef}
+        data={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        features={{ pagination: false }}
+        dataAccessLimits={{ maxRowsPerQuery: 2, maxGroupsPerAggregate: 1, maxTopValues: 1 }}
+      />,
+    );
+
+    const queryResult = apiRef.current?.query({
+      scope: "all",
+      columnIds: ["product"],
+      offset: 1,
+      limit: 1,
+    });
+    expect(queryResult).toMatchObject({
+      ok: true,
+      truncated: true,
+      receipt: {
+        supportingRowIds: ["2"],
+        warnings: [
+          { code: "offset_applied", actual: 1 },
+          { code: "rows_truncated", limit: 1, actual: 3 },
+        ],
+      },
+    });
+
+    const aggregateResult = apiRef.current?.aggregate({
+      scope: "all",
+      metrics: [{ operation: "top_values", columnId: "product", as: "products", limit: 5 }],
+      groupBy: ["department"],
+    });
+    expect(aggregateResult).toMatchObject({
+      ok: true,
+      truncated: true,
+      receipt: {
+        supportingRowIds: ["1", "2", "3"],
+        supportingGroupKeys: [{ department: "Grocery" }],
+        warnings: [
+          { code: "limit_clamped", limit: 1, actual: 5 },
+          { code: "top_values_truncated", limit: 1, actual: 3 },
+          { code: "groups_truncated", limit: 1, actual: 2 },
+        ],
+        replay: {
+          operation: "aggregate",
+          payload: {
+            metrics: [{ operation: "top_values", columnId: "product", as: "products", limit: 1 }],
+          },
+        },
+      },
     });
   });
 

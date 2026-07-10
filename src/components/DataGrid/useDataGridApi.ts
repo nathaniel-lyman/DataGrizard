@@ -22,6 +22,9 @@ import type {
 import type { AnyColumnConfig } from "./cells";
 import type {
   DataGridApi,
+  DataGridAnalysisColumn,
+  DataGridAnalysisReceipt,
+  DataGridAnalysisWarning,
   DataGridAggregateOperation,
   DataGridAggregateQuery,
   DataGridAggregateResult,
@@ -53,6 +56,34 @@ import {
   toSerializableValue,
   type DataGridAnalysisRow,
 } from "./dataGridAnalysis";
+
+let analysisQuerySequence = 0;
+
+type AnalysisStart = {
+  queryId: string;
+  startedAt: Date;
+  startedAtMs: number;
+};
+
+const monotonicNow = () => globalThis.performance?.now() ?? Date.now();
+
+const beginAnalysis = (
+  operation: "query" | "aggregate",
+  gridRevision: number,
+): AnalysisStart => ({
+  queryId: `dg-${operation}-${gridRevision}-${Date.now().toString(36)}-${++analysisQuerySequence}`,
+  startedAt: new Date(),
+  startedAtMs: monotonicNow(),
+});
+
+const completeAnalysisTiming = (start: AnalysisStart) => {
+  const completedAt = new Date();
+  return {
+    startedAt: start.startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    durationMs: Math.max(0, Number((monotonicNow() - start.startedAtMs).toFixed(3))),
+  };
+};
 
 type GridState = {
   sorting: SortingState;
@@ -488,7 +519,68 @@ export function useDataGridApi<TData extends object>({
     },
   });
 
+  const receiptColumns = (columnIds: string[]): DataGridAnalysisColumn[] =>
+    columnIds.map((id) => ({
+      id,
+      label: columnsById.get(id)?.header ?? id,
+      dataType: columnsById.get(id)?.dataType,
+    }));
+
+  const receiptFilters = (scope: DataGridQueryScope) => {
+    const filtersApply = scope === "filtered" || scope === "visible_page";
+    return {
+      globalFilter: filtersApply ? state.globalFilter : "",
+      columnFilters: filtersApply
+        ? state.columnFilters.map((filter) => ({
+            id: filter.id,
+            value: toSerializableValue(filter.value),
+          }))
+        : [],
+    };
+  };
+
+  const createReceipt = ({
+    start,
+    scope,
+    columnIds,
+    aggregateBy = [],
+    supportingRowIds,
+    supportingGroupKeys = [],
+    warnings,
+    replay,
+  }: {
+    start: AnalysisStart;
+    scope: DataGridQueryScope;
+    columnIds: string[];
+    aggregateBy?: string[];
+    supportingRowIds: string[];
+    supportingGroupKeys?: DataGridAnalysisReceipt["supportingGroupKeys"];
+    warnings: DataGridAnalysisWarning[];
+    replay: DataGridAnalysisReceipt["replay"];
+  }): DataGridAnalysisReceipt => ({
+    queryId: start.queryId,
+    gridRevision: revisionRef.current.value,
+    scope,
+    columns: receiptColumns(columnIds),
+    filters: receiptFilters(scope),
+    sorting: scope === "visible_page"
+      ? state.sorting.map((sort) => ({ ...sort }))
+      : [],
+    grouping: {
+      view: scope === "visible_page" ? [...state.grouping] : [],
+      aggregateBy: [...aggregateBy],
+    },
+    supportingRowIds: [...supportingRowIds],
+    supportingGroupKeys: supportingGroupKeys.map((key) =>
+      toSerializableValue(key) as Record<string, ReturnType<typeof toSerializableValue>>,
+    ),
+    warnings,
+    timing: completeAnalysisTiming(start),
+    replay,
+  });
+
   const query = (input: DataGridQuery): DataGridQueryResult => {
+    const start = beginAnalysis("query", revisionRef.current.value);
     if (unavailableScope(input.scope)) {
       return {
         ok: false,
@@ -540,6 +632,26 @@ export function useDataGridApi<TData extends object>({
     }
     const rows = scopeRows[input.scope];
     const page = rows.slice(offset, offset + limit);
+    const warnings: DataGridAnalysisWarning[] = [];
+    if (offset > 0) {
+      warnings.push({
+        code: "offset_applied",
+        message: `The first ${Math.min(offset, rows.length)} supporting rows were skipped by the query offset.`,
+        actual: offset,
+      });
+    }
+    if (offset + page.length < rows.length) {
+      warnings.push({
+        code: "rows_truncated",
+        message: `The query returned ${page.length} of ${rows.length} rows because its row limit was applied.`,
+        limit,
+        actual: rows.length,
+      });
+    }
+    const replay = {
+      operation: "query" as const,
+      payload: { scope: input.scope, columnIds: [...columnIds], offset, limit },
+    };
     return {
       ok: true,
       scope: input.scope,
@@ -558,10 +670,19 @@ export function useDataGridApi<TData extends object>({
       returnedRowCount: page.length,
       offset,
       truncated: offset + page.length < rows.length,
+      receipt: createReceipt({
+        start,
+        scope: input.scope,
+        columnIds,
+        supportingRowIds: page.map((row) => row.rowId),
+        warnings,
+        replay,
+      }),
     };
   };
 
   const aggregate = (input: DataGridAggregateQuery): DataGridAggregateResult => {
+    const start = beginAnalysis("aggregate", revisionRef.current.value);
     if (unavailableScope(input.scope)) {
       return {
         ok: false,
@@ -625,6 +746,51 @@ export function useDataGridApi<TData extends object>({
         ]),
       );
     const groupBy = input.groupBy ?? [];
+    const columnIds = [...new Set(referencedColumnIds)];
+    const normalizedMetrics = input.metrics.map((metric) => metric.operation === "top_values"
+      ? {
+          ...metric,
+          limit: Math.max(1, Math.min(metric.limit ?? 10, dataAccessLimits.maxTopValues)),
+        }
+      : { ...metric });
+    const warnings: DataGridAnalysisWarning[] = [];
+    input.metrics.forEach((metric) => {
+      if (metric.operation !== "top_values" || !metric.columnId) return;
+      const effectiveLimit = Math.max(
+        1,
+        Math.min(metric.limit ?? 10, dataAccessLimits.maxTopValues),
+      );
+      if (metric.limit != null && metric.limit !== effectiveLimit) {
+        warnings.push({
+          code: "limit_clamped",
+          message: `${metricResultKey(metric)} requested ${metric.limit} values; the configured limit is ${effectiveLimit}.`,
+          limit: effectiveLimit,
+          actual: metric.limit,
+        });
+      }
+      const distinctValues = new Set(
+        rows
+          .map(({ data }) => getAnalysisValue(data, metric.columnId as string))
+          .filter((value) => value != null && value !== "")
+          .map((value) => JSON.stringify(toSerializableValue(value))),
+      ).size;
+      if (distinctValues > effectiveLimit) {
+        warnings.push({
+          code: "top_values_truncated",
+          message: `${metricResultKey(metric)} returned the top ${effectiveLimit} of ${distinctValues} distinct values.`,
+          limit: effectiveLimit,
+          actual: distinctValues,
+        });
+      }
+    });
+    const replay = {
+      operation: "aggregate" as const,
+      payload: {
+        scope: input.scope,
+        metrics: normalizedMetrics,
+        groupBy: [...groupBy],
+      },
+    };
     if (groupBy.length === 0) {
       return {
         ok: true,
@@ -633,6 +799,14 @@ export function useDataGridApi<TData extends object>({
         metrics: compute(rows),
         groups: [],
         truncated: false,
+        receipt: createReceipt({
+          start,
+          scope: input.scope,
+          columnIds,
+          supportingRowIds: rows.map((row) => row.rowId),
+          warnings,
+          replay,
+        }),
       };
     }
     const grouped = new Map<string, { key: Record<string, ReturnType<typeof toSerializableValue>>; rows: DataGridAnalysisRow<TData>[] }>();
@@ -657,6 +831,14 @@ export function useDataGridApi<TData extends object>({
       0,
       Math.min(dataAccessLimits.maxGroupsPerAggregate, maxGroupsByCells),
     );
+    if (limitedGroups.length < groups.length) {
+      warnings.push({
+        code: "groups_truncated",
+        message: `The aggregate returned ${limitedGroups.length} of ${groups.length} groups because its group limit was applied.`,
+        limit: limitedGroups.length,
+        actual: groups.length,
+      });
+    }
     return {
       ok: true,
       scope: input.scope,
@@ -668,6 +850,16 @@ export function useDataGridApi<TData extends object>({
         metrics: compute(group.rows),
       })),
       truncated: limitedGroups.length < groups.length,
+      receipt: createReceipt({
+        start,
+        scope: input.scope,
+        columnIds,
+        aggregateBy: groupBy,
+        supportingRowIds: rows.map((row) => row.rowId),
+        supportingGroupKeys: limitedGroups.map((group) => group.key),
+        warnings,
+        replay,
+      }),
     };
   };
 
