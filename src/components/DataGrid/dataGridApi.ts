@@ -325,6 +325,7 @@ export type DataGridCommandErrorCode =
   | "invalid_column"
   | "invalid_row"
   | "invalid_value"
+  | "stale_revision"
   | "unsupported_layout";
 
 export type DataGridCommandError = {
@@ -338,6 +339,79 @@ export type DataGridCommandResult =
   | { ok: true; appliedCommandCount: number; errors: [] }
   | { ok: false; appliedCommandCount: 0; errors: DataGridCommandError[] };
 
+export type DataGridTransactionStateKey = keyof DataGridSnapshot["state"];
+
+export type DataGridTransactionDiffEntry = {
+  stateKey: DataGridTransactionStateKey;
+  before: DataGridSerializableValue;
+  after: DataGridSerializableValue;
+};
+
+/** Serializable preview of every state slice a command batch would change. */
+export type DataGridTransactionDiff = {
+  entries: DataGridTransactionDiffEntry[];
+  commandTypes: DataGridCommand["type"][];
+  columnIds: string[];
+  rowIds: string[];
+};
+
+export type DataGridActionPlan = {
+  planId: string;
+  baseRevision: number;
+  commands: DataGridCommand[];
+  diff: DataGridTransactionDiff;
+};
+
+export type DataGridPlanResult =
+  | { ok: true; plan: DataGridActionPlan; errors: [] }
+  | { ok: false; plan: null; errors: DataGridCommandError[] };
+
+export type DataGridPlanValidationResult =
+  | {
+      ok: true;
+      planId: string;
+      revision: number;
+      diff: DataGridTransactionDiff;
+      errors: [];
+    }
+  | {
+      ok: false;
+      planId: string;
+      revision: number;
+      errors: DataGridCommandError[];
+    };
+
+export type DataGridTransactionReceipt = {
+  transactionId: string;
+  planId: string;
+  baseRevision: number;
+  /** Revision expected after React commits the emitted state changes. */
+  appliedRevision: number;
+  appliedCommandCount: number;
+  diff: DataGridTransactionDiff;
+};
+
+export type DataGridApplyPlanResult =
+  | { ok: true; receipt: DataGridTransactionReceipt; errors: [] }
+  | { ok: false; receipt: null; errors: DataGridCommandError[] };
+
+export type DataGridUndoResult =
+  | {
+      ok: true;
+      transactionId: string;
+      revertedTransactionId: string;
+      revision: number;
+      diff: DataGridTransactionDiff;
+      errors: [];
+    }
+  | {
+      ok: false;
+      transactionId: null;
+      revertedTransactionId: string;
+      revision: number;
+      errors: DataGridCommandError[];
+    };
+
 export type DataGridApi<TData extends object> = {
   /** Returns a detached, serializable description of the current grid view. */
   getSnapshot: () => DataGridSnapshot;
@@ -345,6 +419,14 @@ export type DataGridApi<TData extends object> = {
   query: (input: DataGridQuery) => DataGridQueryResult;
   /** Computes bounded, serializable metrics over a well-defined grid scope. */
   aggregate: (input: DataGridAggregateQuery) => DataGridAggregateResult;
+  /** Builds a detached preview without mutating the grid. */
+  plan: (commands: DataGridCommand[]) => DataGridPlanResult;
+  /** Revalidates commands and rejects a plan whose base revision is stale. */
+  validatePlan: (plan: DataGridActionPlan) => DataGridPlanValidationResult;
+  /** Applies a valid plan as one prevalidated transaction. */
+  applyPlan: (plan: DataGridActionPlan) => DataGridApplyPlanResult;
+  /** Reverts an applied transaction if its resulting grid revision is still current. */
+  undo: (transactionId: string) => DataGridUndoResult;
   /** Validates the complete batch before applying any command. */
   dispatch: (commands: DataGridCommand[]) => DataGridCommandResult;
 };

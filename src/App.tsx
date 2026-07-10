@@ -59,7 +59,25 @@ function App() {
     () =>
       createDataGridAgentToolkit({
         api: gridApi,
-        permissions: { readData: true, changeView: true, changeFormatting: true },
+        policy: {
+          operations: [
+            "get_context",
+            "query_rows",
+            "aggregate",
+            "set_column_visibility",
+            "set_sorting",
+            "set_global_filter",
+            "set_column_filters",
+            "set_pagination",
+            "set_row_selection",
+            "set_selected_columns",
+            "set_cell_selection",
+            "set_column_presentation",
+            "set_grouping",
+            "undo",
+          ],
+          scopes: ["all", "filtered", "selected_rows", "visible_page"],
+        },
         limits: { maxRowsPerQuery: 100, maxCellsPerQuery: 2_000 },
       }),
     [],

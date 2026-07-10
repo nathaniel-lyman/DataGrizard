@@ -21,6 +21,7 @@ import type {
 } from "../../types/grid";
 import type { AnyColumnConfig } from "./cells";
 import type {
+  DataGridActionPlan,
   DataGridApi,
   DataGridAnalysisColumn,
   DataGridAnalysisReceipt,
@@ -32,11 +33,17 @@ import type {
   DataGridCommandError,
   DataGridCommandErrorCode,
   DataGridCommandResult,
+  DataGridPlanResult,
+  DataGridPlanValidationResult,
+  DataGridApplyPlanResult,
   DataGridDataAccessLimits,
   DataGridQuery,
   DataGridQueryResult,
   DataGridQueryScope,
   DataGridSnapshot,
+  DataGridTransactionDiff,
+  DataGridTransactionStateKey,
+  DataGridUndoResult,
 } from "./dataGridApi";
 import type {
   DataGridCellRange,
@@ -58,6 +65,8 @@ import {
 } from "./dataGridAnalysis";
 
 let analysisQuerySequence = 0;
+let actionPlanSequence = 0;
+let transactionSequence = 0;
 
 type AnalysisStart = {
   queryId: string;
@@ -384,6 +393,12 @@ export function useDataGridApi<TData extends object>({
     counts.total,
   ];
   const revisionRef = useRef<{ inputs: unknown[]; value: number }>({ inputs: [], value: 0 });
+  const pendingApplyBaseRevisionRef = useRef<number | null>(null);
+  const transactionsRef = useRef(new Map<string, {
+    expectedRevision: number;
+    beforeState: Partial<GridState>;
+    diff: DataGridTransactionDiff;
+  }>());
   if (
     revisionRef.current.inputs.length !== revisionInputs.length ||
     revisionRef.current.inputs.some((value, index) => value !== revisionInputs[index])
@@ -392,6 +407,7 @@ export function useDataGridApi<TData extends object>({
       inputs: revisionInputs,
       value: revisionRef.current.value + 1,
     };
+    pendingApplyBaseRevisionRef.current = null;
   }
 
   const dataColumns = table
@@ -863,7 +879,10 @@ export function useDataGridApi<TData extends object>({
     };
   };
 
-  const dispatch = (commands: DataGridCommand[]): DataGridCommandResult => {
+  const dispatch = (
+    commands: DataGridCommand[],
+    applyChanges = true,
+  ): DataGridCommandResult => {
     if (commands.length === 0) {
       return {
         ok: false,
@@ -898,7 +917,10 @@ export function useDataGridApi<TData extends object>({
       switch (command.type) {
         case "set_column_visibility":
           requireFeature(features.columnVisibility, commandIndex, "Column visibility");
-          validateIds(command.columnIds, dataColumnIdSet, errors, commandIndex, "column");
+          // Grouped columns may be removed from the rendered leaf model while
+          // remaining valid source columns. Transactional plans can ungroup and
+          // reveal them in the same batch, so validate against the source set.
+          validateIds(command.columnIds, sourceColumnIdSet, errors, commandIndex, "column");
           break;
         case "move_columns":
           requireFeature(features.columnOrdering, commandIndex, "Column ordering");
@@ -1145,6 +1167,10 @@ export function useDataGridApi<TData extends object>({
       return { ok: false, appliedCommandCount: 0, errors };
     }
 
+    if (!applyChanges) {
+      return { ok: true, appliedCommandCount: commands.length, errors: [] };
+    }
+
     let nextSorting = state.sorting;
     let nextGlobalFilter = state.globalFilter;
     let nextColumnFilters = state.columnFilters;
@@ -1331,5 +1357,368 @@ export function useDataGridApi<TData extends object>({
     return { ok: true, appliedCommandCount: commands.length, errors: [] };
   };
 
-  useImperativeHandle(apiRef, () => ({ getSnapshot, query, aggregate, dispatch }));
+  const simulateCommands = (commands: DataGridCommand[]): GridState => {
+    const next: GridState = {
+      ...state,
+      sorting: state.sorting,
+      columnFilters: state.columnFilters,
+      columnVisibility: state.columnVisibility,
+      columnSizing: state.columnSizing,
+      columnOrder: state.columnOrder,
+      columnPinning: state.columnPinning,
+      pagination: state.pagination,
+      rowSelection: state.rowSelection,
+      selectedColumnIds: state.selectedColumnIds,
+      cellSelection: state.cellSelection,
+      columnPresentation: state.columnPresentation,
+      grouping: state.grouping,
+      pivot: state.pivot,
+    };
+    const wrapDataColumnOrder = (orderedDataColumnIds: string[]): ColumnOrderState => [
+      ...(table.getColumn(SELECT_COLUMN_ID) ? [SELECT_COLUMN_ID] : []),
+      ...orderedDataColumnIds,
+      ...(table.getColumn(ROW_ACTIONS_COLUMN_ID) ? [ROW_ACTIONS_COLUMN_ID] : []),
+    ];
+
+    commands.forEach((command) => {
+      switch (command.type) {
+        case "set_column_visibility":
+          next.columnVisibility = { ...next.columnVisibility };
+          command.columnIds.forEach((columnId) => {
+            next.columnVisibility[columnId] = command.visible;
+          });
+          break;
+        case "move_columns": {
+          const currentOrder = next.columnOrder.filter((id) => dataColumnIdSet.has(id));
+          dataColumnIds.forEach((id) => {
+            if (!currentOrder.includes(id)) currentOrder.push(id);
+          });
+          const movingIdSet = new Set(command.columnIds);
+          const remaining = currentOrder.filter((id) => !movingIdSet.has(id));
+          const targetIndex = command.beforeColumnId
+            ? remaining.indexOf(command.beforeColumnId)
+            : remaining.length;
+          remaining.splice(targetIndex, 0, ...command.columnIds);
+          next.columnOrder = wrapDataColumnOrder(remaining);
+          break;
+        }
+        case "pin_columns": {
+          const movingIdSet = new Set(command.columnIds);
+          const left = (next.columnPinning.left ?? []).filter((id) => !movingIdSet.has(id));
+          const right = (next.columnPinning.right ?? []).filter((id) => !movingIdSet.has(id));
+          if (command.position === "left") left.push(...command.columnIds);
+          if (command.position === "right") right.push(...command.columnIds);
+          next.columnPinning = { left, right };
+          break;
+        }
+        case "set_column_sizes":
+          next.columnSizing = { ...next.columnSizing, ...command.sizes };
+          break;
+        case "reset_columns":
+          next.columnVisibility = {};
+          next.columnSizing = {};
+          next.columnOrder = [...defaultColumnOrder];
+          next.columnPinning = {
+            left: [...(defaultColumnPinning.left ?? [])],
+            right: [...(defaultColumnPinning.right ?? [])],
+          };
+          break;
+        case "set_sorting":
+          next.sorting = command.sorting.map((sort) => ({ ...sort }));
+          break;
+        case "set_global_filter":
+          next.globalFilter = command.value;
+          break;
+        case "set_column_filters":
+          next.columnFilters = command.filters.map((filter) => ({ ...filter }));
+          break;
+        case "set_pagination":
+          next.pagination = { ...command.pagination };
+          break;
+        case "set_row_selection": {
+          const selection = command.mode === "replace" || command.mode == null
+            ? {}
+            : { ...next.rowSelection };
+          command.rowIds.forEach((rowId) => {
+            if (command.mode === "remove") delete selection[rowId];
+            else selection[rowId] = true;
+          });
+          next.rowSelection = selection;
+          break;
+        }
+        case "set_selected_columns": {
+          const selected = new Set(
+            command.mode === "replace" || command.mode == null
+              ? []
+              : next.selectedColumnIds,
+          );
+          command.columnIds.forEach((columnId) => {
+            if (command.mode === "remove") selected.delete(columnId);
+            else selected.add(columnId);
+          });
+          next.selectedColumnIds = [...columnsById.keys()].filter((columnId) => selected.has(columnId));
+          break;
+        }
+        case "set_cell_selection":
+          next.cellSelection = command.selection
+            ? {
+                anchor: { ...command.selection.anchor },
+                focus: { ...command.selection.focus },
+              }
+            : null;
+          break;
+        case "set_column_presentation":
+          next.columnPresentation = command.mode === "replace"
+            ? cloneSnapshotValue(command.presentation) as DataGridColumnPresentationState
+            : {
+                ...next.columnPresentation,
+                ...cloneSnapshotValue(command.presentation) as DataGridColumnPresentationState,
+              };
+          break;
+        case "set_grouping":
+          next.grouping = [...command.columnIds];
+          break;
+        case "set_pivot":
+          next.pivot = clonePivot(command.pivot);
+          break;
+      }
+    });
+    return next;
+  };
+
+  const stateKeysForCommand = (command: DataGridCommand): DataGridTransactionStateKey[] => {
+    switch (command.type) {
+      case "set_column_visibility": return ["columnVisibility"];
+      case "move_columns": return ["columnOrder"];
+      case "pin_columns": return ["columnPinning"];
+      case "set_column_sizes": return ["columnSizing"];
+      case "reset_columns": return ["columnVisibility", "columnSizing", "columnOrder", "columnPinning"];
+      case "set_sorting": return ["sorting"];
+      case "set_global_filter": return ["globalFilter"];
+      case "set_column_filters": return ["columnFilters"];
+      case "set_pagination": return ["pagination"];
+      case "set_row_selection": return ["rowSelection"];
+      case "set_selected_columns": return ["selectedColumnIds"];
+      case "set_cell_selection": return ["cellSelection"];
+      case "set_column_presentation": return ["columnPresentation"];
+      case "set_grouping": return ["grouping"];
+      case "set_pivot": return ["pivot"];
+    }
+  };
+
+  const commandColumnIds = (command: DataGridCommand): string[] => {
+    switch (command.type) {
+      case "set_column_visibility":
+      case "move_columns":
+      case "pin_columns":
+      case "set_selected_columns":
+      case "set_grouping":
+        return [...command.columnIds, ...(command.type === "move_columns" && command.beforeColumnId
+          ? [command.beforeColumnId]
+          : [])];
+      case "set_column_sizes": return Object.keys(command.sizes);
+      case "reset_columns": return [...sourceColumnIdSet];
+      case "set_sorting": return command.sorting.map((sort) => sort.id);
+      case "set_column_filters": return command.filters.map((filter) => filter.id);
+      case "set_column_presentation": return Object.keys(command.presentation);
+      case "set_cell_selection": return command.selection
+        ? [command.selection.anchor.columnId, command.selection.focus.columnId]
+        : [];
+      case "set_pivot": return [
+        ...command.pivot.rows,
+        ...(command.pivot.columns?.map((axis) => axis.columnId) ?? []),
+      ];
+      default: return [];
+    }
+  };
+
+  const commandRowIds = (command: DataGridCommand): string[] => {
+    if (command.type === "set_row_selection") return command.rowIds;
+    if (command.type === "set_cell_selection" && command.selection) {
+      return [command.selection.anchor.rowId, command.selection.focus.rowId];
+    }
+    return [];
+  };
+
+  const buildDiff = (commands: DataGridCommand[]): DataGridTransactionDiff => {
+    const next = simulateCommands(commands);
+    const keys = [...new Set(commands.flatMap(stateKeysForCommand))];
+    return {
+      entries: keys.flatMap((stateKey) => {
+        const before = toSerializableValue(state[stateKey]);
+        const after = toSerializableValue(next[stateKey]);
+        return JSON.stringify(before) === JSON.stringify(after)
+          ? []
+          : [{ stateKey, before, after }];
+      }),
+      commandTypes: commands.map((command) => command.type),
+      columnIds: [...new Set(commands.flatMap(commandColumnIds))],
+      rowIds: [...new Set(commands.flatMap(commandRowIds))],
+    };
+  };
+
+  const plan = (commands: DataGridCommand[]): DataGridPlanResult => {
+    const validation = dispatch(commands, false);
+    if (!validation.ok) return { ok: false, plan: null, errors: validation.errors };
+    const detachedCommands = cloneSnapshotValue(commands) as DataGridCommand[];
+    return {
+      ok: true,
+      plan: {
+        planId: `dg-plan-${revisionRef.current.value}-${Date.now().toString(36)}-${++actionPlanSequence}`,
+        baseRevision: revisionRef.current.value,
+        commands: detachedCommands,
+        diff: buildDiff(detachedCommands),
+      },
+      errors: [],
+    };
+  };
+
+  const stalePlanError = (baseRevision: number): DataGridCommandError => ({
+    commandIndex: 0,
+    code: "stale_revision",
+    message: `Plan revision ${baseRevision} does not match current grid revision ${revisionRef.current.value}.`,
+  });
+
+  const validatePlan = (candidate: DataGridActionPlan): DataGridPlanValidationResult => {
+    if (pendingApplyBaseRevisionRef.current === candidate.baseRevision) {
+      return {
+        ok: false,
+        planId: candidate.planId,
+        revision: revisionRef.current.value,
+        errors: [{
+          commandIndex: 0,
+          code: "stale_revision",
+          message: `Another transaction has already been applied from revision ${candidate.baseRevision} and is awaiting commit.`,
+        }],
+      };
+    }
+    if (candidate.baseRevision !== revisionRef.current.value) {
+      return {
+        ok: false,
+        planId: candidate.planId,
+        revision: revisionRef.current.value,
+        errors: [stalePlanError(candidate.baseRevision)],
+      };
+    }
+    const validation = dispatch(candidate.commands, false);
+    if (!validation.ok) {
+      return {
+        ok: false,
+        planId: candidate.planId,
+        revision: revisionRef.current.value,
+        errors: validation.errors,
+      };
+    }
+    return {
+      ok: true,
+      planId: candidate.planId,
+      revision: revisionRef.current.value,
+      diff: buildDiff(candidate.commands),
+      errors: [],
+    };
+  };
+
+  const applyPlan = (candidate: DataGridActionPlan): DataGridApplyPlanResult => {
+    const validation = validatePlan(candidate);
+    if (!validation.ok) return { ok: false, receipt: null, errors: validation.errors };
+    const beforeState = Object.fromEntries(
+      validation.diff.entries.map(({ stateKey }) => [stateKey, cloneSnapshotValue(state[stateKey])]),
+    ) as Partial<GridState>;
+    const result = dispatch(candidate.commands);
+    if (!result.ok) return { ok: false, receipt: null, errors: result.errors };
+    pendingApplyBaseRevisionRef.current = candidate.baseRevision;
+    const transactionId = `dg-tx-${candidate.baseRevision}-${Date.now().toString(36)}-${++transactionSequence}`;
+    const appliedRevision = candidate.baseRevision + (validation.diff.entries.length > 0 ? 1 : 0);
+    transactionsRef.current.set(transactionId, {
+      expectedRevision: appliedRevision,
+      beforeState,
+      diff: validation.diff,
+    });
+    return {
+      ok: true,
+      receipt: {
+        transactionId,
+        planId: candidate.planId,
+        baseRevision: candidate.baseRevision,
+        appliedRevision,
+        appliedCommandCount: candidate.commands.length,
+        diff: validation.diff,
+      },
+      errors: [],
+    };
+  };
+
+  const undo = (transactionId: string): DataGridUndoResult => {
+    const transaction = transactionsRef.current.get(transactionId);
+    if (!transaction) {
+      return {
+        ok: false,
+        transactionId: null,
+        revertedTransactionId: transactionId,
+        revision: revisionRef.current.value,
+        errors: [{
+          commandIndex: 0,
+          code: "invalid_value",
+          message: `Unknown or already undone transaction: ${transactionId}.`,
+        }],
+      };
+    }
+    if (transaction.expectedRevision !== revisionRef.current.value) {
+      return {
+        ok: false,
+        transactionId: null,
+        revertedTransactionId: transactionId,
+        revision: revisionRef.current.value,
+        errors: [stalePlanError(transaction.expectedRevision)],
+      };
+    }
+    transaction.diff.entries.forEach(({ stateKey }) => {
+      const value = cloneSnapshotValue(transaction.beforeState[stateKey]);
+      switch (stateKey) {
+        case "sorting": emitters.sorting(value as SortingState); break;
+        case "globalFilter": emitters.globalFilter(value as string); break;
+        case "columnFilters": emitters.columnFilters(value as ColumnFiltersState); break;
+        case "columnVisibility": emitters.columnVisibility(value as VisibilityState); break;
+        case "columnSizing": emitters.columnSizing(value as ColumnSizingState); break;
+        case "columnOrder": emitters.columnOrder(value as ColumnOrderState); break;
+        case "columnPinning": emitters.columnPinning(value as ColumnPinningState); break;
+        case "pagination": emitters.pagination(value as PaginationState); break;
+        case "rowSelection": emitters.rowSelection(value as RowSelectionState); break;
+        case "selectedColumnIds": emitters.selectedColumnIds(value as string[]); break;
+        case "cellSelection": emitters.cellSelection(value as DataGridCellRange | null); break;
+        case "columnPresentation": emitters.columnPresentation(value as DataGridColumnPresentationState); break;
+        case "grouping": emitters.grouping(value as GroupingState); break;
+        case "pivot": emitters.pivot(value as DataGridPivotState); break;
+        case "expanded": break;
+      }
+    });
+    transactionsRef.current.delete(transactionId);
+    const undoTransactionId = `dg-undo-${revisionRef.current.value}-${Date.now().toString(36)}-${++transactionSequence}`;
+    return {
+      ok: true,
+      transactionId: undoTransactionId,
+      revertedTransactionId: transactionId,
+      revision: revisionRef.current.value + (transaction.diff.entries.length > 0 ? 1 : 0),
+      diff: {
+        ...transaction.diff,
+        entries: transaction.diff.entries.map((entry) => ({
+          ...entry,
+          before: entry.after,
+          after: entry.before,
+        })),
+      },
+      errors: [],
+    };
+  };
+
+  useImperativeHandle(apiRef, () => ({
+    getSnapshot,
+    query,
+    aggregate,
+    plan,
+    validatePlan,
+    applyPlan,
+    undo,
+    dispatch,
+  }));
 }

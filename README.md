@@ -413,17 +413,27 @@ const totals = gridApi.current?.aggregate({
   ],
   groupBy: ["category"],
 });
-const result = gridApi.current?.dispatch([
+const proposed = gridApi.current?.plan([
   { type: "set_column_visibility", columnIds: ["margin"], visible: false },
   { type: "move_columns", columnIds: ["revenue"], beforeColumnId: "category" },
   { type: "set_sorting", sorting: [{ id: "revenue", desc: true }] },
 ]);
+if (proposed?.ok) {
+  // `diff` is a detached before/after preview; the grid is still unchanged.
+  console.log(proposed.plan.diff);
+  const validated = gridApi.current?.validatePlan(proposed.plan);
+  const applied = validated?.ok ? gridApi.current?.applyPlan(proposed.plan) : null;
+  if (applied?.ok) gridApi.current?.undo(applied.receipt.transactionId);
+}
 ```
 
-Command batches are transactional: the grid validates every command first and
-applies none of them if any command is invalid. Commands use the same state
-emitters as visible grid controls, so controlled callbacks and scoped
-column-state persistence keep their existing behavior.
+The action lifecycle is `plan → validate → apply → undo`. Planning previews a
+structured before/after diff without mutation. Validation checks the complete
+batch, and apply repeats validation before emitting any state change. Plans
+carry their base grid revision and are rejected with `stale_revision` when the
+live grid changes. A successful apply returns a transaction receipt for undo.
+The lower-level `dispatch()` compatibility method remains available and still
+validates the entire batch before applying any command.
 
 The first API surface supports column visibility, ordering, pinning, sizing and
 reset; sorting; global and column filters; pagination; row, column, and cell
@@ -445,7 +455,7 @@ were the complete server dataset.
 executor. Its schemas are generated from the mounted grid—not from a static
 catalog. They reflect source column IDs and types, semantic metadata, resolved
 filter operators and allowed values, aggregate operations legal for each type,
-enabled features, layout/data mode, permissions, and data-access limits.
+enabled features, layout/data mode, live policies, and data-access limits.
 
 Add business meaning to the same generic column config used by the grid:
 
@@ -472,29 +482,36 @@ import { createDataGridAgentToolkit } from "datagrizard";
 
 const toolkit = createDataGridAgentToolkit({
   api: gridApi,
-  permissions: () => ({
-    readData: true,
-    changeView: true,
-    changeFormatting: true,
-    allowedSensitivityLevels: ["public", "internal"],
+  policy: () => ({
+    operations: [
+      "get_context", "query_rows", "aggregate",
+      "set_column_visibility", "set_sorting", "set_global_filter",
+      "set_column_filters", "set_pagination", "set_column_presentation",
+      "undo",
+    ],
+    scopes: ["filtered", "visible_page"],
+    columns: ({ column, operation }) =>
+      column.semantic?.sensitivity !== "restricted" &&
+      !(operation === "set_column_presentation" && column.id === "amount"),
   }),
   limits: { maxRowsPerQuery: 100, maxCellsPerQuery: 2_000 },
 });
 
 // `tools` is a live getter. Read it when preparing each provider request.
-// Tools and column choices disappear when permissions/features no longer allow them.
+// Tools, scopes, and column choices disappear when policy/features no longer allow them.
 const tools = toolkit.tools;
 const output = toolkit.execute(toolCall.name, toolCall.arguments);
 ```
 
 The available tools are drawn from `grid_get_context`, `grid_query_rows`,
-`grid_aggregate`, `grid_update_view`, `grid_update_selection`, and
-`grid_format_columns`. A tool is omitted when current permissions or grid
-features make it unavailable. In server mode, whole-dataset `all` and
+`grid_aggregate`, `grid_plan_actions`, `grid_validate_plan`,
+`grid_apply_plan`, and `grid_undo`. Agent mutations never apply directly:
+`grid_plan_actions` returns a preview and plan ID, which must be validated and
+then applied. A tool is omitted when current operation, scope, or column policy
+and grid features make it unavailable. In server mode, whole-dataset `all` and
 `filtered` scopes are omitted rather than pretending the loaded page is the
-dataset. The executor repeats the same checks, including sensitivity and
-type-legal aggregation checks; the JSON schema is not treated as a security
-boundary by itself.
+dataset. The executor repeats policy, stale-revision, and type-legal aggregation
+checks; the JSON schema is not treated as a security boundary by itself.
 
 Formatting is serializable through `columnPresentation`: number/date formats,
 color scales, data bars, progress bars, and operator/tone rules. The schema does

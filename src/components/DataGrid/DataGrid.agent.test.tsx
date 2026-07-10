@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runRetailAssistantWorkflow } from "../../demo/retailAssistantAdapter";
 import { DataGrid } from "./DataGrid";
 import { createDataGridAgentToolkit } from "./dataGridAgentToolkit";
+import type { DataGridAgentOperation, DataGridAgentPolicy } from "./dataGridAgentToolkit";
 import type { DataGridApi } from "./dataGridApi";
 import type { GridColumnConfig } from "../../types/grid";
 
@@ -27,6 +28,23 @@ const columns: GridColumnConfig<Row>[] = [
   { accessorKey: "product", header: "Product", dataType: "text" },
   { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
   { accessorKey: "margin", header: "Margin", dataType: "percent" },
+];
+
+const allAgentOperations: DataGridAgentOperation[] = [
+  "get_context",
+  "query_rows",
+  "aggregate",
+  "set_column_visibility",
+  "set_sorting",
+  "set_global_filter",
+  "set_column_filters",
+  "set_pagination",
+  "set_row_selection",
+  "set_selected_columns",
+  "set_cell_selection",
+  "set_column_presentation",
+  "set_grouping",
+  "undo",
 ];
 
 afterEach(() => {
@@ -488,11 +506,10 @@ describe("live agent tool schemas", () => {
     );
     const toolkit = createDataGridAgentToolkit({
       api: apiRef,
-      permissions: {
-        readData: true,
-        changeView: true,
-        changeFormatting: true,
-        allowedSensitivityLevels: ["public"],
+      policy: {
+        operations: allAgentOperations,
+        scopes: ["visible_page"],
+        columns: ({ column }) => column.semantic?.sensitivity !== "restricted",
       },
     });
 
@@ -513,25 +530,21 @@ describe("live agent tool schemas", () => {
     );
     expect(categoryMetric).not.toContain('"sum"');
 
-    const viewTool = toolkit.tools.find((tool) => tool.name === "grid_update_view");
-    const viewProperties = viewTool?.inputSchema.properties as Record<string, unknown>;
-    expect(viewProperties).not.toHaveProperty("globalFilter");
-    expect(viewProperties).not.toHaveProperty("grouping");
-    expect(JSON.stringify(viewProperties.filters)).toContain('"const":"is"');
-    expect(JSON.stringify(viewProperties.filters)).toContain('"enum":["A","B"]');
+    const planTool = toolkit.tools.find((tool) => tool.name === "grid_plan_actions");
+    const planProperties = planTool?.inputSchema.properties as Record<string, unknown>;
+    expect(planProperties).not.toHaveProperty("globalFilter");
+    expect(planProperties).not.toHaveProperty("grouping");
+    expect(planProperties).not.toHaveProperty("rowIds");
+    expect(planProperties).not.toHaveProperty("cellSelection");
+    expect(JSON.stringify(planProperties.filters)).toContain('"const":"is"');
+    expect(JSON.stringify(planProperties.filters)).toContain('"enum":["A","B"]');
 
-    const selectionTool = toolkit.tools.find((tool) => tool.name === "grid_update_selection");
-    const selectionProperties = selectionTool?.inputSchema.properties as Record<string, unknown>;
-    expect(selectionProperties).not.toHaveProperty("rowIds");
-    expect(selectionProperties).not.toHaveProperty("cellSelection");
-
-    const formattingTool = toolkit.tools.find((tool) => tool.name === "grid_format_columns");
-    const formattingSchema = JSON.stringify(formattingTool?.inputSchema);
+    const formattingSchema = JSON.stringify(planProperties.presentation);
     expect(formattingSchema).toContain('"amount":{"type":"object","properties":{"numberFormat"');
     expect(formattingSchema).not.toContain('"privateNote"');
   });
 
-  it("recomputes schemas from current permissions and enforces sensitivity on explicit and default reads", () => {
+  it("recomputes schemas from operation, scope, and column policies", () => {
     const apiRef = createRef<DataGridApi<AgentRow>>();
     render(
       <DataGrid
@@ -542,20 +555,22 @@ describe("live agent tool schemas", () => {
         features={{ pagination: false }}
       />,
     );
-    let permissions = {
-      readData: true,
-      changeView: true,
-      changeFormatting: false,
-      allowedSensitivityLevels: ["public"],
+    let policy: DataGridAgentPolicy = {
+      operations: allAgentOperations.filter((operation) => operation !== "set_column_presentation"),
+      scopes: ["visible_page"],
+      columns: ({ column }) => column.semantic?.sensitivity !== "restricted",
     };
-    const toolkit = createDataGridAgentToolkit({ api: apiRef, permissions: () => permissions });
+    const toolkit = createDataGridAgentToolkit({ api: apiRef, policy: () => policy });
 
-    expect(toolkit.tools.map((tool) => tool.name)).not.toContain("grid_format_columns");
+    const initialPlanSchema = JSON.stringify(
+      toolkit.tools.find((tool) => tool.name === "grid_plan_actions")?.inputSchema,
+    );
+    expect(initialPlanSchema).not.toContain('"presentation"');
     const context = toolkit.execute("grid_get_context") as {
-      permissions: { changeFormatting: boolean };
+      policy: { allowedOperations: DataGridAgentOperation[] };
       sourceColumns: Array<{ id: string }>;
     };
-    expect(context.permissions.changeFormatting).toBe(false);
+    expect(context.policy.allowedOperations).not.toContain("set_column_presentation");
     expect(context.sourceColumns.map((column) => column.id)).not.toContain("privateNote");
     expect(toolkit.execute("grid_query_rows", {
       scope: "visible_page",
@@ -569,21 +584,70 @@ describe("live agent tool schemas", () => {
     expect(defaultRead.ok).toBe(true);
     expect(defaultRead.rows[0].values).not.toHaveProperty("privateNote");
 
-    permissions = {
-      ...permissions,
-      changeFormatting: true,
-      allowedSensitivityLevels: ["public", "restricted"],
+    policy = {
+      ...policy,
+      operations: allAgentOperations,
+      columns: () => true,
     };
-    expect(toolkit.tools.map((tool) => tool.name)).toContain("grid_format_columns");
+    expect(JSON.stringify(toolkit.tools)).toContain('"presentation"');
     expect(JSON.stringify(toolkit.tools)).toContain("privateNote");
-    expect(toolkit.execute("grid_format_columns", {
+    expect(toolkit.execute("grid_plan_actions", {
       presentation: { category: { numberFormat: { maximumFractionDigits: 0 } } },
     })).toMatchObject({ ok: false, error: { code: "invalid_tool_input" } });
 
-    permissions = { ...permissions, readData: false };
+    policy = {
+      ...policy,
+      operations: allAgentOperations.filter((operation) => operation !== "query_rows"),
+    };
     expect(toolkit.tools.map((tool) => tool.name)).not.toContain("grid_query_rows");
     expect(toolkit.execute("grid_query_rows", { scope: "visible_page" }))
-      .toMatchObject({ ok: false, error: { code: "permission_denied" } });
+      .toMatchObject({ ok: false, error: { code: "policy_denied" } });
+  });
+
+  it("keeps agent actions preview-only until apply and rejects stale plans", () => {
+    const apiRef = createRef<DataGridApi<AgentRow>>();
+    render(
+      <DataGrid
+        apiRef={apiRef}
+        data={agentRows}
+        columns={agentColumns}
+        getRowId={(row) => row.id}
+        features={{ pagination: false }}
+      />,
+    );
+    const toolkit = createDataGridAgentToolkit({
+      api: apiRef,
+      policy: { operations: allAgentOperations, scopes: ["visible_page"] },
+    });
+    const proposed = toolkit.execute("grid_plan_actions", {
+      sorting: [{ id: "amount", desc: true }],
+      presentation: { amount: { dataBar: { color: "#8b5cf6" } } },
+    });
+    expect(proposed).toMatchObject({
+      ok: true,
+      plan: {
+        diff: {
+          commandTypes: ["set_sorting", "set_column_presentation"],
+          columnIds: ["amount"],
+          entries: [
+            { stateKey: "sorting", before: [], after: [{ id: "amount", desc: true }] },
+            { stateKey: "columnPresentation", before: {}, after: { amount: { dataBar: { color: "#8b5cf6" } } } },
+          ],
+        },
+      },
+    });
+    expect(apiRef.current?.getSnapshot().state.sorting).toEqual([]);
+    const planId = (proposed as { ok: true; plan: { planId: string } }).plan.planId;
+    expect(toolkit.execute("grid_validate_plan", { planId })).toMatchObject({ ok: true });
+
+    act(() => {
+      apiRef.current?.dispatch([{ type: "set_global_filter", value: "A" }]);
+    });
+    expect(toolkit.execute("grid_apply_plan", { planId })).toMatchObject({
+      ok: false,
+      errors: [{ code: "stale_revision" }],
+    });
+    expect(apiRef.current?.getSnapshot().state.sorting).toEqual([]);
   });
 });
 
@@ -618,7 +682,10 @@ describe("provider-neutral assistant workflow", () => {
     );
     const toolkit = createDataGridAgentToolkit({
       api: apiRef,
-      permissions: { readData: true, changeView: true, changeFormatting: true },
+      policy: {
+        operations: allAgentOperations,
+        scopes: ["all", "filtered", "selected_rows", "visible_page"],
+      },
       limits: { maxRowsPerQuery: 100, maxCellsPerQuery: 2_000 },
     });
 
@@ -626,9 +693,12 @@ describe("provider-neutral assistant workflow", () => {
 
     expect(result?.toolCalls.map((call) => call.name)).toEqual([
       "grid_get_context",
-      "grid_update_view",
-      "grid_update_view",
-      "grid_format_columns",
+      "grid_plan_actions",
+      "grid_validate_plan",
+      "grid_apply_plan",
+      "grid_plan_actions",
+      "grid_validate_plan",
+      "grid_apply_plan",
       "grid_query_rows",
       "grid_aggregate",
     ]);

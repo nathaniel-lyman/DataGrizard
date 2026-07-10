@@ -32,43 +32,44 @@ export async function runRetailAssistantWorkflow(
   };
 
   call("grid_get_context");
-  const viewResult = call("grid_update_view", {
+  const planResult = call("grid_plan_actions", {
     filters: [{ id: "department", value: { operator: "isAnyOf", value: ["Grocery"] } }],
     sorting: [{ id: "sales", desc: true }],
     grouping: [],
-  });
-  if (viewResult && typeof viewResult === "object" && "ok" in viewResult && !viewResult.ok) {
-    throw new Error(`grid_update_view failed: ${JSON.stringify(viewResult)}`);
-  }
-  await afterGridRender();
-
-  const visibleViewResult = call("grid_update_view", {
     visibleColumnIds: ["item_name", "sales", "margin_rate"],
-    pageIndex: 0,
-    pageSize: 5,
-  });
-  if (
-    visibleViewResult &&
-    typeof visibleViewResult === "object" &&
-    "ok" in visibleViewResult &&
-    !visibleViewResult.ok
-  ) {
-    throw new Error(`grid_update_view failed: ${JSON.stringify(visibleViewResult)}`);
-  }
-  await afterGridRender();
-
-  const formattingResult = call("grid_format_columns", {
     presentation: {
       sales: { dataBar: { color: "#8b5cf6", showValue: true } },
     },
   });
-  if (
-    formattingResult &&
-    typeof formattingResult === "object" &&
-    "ok" in formattingResult &&
-    !formattingResult.ok
-  ) {
-    throw new Error(`grid_format_columns failed: ${JSON.stringify(formattingResult)}`);
+  if (!planResult || typeof planResult !== "object" || !("ok" in planResult) || !planResult.ok) {
+    throw new Error(`grid_plan_actions failed: ${JSON.stringify(planResult)}`);
+  }
+  const planId = (planResult as unknown as { plan: { planId: string } }).plan.planId;
+  const validation = call("grid_validate_plan", { planId });
+  if (!validation || typeof validation !== "object" || !("ok" in validation) || !validation.ok) {
+    throw new Error(`grid_validate_plan failed: ${JSON.stringify(validation)}`);
+  }
+  const applied = call("grid_apply_plan", { planId });
+  if (!applied || typeof applied !== "object" || !("ok" in applied) || !applied.ok) {
+    throw new Error(`grid_apply_plan failed: ${JSON.stringify(applied)}`);
+  }
+  await afterGridRender();
+
+  // TanStack resets pagination after filter/group changes. Plan the page-size
+  // change against that committed revision so it cannot be overwritten by the
+  // table's own reset lifecycle.
+  const pagePlan = call("grid_plan_actions", { pageIndex: 0, pageSize: 5 });
+  if (!pagePlan || typeof pagePlan !== "object" || !("ok" in pagePlan) || !pagePlan.ok) {
+    throw new Error(`grid_plan_actions failed: ${JSON.stringify(pagePlan)}`);
+  }
+  const pagePlanId = (pagePlan as unknown as { plan: { planId: string } }).plan.planId;
+  const pageValidation = call("grid_validate_plan", { planId: pagePlanId });
+  if (!pageValidation || typeof pageValidation !== "object" || !("ok" in pageValidation) || !pageValidation.ok) {
+    throw new Error(`grid_validate_plan failed: ${JSON.stringify(pageValidation)}`);
+  }
+  const pageApplied = call("grid_apply_plan", { planId: pagePlanId });
+  if (!pageApplied || typeof pageApplied !== "object" || !("ok" in pageApplied) || !pageApplied.ok) {
+    throw new Error(`grid_apply_plan failed: ${JSON.stringify(pageApplied)}`);
   }
   await afterGridRender();
 

@@ -3,7 +3,11 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
-import type { DataGridApi, DataGridCommandResult } from "./dataGridApi";
+import type {
+  DataGridApi,
+  DataGridCommandResult,
+  DataGridTransactionReceipt,
+} from "./dataGridApi";
 import type { GridColumnConfig } from "../../types/grid";
 
 type Row = {
@@ -168,6 +172,118 @@ describe("DataGrid public API", () => {
     });
     expect(apiRef.current?.getSnapshot().state.sorting).toEqual([]);
     expect(screen.getByRole("columnheader", { name: /Units/ })).toBeInTheDocument();
+  });
+
+  it("previews, validates, atomically applies, and undoes a transaction", () => {
+    const apiRef = createRef<DataGridApi<Row>>();
+    render(
+      <DataGrid
+        apiRef={apiRef}
+        data={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        features={{ pagination: false }}
+      />,
+    );
+
+    const beforeRevision = apiRef.current?.getSnapshot().revision ?? 0;
+    const planned = apiRef.current?.plan([
+      { type: "set_column_visibility", columnIds: ["units"], visible: false },
+      { type: "set_sorting", sorting: [{ id: "revenue", desc: true }] },
+      { type: "set_row_selection", rowIds: ["1"], mode: "replace" },
+    ]);
+    expect(planned).toMatchObject({
+      ok: true,
+      plan: {
+        baseRevision: beforeRevision,
+        diff: {
+          commandTypes: ["set_column_visibility", "set_sorting", "set_row_selection"],
+          columnIds: ["units", "revenue"],
+          rowIds: ["1"],
+          entries: [
+            { stateKey: "columnVisibility", before: {}, after: { units: false } },
+            { stateKey: "sorting", before: [], after: [{ id: "revenue", desc: true }] },
+            { stateKey: "rowSelection", before: {}, after: { "1": true } },
+          ],
+        },
+      },
+    });
+    expect(apiRef.current?.getSnapshot().state.sorting).toEqual([]);
+    if (!planned?.ok) throw new Error("Expected a valid transaction plan.");
+    expect(apiRef.current?.validatePlan(planned.plan)).toMatchObject({
+      ok: true,
+      revision: beforeRevision,
+      diff: planned.plan.diff,
+    });
+
+    let receipt: DataGridTransactionReceipt | undefined;
+    act(() => {
+      const applied = apiRef.current?.applyPlan(planned.plan);
+      if (applied?.ok) receipt = applied.receipt;
+    });
+    expect(receipt).toMatchObject({
+      planId: planned.plan.planId,
+      baseRevision: beforeRevision,
+      appliedRevision: beforeRevision + 1,
+      appliedCommandCount: 3,
+      diff: planned.plan.diff,
+    });
+    expect(apiRef.current?.getSnapshot().state).toMatchObject({
+      columnVisibility: { units: false },
+      sorting: [{ id: "revenue", desc: true }],
+      rowSelection: { "1": true },
+    });
+    expect(screen.queryByRole("columnheader", { name: /Units/ })).not.toBeInTheDocument();
+
+    act(() => {
+      expect(apiRef.current?.undo(receipt?.transactionId ?? "missing")).toMatchObject({
+        ok: true,
+        revertedTransactionId: receipt?.transactionId,
+        diff: {
+          entries: [
+            { stateKey: "columnVisibility", before: { units: false }, after: {} },
+            { stateKey: "sorting", before: [{ id: "revenue", desc: true }], after: [] },
+            { stateKey: "rowSelection", before: { "1": true }, after: {} },
+          ],
+        },
+      });
+    });
+    expect(apiRef.current?.getSnapshot().state).toMatchObject({
+      columnVisibility: {},
+      sorting: [],
+      rowSelection: {},
+    });
+    expect(screen.getByRole("columnheader", { name: /Units/ })).toBeInTheDocument();
+  });
+
+  it("rejects a stale plan after the grid revision changes", () => {
+    const apiRef = createRef<DataGridApi<Row>>();
+    render(
+      <DataGrid
+        apiRef={apiRef}
+        data={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+      />,
+    );
+    const planned = apiRef.current?.plan([
+      { type: "set_sorting", sorting: [{ id: "revenue", desc: true }] },
+    ]);
+    if (!planned?.ok) throw new Error("Expected a valid transaction plan.");
+
+    act(() => {
+      apiRef.current?.dispatch([{ type: "set_global_filter", value: "Apples" }]);
+    });
+    expect(apiRef.current?.validatePlan(planned.plan)).toMatchObject({
+      ok: false,
+      errors: [{ code: "stale_revision" }],
+    });
+    expect(apiRef.current?.applyPlan(planned.plan)).toMatchObject({
+      ok: false,
+      receipt: null,
+      errors: [{ code: "stale_revision" }],
+    });
+    expect(apiRef.current?.getSnapshot().state.sorting).toEqual([]);
   });
 
   it("emits controlled changes without mutating the controlled snapshot", () => {

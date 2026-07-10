@@ -1,6 +1,7 @@
 export { DataGrid } from "./DataGrid";
 export type {
   DataGridApi,
+  DataGridActionPlan,
   DataGridAggregateReplay,
   DataGridAggregateGroup,
   DataGridAggregateMetric,
@@ -19,6 +20,7 @@ export type {
   DataGridCommandError,
   DataGridCommandErrorCode,
   DataGridCommandResult,
+  DataGridApplyPlanResult,
   DataGridDataAccessLimits,
   DataGridDataError,
   DataGridDataErrorCode,
@@ -30,6 +32,13 @@ export type {
   DataGridSerializableValue,
   DataGridSnapshot,
   DataGridSourceColumnSnapshot,
+  DataGridPlanResult,
+  DataGridPlanValidationResult,
+  DataGridTransactionDiff,
+  DataGridTransactionDiffEntry,
+  DataGridTransactionReceipt,
+  DataGridTransactionStateKey,
+  DataGridUndoResult,
 } from "./dataGridApi";
 export type {
   DataGridFeatures,
@@ -125,8 +134,11 @@ export {
 } from "./filterDefaults";
 export {
   createDataGridAgentToolkit,
-  type DataGridAgentPermissionSource,
-  type DataGridAgentPermissions,
+  type DataGridAgentColumnPolicyContext,
+  type DataGridAgentOperation,
+  type DataGridAgentPolicy,
+  type DataGridAgentPolicySource,
+  type DataGridAgentScopePolicyContext,
   type DataGridAgentToolName,
   type DataGridAgentToolDefinition,
   type DataGridAgentToolkitOptions,

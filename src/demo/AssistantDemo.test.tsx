@@ -43,8 +43,39 @@ const receipt = {
 
 describe("AssistantDemo", () => {
   it("reveals the receipt behind a completed assistant answer", async () => {
+    let planSequence = 0;
     const toolkit = {
       execute: (name: string) => {
+        if (name === "grid_plan_actions") {
+          planSequence += 1;
+          return {
+            ok: true,
+            plan: {
+              planId: `plan-${planSequence}`,
+              baseRevision: planSequence,
+              commands: [],
+              diff: { entries: [], commandTypes: [], columnIds: [], rowIds: [] },
+            },
+            errors: [],
+          };
+        }
+        if (name === "grid_validate_plan") {
+          return { ok: true, planId: `plan-${planSequence}`, revision: planSequence, errors: [] };
+        }
+        if (name === "grid_apply_plan") {
+          return {
+            ok: true,
+            receipt: {
+              transactionId: `tx-${planSequence}`,
+              planId: `plan-${planSequence}`,
+              baseRevision: planSequence,
+              appliedRevision: planSequence + 1,
+              appliedCommandCount: 1,
+              diff: { entries: [], commandTypes: [], columnIds: [], rowIds: [] },
+            },
+            errors: [],
+          };
+        }
         if (name === "grid_query_rows") {
           return {
             ok: true,

@@ -1,33 +1,65 @@
 import type {
   DataGridAggregateOperation,
   DataGridAggregateQuery,
+  DataGridActionPlan,
   DataGridApi,
   DataGridCommand,
   DataGridDataAccessLimits,
   DataGridQuery,
+  DataGridQueryScope,
   DataGridSnapshot,
   DataGridSourceColumnSnapshot,
 } from "./dataGridApi";
 
-export type DataGridAgentPermissions = {
-  readData: boolean;
-  changeView: boolean;
-  changeFormatting: boolean;
-  /**
-   * Optional sensitivity allowlist. Columns without a sensitivity label remain
-   * available. Omit this property to allow every consumer-defined label.
-   */
-  allowedSensitivityLevels?: string[];
+export type DataGridAgentOperation =
+  | "get_context"
+  | "query_rows"
+  | "aggregate"
+  | "set_column_visibility"
+  | "set_sorting"
+  | "set_global_filter"
+  | "set_column_filters"
+  | "set_pagination"
+  | "set_row_selection"
+  | "set_selected_columns"
+  | "set_cell_selection"
+  | "set_column_presentation"
+  | "set_grouping"
+  | "undo";
+
+export type DataGridAgentScopePolicyContext = {
+  operation: "query_rows" | "aggregate";
+  scope: DataGridQueryScope;
+  snapshot: DataGridSnapshot;
 };
 
-export type DataGridAgentPermissionSource =
-  | DataGridAgentPermissions
-  | (() => DataGridAgentPermissions);
+export type DataGridAgentColumnPolicyContext = {
+  operation: DataGridAgentOperation;
+  column: DataGridSourceColumnSnapshot;
+  snapshot: DataGridSnapshot;
+};
+
+/** Missing operations are denied; omitted scope/column policies allow them. */
+export type DataGridAgentPolicy = {
+  operations:
+    | readonly DataGridAgentOperation[]
+    | ((operation: DataGridAgentOperation, snapshot: DataGridSnapshot) => boolean);
+  scopes?:
+    | readonly DataGridQueryScope[]
+    | ((context: DataGridAgentScopePolicyContext) => boolean);
+  columns?:
+    | readonly string[]
+    | ((context: DataGridAgentColumnPolicyContext) => boolean);
+};
+
+export type DataGridAgentPolicySource =
+  | DataGridAgentPolicy
+  | (() => DataGridAgentPolicy);
 
 export type DataGridAgentToolkitOptions<TData extends object> = {
   api: DataGridApi<TData> | { current: DataGridApi<TData> | null };
-  /** A callback keeps generated schemas aligned with changing user/session permissions. */
-  permissions: DataGridAgentPermissionSource;
+  /** A callback keeps generated schemas aligned with changing user/session policy. */
+  policy: DataGridAgentPolicySource;
   limits?: Partial<Pick<DataGridDataAccessLimits, "maxRowsPerQuery" | "maxCellsPerQuery">>;
 };
 
@@ -35,9 +67,10 @@ export type DataGridAgentToolName =
   | "grid_get_context"
   | "grid_query_rows"
   | "grid_aggregate"
-  | "grid_update_view"
-  | "grid_update_selection"
-  | "grid_format_columns";
+  | "grid_plan_actions"
+  | "grid_validate_plan"
+  | "grid_apply_plan"
+  | "grid_undo";
 
 export type DataGridAgentToolDefinition = {
   name: DataGridAgentToolName;
@@ -220,44 +253,73 @@ const presentationSchemaForColumn = (column: DataGridSourceColumnSnapshot): Json
   };
 };
 
-const availableScopes = (snapshot: DataGridSnapshot) => [
-  ...(snapshot.dataMode === "client" ? ["all", "filtered"] : []),
-  ...(snapshot.features.rowSelection ? ["selected_rows"] : []),
+const liveScopes = (snapshot: DataGridSnapshot): DataGridQueryScope[] => [
+  ...(snapshot.dataMode === "client" ? ["all", "filtered"] as const : []),
+  ...(snapshot.features.rowSelection ? ["selected_rows"] as const : []),
   "visible_page",
 ];
 
+const isOperationAllowed = (
+  policy: DataGridAgentPolicy,
+  operation: DataGridAgentOperation,
+  snapshot: DataGridSnapshot,
+) => typeof policy.operations === "function"
+  ? policy.operations(operation, snapshot)
+  : policy.operations.includes(operation);
+
+const isScopeAllowed = (
+  policy: DataGridAgentPolicy,
+  operation: "query_rows" | "aggregate",
+  scope: DataGridQueryScope,
+  snapshot: DataGridSnapshot,
+) => policy.scopes == null || (typeof policy.scopes === "function"
+  ? policy.scopes({ operation, scope, snapshot })
+  : policy.scopes.includes(scope));
+
+const availableScopes = (
+  snapshot: DataGridSnapshot,
+  policy: DataGridAgentPolicy,
+  operation: "query_rows" | "aggregate",
+) => isOperationAllowed(policy, operation, snapshot)
+  ? liveScopes(snapshot).filter((scope) => isScopeAllowed(policy, operation, scope, snapshot))
+  : [];
+
 const isColumnAllowed = (
   column: DataGridSourceColumnSnapshot,
-  permissions: DataGridAgentPermissions,
-) => {
-  const sensitivity = column.semantic?.sensitivity;
-  return !sensitivity ||
-    permissions.allowedSensitivityLevels == null ||
-    permissions.allowedSensitivityLevels.includes(sensitivity);
-};
+  policy: DataGridAgentPolicy,
+  operation: DataGridAgentOperation,
+  snapshot: DataGridSnapshot,
+) => policy.columns == null || (typeof policy.columns === "function"
+  ? policy.columns({ operation, column, snapshot })
+  : policy.columns.includes(column.id));
 
 const getAllowedColumns = (
   snapshot: DataGridSnapshot,
-  permissions: DataGridAgentPermissions,
-) => snapshot.sourceColumns.filter((column) => isColumnAllowed(column, permissions));
+  policy: DataGridAgentPolicy,
+  operation: DataGridAgentOperation,
+) => snapshot.sourceColumns.filter((column) =>
+  isOperationAllowed(policy, operation, snapshot) &&
+  isColumnAllowed(column, policy, operation, snapshot));
 
 const createToolDefinitions = (
   snapshot: DataGridSnapshot,
-  permissions: DataGridAgentPermissions,
+  policy: DataGridAgentPolicy,
   limits: { maxRowsPerQuery: number; maxCellsPerQuery: number },
 ): DataGridAgentToolDefinition[] => {
-  const columns = getAllowedColumns(snapshot, permissions);
-  const scopes = availableScopes(snapshot);
   const tools: DataGridAgentToolDefinition[] = [];
 
-  if (permissions.readData) {
+  if (isOperationAllowed(policy, "get_context", snapshot)) {
     tools.push({
       name: "grid_get_context",
-      description: "Get the permission-filtered live grid contract, counts, capabilities, view state, and current selections.",
+      description: "Get the policy-filtered live grid contract, counts, capabilities, view state, and current selections.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     });
 
-    if (columns.length > 0) {
+  }
+
+  const queryColumns = getAllowedColumns(snapshot, policy, "query_rows");
+  const queryScopes = availableScopes(snapshot, policy, "query_rows");
+  if (queryColumns.length > 0 && queryScopes.length > 0) {
       tools.push({
         name: "grid_query_rows",
         description: `Read bounded source-row values. Live data mode: ${snapshot.dataMode}. Maximum ${limits.maxRowsPerQuery} rows and ${limits.maxCellsPerQuery} cells per call.`,
@@ -265,10 +327,10 @@ const createToolDefinitions = (
           type: "object",
           required: ["scope"],
           properties: {
-            scope: { type: "string", enum: scopes },
+            scope: { type: "string", enum: queryScopes },
             columnIds: {
               type: "array",
-              items: columnIdSchema(columns),
+              items: columnIdSchema(queryColumns),
               minItems: 1,
               uniqueItems: true,
             },
@@ -279,6 +341,11 @@ const createToolDefinitions = (
         },
       });
 
+  }
+
+  const aggregateColumns = getAllowedColumns(snapshot, policy, "aggregate");
+  const aggregateScopes = availableScopes(snapshot, policy, "aggregate");
+  if (aggregateColumns.length > 0 && aggregateScopes.length > 0) {
       const metricVariants: JsonSchema[] = [{
         type: "object",
         required: ["operation"],
@@ -288,7 +355,7 @@ const createToolDefinitions = (
         },
         additionalProperties: false,
       }];
-      columns.forEach((column) => {
+      aggregateColumns.forEach((column) => {
         metricVariants.push({
           type: "object",
           required: ["columnId", "operation"],
@@ -308,10 +375,10 @@ const createToolDefinitions = (
           type: "object",
           required: ["scope", "metrics"],
           properties: {
-            scope: { type: "string", enum: scopes },
+            scope: { type: "string", enum: aggregateScopes },
             groupBy: {
               type: "array",
-              items: columnIdSchema(columns),
+              items: columnIdSchema(aggregateColumns),
               uniqueItems: true,
             },
             metrics: {
@@ -323,14 +390,19 @@ const createToolDefinitions = (
           additionalProperties: false,
         },
       });
-    }
   }
 
-  if (permissions.changeView && columns.length > 0) {
-    const hideable = columns.filter((column) => column.canHide);
-    const sortable = columns.filter((column) => column.canSort);
-    const filterable = columns.filter((column) => column.canFilter && column.filter);
-    const groupable = columns.filter((column) => column.canGroup);
+  const visibilityColumns = getAllowedColumns(snapshot, policy, "set_column_visibility");
+  const sortingColumns = getAllowedColumns(snapshot, policy, "set_sorting");
+  const filterColumns = getAllowedColumns(snapshot, policy, "set_column_filters");
+  const groupingColumns = getAllowedColumns(snapshot, policy, "set_grouping");
+  const selectedColumns = getAllowedColumns(snapshot, policy, "set_selected_columns");
+  const cellColumns = getAllowedColumns(snapshot, policy, "set_cell_selection");
+  const presentationColumns = getAllowedColumns(snapshot, policy, "set_column_presentation");
+  const hideable = visibilityColumns.filter((column) => column.canHide);
+  const sortable = sortingColumns.filter((column) => column.canSort);
+  const filterable = filterColumns.filter((column) => column.canFilter && column.filter);
+  const groupable = groupingColumns.filter((column) => column.canGroup);
     const properties: Record<string, JsonSchema> = {};
     if (snapshot.features.columnVisibility && hideable.length > 0) {
       properties.visibleColumnIds = {
@@ -376,42 +448,36 @@ const createToolDefinitions = (
         uniqueItems: true,
       };
     }
-    if (snapshot.features.globalSearch) properties.globalFilter = { type: "string" };
-    if (snapshot.features.pagination) {
+    if (snapshot.features.globalSearch && isOperationAllowed(policy, "set_global_filter", snapshot)) {
+      properties.globalFilter = { type: "string" };
+    }
+    if (snapshot.features.pagination && isOperationAllowed(policy, "set_pagination", snapshot)) {
       properties.pageIndex = { type: "integer", minimum: 0 };
       properties.pageSize = { type: "integer", minimum: 1 };
     }
-    if (Object.keys(properties).length > 0) {
-      tools.push({
-        name: "grid_update_view",
-        description: `Change only view operations enabled by the live ${snapshot.layoutMode} grid.`,
-        inputSchema: { type: "object", properties, additionalProperties: false },
-      });
-    }
-
-    const selectionProperties: Record<string, JsonSchema> = {
-      columnIds: {
+    if (selectedColumns.length > 0) {
+      properties.columnIds = {
         type: "array",
-        items: columnIdSchema(columns),
+        items: columnIdSchema(selectedColumns),
         uniqueItems: true,
-      },
-      columnMode: { type: "string", enum: ["replace", "add", "remove"] },
-    };
-    if (snapshot.features.rowSelection) {
-      selectionProperties.rowIds = { type: "array", items: { type: "string" }, uniqueItems: true };
-      selectionProperties.rowMode = { type: "string", enum: ["replace", "add", "remove"] };
+      };
+      properties.columnMode = { type: "string", enum: ["replace", "add", "remove"] };
     }
-    if (snapshot.features.cellSelection) {
+    if (snapshot.features.rowSelection && isOperationAllowed(policy, "set_row_selection", snapshot)) {
+      properties.rowIds = { type: "array", items: { type: "string" }, uniqueItems: true };
+      properties.rowMode = { type: "string", enum: ["replace", "add", "remove"] };
+    }
+    if (snapshot.features.cellSelection && cellColumns.length > 0) {
       const cell = {
         type: "object",
         required: ["rowId", "columnId"],
         properties: {
           rowId: { type: "string" },
-          columnId: columnIdSchema(columns),
+          columnId: columnIdSchema(cellColumns),
         },
         additionalProperties: false,
       };
-      selectionProperties.cellSelection = {
+      properties.cellSelection = {
         anyOf: [
           { type: "null" },
           {
@@ -423,43 +489,64 @@ const createToolDefinitions = (
         ],
       };
     }
-    tools.push({
-      name: "grid_update_selection",
-      description: "Change only selection modes enabled by the live grid.",
-      inputSchema: { type: "object", properties: selectionProperties, additionalProperties: false },
-    });
-  }
-
-  if (permissions.changeFormatting && columns.length > 0) {
-    tools.push({
-      name: "grid_format_columns",
-      description: "Apply type-aware, serializable presentation to authorized source columns.",
-      inputSchema: {
-        type: "object",
-        required: ["presentation"],
-        properties: {
-          presentation: {
+    if (presentationColumns.length > 0) {
+      properties.presentation = {
             type: "object",
             properties: Object.fromEntries(
-              columns.map((column) => [column.id, presentationSchemaForColumn(column)]),
+              presentationColumns.map((column) => [column.id, presentationSchemaForColumn(column)]),
             ),
             additionalProperties: false,
-          },
-          mode: { type: "string", enum: ["merge", "replace"] },
+      };
+      properties.presentationMode = { type: "string", enum: ["merge", "replace"] };
+    }
+    if (Object.keys(properties).length > 0) {
+      tools.push({
+        name: "grid_plan_actions",
+        description: `Preview one atomic batch of policy-authorized changes to the live ${snapshot.layoutMode} grid. No mutation occurs.`,
+        inputSchema: { type: "object", properties, additionalProperties: false },
+      });
+      tools.push({
+        name: "grid_validate_plan",
+        description: "Revalidate a proposed grid action plan against live policy and grid revision.",
+        inputSchema: {
+          type: "object",
+          required: ["planId"],
+          properties: { planId: { type: "string" } },
+          additionalProperties: false,
         },
-        additionalProperties: false,
-      },
-    });
+      });
+      tools.push({
+        name: "grid_apply_plan",
+        description: "Atomically apply a previously validated, non-stale grid action plan.",
+        inputSchema: {
+          type: "object",
+          required: ["planId"],
+          properties: { planId: { type: "string" } },
+          additionalProperties: false,
+        },
+      });
+    }
+    if (isOperationAllowed(policy, "undo", snapshot)) {
+      tools.push({
+        name: "grid_undo",
+        description: "Undo an applied grid transaction when its resulting revision is still current.",
+        inputSchema: {
+          type: "object",
+          required: ["transactionId"],
+          properties: { transactionId: { type: "string" } },
+          additionalProperties: false,
+        },
+      });
   }
 
   return tools;
 };
 
-const permissionError = (permission: keyof DataGridAgentPermissions) => ({
+const policyError = (operation: DataGridAgentOperation) => ({
   ok: false as const,
   error: {
-    code: "permission_denied",
-    message: `Toolkit permission ${permission} is required for this tool.`,
+    code: "policy_denied",
+    message: `Toolkit policy denies operation ${operation}.`,
   },
 });
 
@@ -472,7 +559,7 @@ const unavailableTool = (toolName: DataGridAgentToolName) => ({
   ok: false as const,
   error: {
     code: "tool_unavailable",
-    message: `${toolName} is not available under the live grid features, permissions, and data mode.`,
+    message: `${toolName} is not available under the live grid features, policy, and data mode.`,
   },
 });
 
@@ -481,9 +568,9 @@ const filterRecord = <T>(record: Record<string, T>, allowed: Set<string>) =>
 
 const sanitizeSnapshot = (
   snapshot: DataGridSnapshot,
-  permissions: DataGridAgentPermissions,
+  policy: DataGridAgentPolicy,
 ) => {
-  const sourceColumns = getAllowedColumns(snapshot, permissions);
+  const sourceColumns = getAllowedColumns(snapshot, policy, "get_context");
   const allowed = new Set(sourceColumns.map((column) => column.id));
   const cellSelection = snapshot.state.cellSelection &&
     allowed.has(snapshot.state.cellSelection.anchor.columnId) &&
@@ -492,11 +579,18 @@ const sanitizeSnapshot = (
     : null;
   return {
     ...snapshot,
-    permissions: {
-      ...permissions,
-      allowedSensitivityLevels: permissions.allowedSensitivityLevels
-        ? [...permissions.allowedSensitivityLevels]
-        : undefined,
+    policy: {
+      allowedOperations: ([
+        "get_context", "query_rows", "aggregate", "set_column_visibility", "set_sorting",
+        "set_global_filter", "set_column_filters", "set_pagination", "set_row_selection",
+        "set_selected_columns", "set_cell_selection", "set_column_presentation", "set_grouping",
+        "undo",
+      ] satisfies DataGridAgentOperation[]).filter((operation) =>
+        isOperationAllowed(policy, operation, snapshot)),
+      allowedScopes: {
+        query_rows: availableScopes(snapshot, policy, "query_rows"),
+        aggregate: availableScopes(snapshot, policy, "aggregate"),
+      },
     },
     sourceColumns,
     columns: snapshot.columns.filter((column) =>
@@ -548,15 +642,41 @@ const defaultQueryColumns = (
   return visible.length > 0 ? visible : sourceOrder;
 };
 
+const commandColumnIds = (command: DataGridCommand): string[] => {
+  switch (command.type) {
+    case "set_column_visibility":
+    case "move_columns":
+    case "pin_columns":
+    case "set_selected_columns":
+    case "set_grouping":
+      return [...command.columnIds, ...(command.type === "move_columns" && command.beforeColumnId
+        ? [command.beforeColumnId]
+        : [])];
+    case "set_column_sizes": return Object.keys(command.sizes);
+    case "set_sorting": return command.sorting.map((sort) => sort.id);
+    case "set_column_filters": return command.filters.map((filter) => filter.id);
+    case "set_column_presentation": return Object.keys(command.presentation);
+    case "set_cell_selection": return command.selection
+      ? [command.selection.anchor.columnId, command.selection.focus.columnId]
+      : [];
+    case "set_pivot": return [
+      ...command.pivot.rows,
+      ...(command.pivot.columns?.map((axis) => axis.columnId) ?? []),
+    ];
+    default: return [];
+  }
+};
+
 export function createDataGridAgentToolkit<TData extends object>({
   api: apiOrRef,
-  permissions: permissionSource,
+  policy: policySource,
   limits,
 }: DataGridAgentToolkitOptions<TData>) {
   const getApi = () => "current" in apiOrRef ? apiOrRef.current : apiOrRef;
-  const getPermissions = () => typeof permissionSource === "function"
-    ? permissionSource()
-    : permissionSource;
+  const getPolicy = () => typeof policySource === "function"
+    ? policySource()
+    : policySource;
+  const plans = new Map<string, DataGridActionPlan>();
   const resolvedLimits = {
     maxRowsPerQuery: Math.max(1, Math.floor(limits?.maxRowsPerQuery ?? 100)),
     maxCellsPerQuery: Math.max(1, Math.floor(limits?.maxCellsPerQuery ?? 2_000)),
@@ -564,7 +684,7 @@ export function createDataGridAgentToolkit<TData extends object>({
   const getTools = () => {
     const api = getApi();
     if (!api) return [];
-    return createToolDefinitions(api.getSnapshot(), getPermissions(), resolvedLimits);
+    return createToolDefinitions(api.getSnapshot(), getPolicy(), resolvedLimits);
   };
 
   const execute = (toolName: DataGridAgentToolName, input: unknown = {}) => {
@@ -572,30 +692,30 @@ export function createDataGridAgentToolkit<TData extends object>({
     if (!api) {
       return { ok: false as const, error: { code: "api_unavailable", message: "The grid API is not mounted." } };
     }
-    const permissions = getPermissions();
+    const policy = getPolicy();
     const snapshot = api.getSnapshot();
-    const columns = getAllowedColumns(snapshot, permissions);
-    const columnById = new Map(columns.map((column) => [column.id, column]));
     const availableToolNames = new Set(
-      createToolDefinitions(snapshot, permissions, resolvedLimits).map((tool) => tool.name),
+      createToolDefinitions(snapshot, policy, resolvedLimits).map((tool) => tool.name),
     );
     if (!availableToolNames.has(toolName)) {
-      if (toolName === "grid_get_context" || toolName === "grid_query_rows" || toolName === "grid_aggregate") {
-        if (!permissions.readData) return permissionError("readData");
-      }
-      if (toolName === "grid_update_view" || toolName === "grid_update_selection") {
-        if (!permissions.changeView) return permissionError("changeView");
-      }
-      if (toolName === "grid_format_columns" && !permissions.changeFormatting) {
-        return permissionError("changeFormatting");
-      }
+      if (toolName === "grid_get_context") return policyError("get_context");
+      if (toolName === "grid_query_rows") return policyError("query_rows");
+      if (toolName === "grid_aggregate") return policyError("aggregate");
+      if (toolName === "grid_undo") return policyError("undo");
       return unavailableTool(toolName);
     }
     const value = input && typeof input === "object" ? input as Record<string, unknown> : {};
-    const validateColumnIds = (ids: unknown, predicate?: (column: DataGridSourceColumnSnapshot) => boolean) => {
+    const validateColumnIds = (
+      ids: unknown,
+      operation: DataGridAgentOperation,
+      predicate?: (column: DataGridSourceColumnSnapshot) => boolean,
+    ) => {
       if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
         return "Column ids must be an array of strings.";
       }
+      const columnById = new Map(
+        getAllowedColumns(snapshot, policy, operation).map((column) => [column.id, column]),
+      );
       const invalid = ids.find((id) => {
         const column = columnById.get(id as string);
         return !column || (predicate ? !predicate(column) : false);
@@ -604,14 +724,15 @@ export function createDataGridAgentToolkit<TData extends object>({
     };
 
     if (toolName === "grid_get_context") {
-      return sanitizeSnapshot(snapshot, permissions);
+      return sanitizeSnapshot(snapshot, policy);
     }
     if (toolName === "grid_query_rows") {
-      const scopes = availableScopes(snapshot);
+      const columns = getAllowedColumns(snapshot, policy, "query_rows");
+      const scopes = availableScopes(snapshot, policy, "query_rows");
       const query = value as DataGridQuery;
       if (!scopes.includes(query.scope)) return invalidInput("A scope available in the live data mode is required.");
       const columnIds = query.columnIds ?? defaultQueryColumns(snapshot, columns);
-      const columnError = validateColumnIds(columnIds);
+      const columnError = validateColumnIds(columnIds, "query_rows");
       if (columnError) return invalidInput(columnError);
       const limit = query.limit ?? resolvedLimits.maxRowsPerQuery;
       if (
@@ -623,14 +744,16 @@ export function createDataGridAgentToolkit<TData extends object>({
       return api.query({ ...query, columnIds, limit });
     }
     if (toolName === "grid_aggregate") {
+      const columns = getAllowedColumns(snapshot, policy, "aggregate");
+      const columnById = new Map(columns.map((column) => [column.id, column]));
       if (
-        !availableScopes(snapshot).includes(value.scope as string) ||
+        !availableScopes(snapshot, policy, "aggregate").includes(value.scope as DataGridQueryScope) ||
         !Array.isArray(value.metrics) ||
         value.metrics.length === 0
       ) {
         return invalidInput("A scope available in the live data mode and at least one metric are required.");
       }
-      const groupError = value.groupBy == null ? null : validateColumnIds(value.groupBy);
+      const groupError = value.groupBy == null ? null : validateColumnIds(value.groupBy, "aggregate");
       if (groupError) return invalidInput(groupError);
       for (const candidate of value.metrics) {
         if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
@@ -648,11 +771,39 @@ export function createDataGridAgentToolkit<TData extends object>({
       }
       return api.aggregate(value as DataGridAggregateQuery);
     }
-    if (toolName === "grid_update_view") {
-      const commands: DataGridCommand[] = [];
+    if (toolName === "grid_validate_plan" || toolName === "grid_apply_plan") {
+      if (typeof value.planId !== "string") return invalidInput("planId is required.");
+      const candidate = plans.get(value.planId);
+      if (!candidate) return invalidInput(`Unknown plan: ${value.planId}.`);
+      const denied = candidate.commands.find((command) => {
+        const operation = command.type as DataGridAgentOperation;
+        if (!isOperationAllowed(policy, operation, snapshot)) return true;
+        return commandColumnIds(command).some((columnId) => {
+          const column = snapshot.sourceColumns.find((item) => item.id === columnId);
+          return column != null && !isColumnAllowed(column, policy, operation, snapshot);
+        });
+      });
+      if (denied) return policyError(denied.type as DataGridAgentOperation);
+      const validation = api.validatePlan(candidate);
+      if (toolName === "grid_validate_plan" || !validation.ok) return validation;
+      const applied = api.applyPlan(candidate);
+      if (applied.ok) plans.delete(candidate.planId);
+      return applied;
+    }
+    if (toolName === "grid_undo") {
+      if (typeof value.transactionId !== "string") return invalidInput("transactionId is required.");
+      return api.undo(value.transactionId);
+    }
+
+    const commands: DataGridCommand[] = [];
       if (Array.isArray(value.visibleColumnIds)) {
-        const hideable = columns.filter((column) => column.canHide);
-        const error = validateColumnIds(value.visibleColumnIds, (column) => column.canHide);
+        const hideable = getAllowedColumns(snapshot, policy, "set_column_visibility")
+          .filter((column) => column.canHide);
+        const error = validateColumnIds(
+          value.visibleColumnIds,
+          "set_column_visibility",
+          (column) => column.canHide,
+        );
         if (error) return invalidInput(error);
         const visible = new Set(value.visibleColumnIds as string[]);
         commands.push({
@@ -669,7 +820,7 @@ export function createDataGridAgentToolkit<TData extends object>({
           return invalidInput("Each sort entry must be an object.");
         }
         const ids = value.sorting.map((item) => (item as { id?: unknown }).id);
-        const error = validateColumnIds(ids, (column) => column.canSort);
+        const error = validateColumnIds(ids, "set_sorting", (column) => column.canSort);
         if (error) return invalidInput(error);
         commands.push({ type: "set_sorting", sorting: value.sorting as never });
       }
@@ -679,9 +830,14 @@ export function createDataGridAgentToolkit<TData extends object>({
             return invalidInput("Each filter entry must be an object.");
           }
           const filter = candidate as { id?: unknown; value?: unknown };
-          const error = validateColumnIds([filter.id], (column) => column.canFilter);
+          const error = validateColumnIds(
+            [filter.id],
+            "set_column_filters",
+            (column) => column.canFilter,
+          );
           if (error) return invalidInput(error);
-          const column = columnById.get(filter.id as string);
+          const column = getAllowedColumns(snapshot, policy, "set_column_filters")
+            .find((item) => item.id === filter.id);
           const operator = filter.value && typeof filter.value === "object"
             ? (filter.value as { operator?: unknown }).operator
             : undefined;
@@ -692,16 +848,20 @@ export function createDataGridAgentToolkit<TData extends object>({
         commands.push({ type: "set_column_filters", filters: value.filters as never });
       }
       if (Array.isArray(value.grouping)) {
-        const error = validateColumnIds(value.grouping, (column) => column.canGroup);
+        const error = validateColumnIds(value.grouping, "set_grouping", (column) => column.canGroup);
         if (error) return invalidInput(error);
         commands.push({ type: "set_grouping", columnIds: value.grouping as string[] });
       }
       if (typeof value.globalFilter === "string") {
-        if (!snapshot.features.globalSearch) return unavailableTool(toolName);
+        if (!isOperationAllowed(policy, "set_global_filter", snapshot)) {
+          return policyError("set_global_filter");
+        }
         commands.push({ type: "set_global_filter", value: value.globalFilter });
       }
       if (value.pageIndex != null || value.pageSize != null) {
-        if (!snapshot.features.pagination) return unavailableTool(toolName);
+        if (!isOperationAllowed(policy, "set_pagination", snapshot)) {
+          return policyError("set_pagination");
+        }
         const current = snapshot.state.pagination;
         commands.push({
           type: "set_pagination",
@@ -711,55 +871,61 @@ export function createDataGridAgentToolkit<TData extends object>({
           },
         });
       }
-      return commands.length > 0 ? api.dispatch(commands) : invalidInput("At least one live view change is required.");
-    }
-    if (toolName === "grid_update_selection") {
-      const commands: DataGridCommand[] = [];
       if (Array.isArray(value.rowIds)) {
-        if (!snapshot.features.rowSelection) return unavailableTool(toolName);
+        if (!isOperationAllowed(policy, "set_row_selection", snapshot)) {
+          return policyError("set_row_selection");
+        }
         commands.push({ type: "set_row_selection", rowIds: value.rowIds as string[], mode: value.rowMode as never });
       }
       if (Array.isArray(value.columnIds)) {
-        const error = validateColumnIds(value.columnIds);
+        const error = validateColumnIds(value.columnIds, "set_selected_columns");
         if (error) return invalidInput(error);
         commands.push({ type: "set_selected_columns", columnIds: value.columnIds as string[], mode: value.columnMode as never });
       }
       if ("cellSelection" in value) {
-        if (!snapshot.features.cellSelection) return unavailableTool(toolName);
+        if (!isOperationAllowed(policy, "set_cell_selection", snapshot)) {
+          return policyError("set_cell_selection");
+        }
         const selection = value.cellSelection as { anchor?: { columnId?: unknown }; focus?: { columnId?: unknown } } | null;
         if (selection) {
           const error = validateColumnIds([
             selection.anchor?.columnId,
             selection.focus?.columnId,
-          ]);
+          ], "set_cell_selection");
           if (error) return invalidInput(error);
         }
         commands.push({ type: "set_cell_selection", selection: value.cellSelection as never });
       }
-      return commands.length > 0 ? api.dispatch(commands) : invalidInput("At least one live selection change is required.");
-    }
-    const presentation = value.presentation;
-    if (!presentation || typeof presentation !== "object" || Array.isArray(presentation)) {
-      return invalidInput("presentation is required.");
-    }
-    const error = validateColumnIds(Object.keys(presentation));
-    if (error) return invalidInput(error);
-    for (const [columnId, candidate] of Object.entries(presentation)) {
-      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-        return invalidInput(`Presentation for ${columnId} must be an object.`);
+    if (value.presentation != null) {
+      const presentation = value.presentation;
+      if (!presentation || typeof presentation !== "object" || Array.isArray(presentation)) {
+        return invalidInput("presentation must be an object.");
       }
-      const column = columnById.get(columnId);
-      const legalKeys = column ? presentationKeysForColumn(column) : new Set<string>();
-      const invalidKey = Object.keys(candidate).find((key) => !legalKeys.has(key));
-      if (invalidKey) {
-        return invalidInput(`${invalidKey} is unavailable for column ${columnId}.`);
+      const error = validateColumnIds(Object.keys(presentation), "set_column_presentation");
+      if (error) return invalidInput(error);
+      const columnById = new Map(
+        getAllowedColumns(snapshot, policy, "set_column_presentation")
+          .map((column) => [column.id, column]),
+      );
+      for (const [columnId, candidate] of Object.entries(presentation)) {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+          return invalidInput(`Presentation for ${columnId} must be an object.`);
+        }
+        const column = columnById.get(columnId);
+        const legalKeys = column ? presentationKeysForColumn(column) : new Set<string>();
+        const invalidKey = Object.keys(candidate).find((key) => !legalKeys.has(key));
+        if (invalidKey) return invalidInput(`${invalidKey} is unavailable for column ${columnId}.`);
       }
+      commands.push({
+        type: "set_column_presentation",
+        presentation: presentation as never,
+        mode: value.presentationMode === "replace" ? "replace" : "merge",
+      });
     }
-    return api.dispatch([{
-      type: "set_column_presentation",
-      presentation: presentation as never,
-      mode: value.mode === "replace" ? "replace" : "merge",
-    }]);
+    if (commands.length === 0) return invalidInput("At least one live grid action is required.");
+    const planned = api.plan(commands);
+    if (planned.ok) plans.set(planned.plan.planId, planned.plan);
+    return planned;
   };
 
   return {
