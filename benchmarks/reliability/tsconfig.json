@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.benchmark.tsbuildinfo",
+    "types": ["node", "vitest/globals"],
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "../../src"]
+}

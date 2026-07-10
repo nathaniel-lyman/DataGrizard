@@ -1,0 +1,61 @@
+name: Reliability benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: Repetitions per case
+        required: false
+        default: "3"
+      max_cases:
+        description: Optional case limit for smoke runs
+        required: false
+        default: "84"
+  schedule:
+    - cron: "17 8 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reliability-benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run benchmark:contract
+      - name: Run gpt-5.5 high-reasoning benchmark
+        run: >-
+          npm run benchmark:openai --
+          --model gpt-5.5
+          --reasoning high
+          --repetitions "${{ inputs.repetitions || '3' }}"
+          --max-cases "${{ inputs.max_cases || '84' }}"
+          --output .tmp/reliability/runs.json
+          --report-json .tmp/reliability/report.json
+          --report-markdown .tmp/reliability/report.md
+          --baseline benchmarks/reliability/results/latest.json
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f .tmp/reliability/report.md ]; then
+            sed -n '1,220p' .tmp/reliability/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reliability-benchmark-${{ github.run_id }}
+          path: .tmp/reliability/
+          if-no-files-found: warn
+          retention-days: 90

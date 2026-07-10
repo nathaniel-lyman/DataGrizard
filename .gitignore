@@ -10,3 +10,7 @@ datagrizard-grid-*.png
 
 .superpowers/
 .codex-audits/
+
+# Raw reliability traces are local/CI artifacts. Reviewed aggregate baselines
+# under benchmarks/reliability/results remain tracked.
+benchmarks/reliability/results/runs-*.json

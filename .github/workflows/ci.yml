@@ -17,6 +17,7 @@ jobs:
       - run: npm ci
       - run: npx tsc -b
       - run: npm test
+      - run: npm run benchmark:contract
       - run: npm run test:package
 
   react-18:

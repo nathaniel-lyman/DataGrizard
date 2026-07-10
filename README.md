@@ -10,6 +10,16 @@ surface.
 The product is the `DataGrid` component. The retail "Recommendation Workbench"
 screen in `src/App.tsx` is only a demo consumer that exercises the public API.
 
+## Public reliability benchmark
+
+DataGrizard ships an [84-case public reliability benchmark](benchmarks/reliability/README.md)
+for ambiguous columns, row/column selections, transactional view changes,
+aggregation, invalid requests, server-mode boundaries, and sensitive-column
+policies. The deterministic corpus and oracle gate every pull request; sampled
+OpenAI runs track valid tool calls, analytical correctness, leakage, calls per
+task, latency, and replay consistency. See the
+[latest reviewed result](benchmarks/reliability/results/latest.md).
+
 ---
 
 ## Install

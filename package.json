@@ -61,7 +61,10 @@
     "server": "tsx --tsconfig tsconfig.app.json server/retailBigQueryServer.ts",
     "export:mock": "tsx --tsconfig tsconfig.app.json scripts/exportMockRows.ts",
     "test": "vitest run",
-    "test:package": "npm run build:package && node scripts/verify-package.mjs"
+    "test:package": "npm run build:package && node scripts/verify-package.mjs",
+    "benchmark:contract": "tsc -p benchmarks/reliability/tsconfig.json && vitest run --config benchmarks/reliability/vitest.config.ts",
+    "benchmark:openai": "tsx --tsconfig benchmarks/reliability/tsconfig.json benchmarks/reliability/run.ts",
+    "benchmark:report": "tsx --tsconfig benchmarks/reliability/tsconfig.json benchmarks/reliability/report.ts"
   },
   "peerDependencies": {
     "@tanstack/react-table": "^8.21.3",
@@ -77,6 +80,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.0",
+    "@types/jsdom": "^28.0.3",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
