@@ -1,6 +1,6 @@
 # Feature 2: Header Filtering + Pivot Filters Popover — Implementation Plan
 
-> Test-first. `npx tsc -b` + `npm test` green before each commit. Spec: `docs/tier1-feature-parity-spec.md` Feature 2 (rev. 4).
+> Test-first. `npx tsc -b` + `npm test` green before each commit. Spec: `docs/internal/tier1-feature-parity-spec.md` Feature 2 (rev. 4).
 
 **Goal:** Move grid-mode column filtering into the column headers (per-leaf filter popover, opt-in floating row) and remove the inline toolbar filter chips; give pivot mode a consolidated toolbar **Filters** popover. Add `text` (contains) and `date` (from/to + presets) filter types.
 

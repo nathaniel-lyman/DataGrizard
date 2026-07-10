@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, React 19, TanStack Table v8 (8.21.3), Vitest + jsdom, `Intl.DateTimeFormat`.
 
-**Source spec:** `docs/tier1-feature-parity-spec.md` (rev. 4), Feature 1.
+**Source spec:** `docs/internal/tier1-feature-parity-spec.md` (rev. 4), Feature 1.
 
 ---
 

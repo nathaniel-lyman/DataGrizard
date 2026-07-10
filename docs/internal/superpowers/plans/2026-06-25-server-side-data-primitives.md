@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19, TypeScript, TanStack Table v8, Vite, Vitest + Testing Library (jsdom).
 
-**Spec:** `docs/superpowers/specs/2026-06-25-server-side-data-primitives-design.md`
+**Spec:** `docs/internal/superpowers/specs/2026-06-25-server-side-data-primitives-design.md`
 
 ---
 

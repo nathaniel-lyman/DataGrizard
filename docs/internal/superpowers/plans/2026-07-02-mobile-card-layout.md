@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19, TypeScript, TanStack Table v8, @tanstack/react-virtual, Tailwind, Vitest + Testing Library (jsdom).
 
-**Spec:** `docs/superpowers/specs/2026-07-02-mobile-card-layout-design.md`
+**Spec:** `docs/internal/superpowers/specs/2026-07-02-mobile-card-layout-design.md`
 
 **House rules that bind every task:** `src/components/DataGrid/` stays domain-neutral and generic over `TData extends object` — no retail names anywhere in it. Every new public type exports from `src/components/DataGrid/index.ts`. Type-check is `npx tsc -b` (there is no lint script). Tests run with `npx vitest run <file>`.
 

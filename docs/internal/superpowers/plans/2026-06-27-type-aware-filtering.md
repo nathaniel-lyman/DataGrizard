@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vite + React 19 + TypeScript, TanStack Table v8, Tailwind, Vitest + Testing Library (jsdom). Type-check is `npx tsc -b`. Tests run via `npx vitest run`.
 
-**Spec:** `docs/superpowers/specs/2026-06-27-type-aware-filtering-design.md`
+**Spec:** `docs/internal/superpowers/specs/2026-06-27-type-aware-filtering-design.md`
 
 **Conventions to honor (from CLAUDE.md / AGENTS.md):**
 - `src/components/DataGrid/` stays domain-neutral and generic over `TData extends object`. No retail field names inside it.

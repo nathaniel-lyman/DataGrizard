@@ -237,10 +237,10 @@ not, change peers to `>=19` before first publish (cheaper).
 2. **README top:** add a screenshot or short GIF (grid + pivot; assets exist
    under `screenshots/`, or capture fresh post-retheme). Add a 3–4 sentence
    "why this vs AG Grid / MUI X / headless TanStack" positioning paragraph.
-3. **Repo hygiene:** move the 8 root-level `datagrizard-*.png` files and
-   `datagrizard-pivot-initial-snapshot.md` into `screenshots/` or delete;
-   move `docs/plans/`, `docs/superpowers/`, and the two `*-spec.md` files under
-   `docs/internal/` (leave this spec at `docs/`).
+3. **Repo hygiene (completed 2026-07-10):** pivot-debug captures now live in
+   `screenshots/pivot-debug-2026-06-24/`; historical plans and implementation
+   specs now live under `docs/internal/`. This adoption-readiness spec remains
+   at `docs/` because it tracks the public release boundary.
 4. README styling section rewrite ships with package A (§ 2.A4).
 
 ---
