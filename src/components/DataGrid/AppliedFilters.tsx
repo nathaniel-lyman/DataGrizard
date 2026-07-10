@@ -4,8 +4,7 @@
 // Domain-neutral; reads runtime GridFilter descriptors built by DataGrid.
 import { isFilterActive, summarizeFilter, type GridFilter } from "./filters";
 
-const chipClass =
-  "inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700";
+const chipClass = "dg-applied-filter";
 
 export const AppliedFilters = ({
   filters,
@@ -25,18 +24,18 @@ export const AppliedFilters = ({
   return (
     <div
       aria-label="Active filters"
-      className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2"
+      className="dg-applied-filters"
     >
       {hasGlobal ? (
         <span data-testid="applied-filter-search" className={chipClass}>
-          <span className="min-w-0 max-w-64 truncate" title={globalSearch}>
+          <span className="dg-applied-filter-label" title={globalSearch}>
             Search: “{globalSearch}”
           </span>
           <button
             type="button"
             aria-label="Remove search filter"
             onClick={onClearGlobalSearch}
-            className="text-slate-400 hover:text-slate-700"
+            className="dg-applied-filter-remove"
           >
             ✕
           </button>
@@ -45,7 +44,7 @@ export const AppliedFilters = ({
       {active.map((filter) => (
         <span key={filter.id} data-testid={`applied-filter-${filter.id}`} className={chipClass}>
           <span
-            className="min-w-0 max-w-64 truncate"
+            className="dg-applied-filter-label"
             title={`${filter.label}: ${summarizeFilter(filter)}`}
           >
             {filter.label}: {summarizeFilter(filter)}
@@ -54,7 +53,7 @@ export const AppliedFilters = ({
             type="button"
             aria-label={`Remove ${filter.label} filter`}
             onClick={() => filter.onChange(undefined)}
-            className="text-slate-400 hover:text-slate-700"
+            className="dg-applied-filter-remove"
           >
             ✕
           </button>
@@ -63,7 +62,7 @@ export const AppliedFilters = ({
       <button
         type="button"
         onClick={onClearAll}
-        className="ml-1 text-xs font-medium text-slate-500 underline underline-offset-2 hover:text-slate-900"
+        className="dg-applied-filters-clear"
       >
         Clear all
       </button>

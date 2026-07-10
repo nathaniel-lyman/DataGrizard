@@ -15,11 +15,9 @@ export const formatOptionLabel = (option: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
-const inputClass =
-  "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 outline-none transition focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300";
+const inputClass = "dg-filter-input";
 
-const operatorClass =
-  "h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 outline-none transition focus-visible:border-slate-500 focus-visible:ring-2 focus-visible:ring-slate-300";
+const operatorClass = "dg-filter-operator";
 
 const operatorLabels: Record<GridFilterOperator, string> = {
   is: "Is",
@@ -61,7 +59,7 @@ const isUnaryOperator = (operator: GridFilterOperator) =>
   operator === "isEmpty" || operator === "isNotEmpty";
 
 const emptyOptions = (
-  <p className="px-2 py-1.5 text-xs font-medium text-slate-500">No options available</p>
+  <p className="dg-filter-empty">No options available</p>
 );
 
 const resolveFilterState = (filter: GridFilter) => {
@@ -98,13 +96,13 @@ const OperatorSelect = ({ filter }: { filter: GridFilter }) => {
   const { operator, value } = resolveFilterState(filter);
   const operators = getOperators(filter);
   return (
-    <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <label className="dg-filter-operator-field">
       Match
       <select
         aria-label={`${filter.label} operator`}
         value={operator}
         onChange={(event) => commitFilterValue(filter, event.target.value as GridFilterOperator, value)}
-        className={`${operatorClass} w-full`}
+        className={`${operatorClass} dg-control--full`}
       >
         {operators.map((item) => (
           <option key={item} value={item}>
@@ -128,17 +126,17 @@ const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => vo
     return null;
   }
   if (filter.options.length === 0) {
-    return <div className="w-56">{emptyOptions}</div>;
+    return <div className="dg-filter-width--wide">{emptyOptions}</div>;
   }
   return (
-    <div role="listbox" aria-label={`${filter.label} options`} className="max-h-64 w-56 overflow-auto">
+    <div role="listbox" aria-label={`${filter.label} options`} className="dg-filter-options dg-filter-width--wide">
       <button
         type="button"
         role="option"
         aria-selected={selected === ""}
         onClick={() => choose("")}
-        className={`flex h-8 w-full items-center rounded px-2 text-left text-xs font-medium ${
-          selected === "" ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-50"
+        className={`dg-filter-option ${
+          selected === "" ? "dg-filter-option--selected" : ""
         }`}
       >
         All
@@ -150,11 +148,11 @@ const SelectBody = ({ filter, onClose }: { filter: GridFilter; onClose: () => vo
           role="option"
           aria-selected={selected === option}
           onClick={() => choose(option)}
-          className={`flex h-8 w-full items-center rounded px-2 text-left text-xs font-medium ${
-            selected === option ? "bg-slate-900 text-white" : "text-slate-800 hover:bg-slate-50"
+          className={`dg-filter-option ${
+            selected === option ? "dg-filter-option--selected" : ""
           }`}
         >
-          <span className="truncate">{format(option)}</span>
+          <span className="dg-truncate">{format(option)}</span>
         </button>
       ))}
     </div>
@@ -178,14 +176,14 @@ const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
     return null;
   }
   if (filter.options.length === 0) {
-    return <div className="w-48">{emptyOptions}</div>;
+    return <div className="dg-filter-width--medium">{emptyOptions}</div>;
   }
   const needle = query.trim().toLowerCase();
   const visibleOptions = needle
     ? filter.options.filter((option) => format(option).toLowerCase().includes(needle))
     : filter.options;
   return (
-    <div className="w-48">
+    <div className="dg-filter-width--medium">
       {filter.options.length > MULTISELECT_SEARCH_THRESHOLD ? (
         <input
           type="text"
@@ -193,25 +191,25 @@ const MultiSelectBody = ({ filter }: { filter: GridFilter }) => {
           placeholder="Find option..."
           aria-label={`Find ${filter.label} option`}
           onChange={(event) => setQuery(event.target.value)}
-          className={`${inputClass} mb-1 w-full`}
+          className={`${inputClass} dg-control--full dg-filter-search`}
         />
       ) : null}
-      <div className="max-h-64 overflow-auto">
+      <div className="dg-filter-options">
         {visibleOptions.length === 0
           ? emptyOptions
           : visibleOptions.map((option) => (
               <label
                 key={option}
-                className="flex h-7 items-center gap-2 rounded px-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
+                className="dg-filter-checkbox-option"
               >
                 <input
                   type="checkbox"
                   checked={selected.includes(option)}
                   onChange={() => toggle(option)}
                   aria-label={format(option)}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  className="dg-checkbox"
                 />
-                <span className="truncate">{format(option)}</span>
+                <span className="dg-truncate">{format(option)}</span>
               </label>
             ))}
       </div>
@@ -248,12 +246,12 @@ const RangeBody = ({ filter }: { filter: GridFilter }) => {
         max={filter.max}
         step={filter.step}
         onChange={(event) => updateSingle(event.target.value)}
-        className={`${inputClass} w-full`}
+        className={`${inputClass} dg-control--full`}
       />
     );
   }
   return (
-    <div className="flex items-center gap-1">
+    <div className="dg-filter-range">
       <input
         type="number"
         inputMode="numeric"
@@ -264,9 +262,9 @@ const RangeBody = ({ filter }: { filter: GridFilter }) => {
         max={filter.max}
         step={filter.step}
         onChange={(event) => update({ min: parse(event.target.value) })}
-        className={`${inputClass} w-20`}
+        className={`${inputClass} dg-filter-range-input`}
       />
-      <span aria-hidden="true" className="text-slate-400">
+      <span aria-hidden="true" className="dg-filter-separator">
         –
       </span>
       <input
@@ -279,7 +277,7 @@ const RangeBody = ({ filter }: { filter: GridFilter }) => {
         max={filter.max}
         step={filter.step}
         onChange={(event) => update({ max: parse(event.target.value) })}
-        className={`${inputClass} w-20`}
+        className={`${inputClass} dg-filter-range-input`}
       />
     </div>
   );
@@ -298,7 +296,7 @@ const TextBody = ({ filter }: { filter: GridFilter }) => {
       placeholder={filter.placeholder ?? "Contains…"}
       value={value}
       onChange={(event) => commitFilterValue(filter, operator, event.target.value || undefined)}
-      className={`${inputClass} w-48`}
+      className={`${inputClass} dg-filter-width--medium`}
     />
   );
 };
@@ -351,21 +349,21 @@ const DateBody = ({ filter }: { filter: GridFilter }) => {
         aria-label={`${filter.label} value`}
         value={singleValue}
         onChange={(event) => updateSingle(event.target.value)}
-        className={`${inputClass} w-full`}
+        className={`${inputClass} dg-control--full`}
       />
     );
   }
   return (
-    <div className="flex w-56 flex-col gap-2">
-      <div className="flex items-center gap-1">
+    <div className="dg-filter-date dg-filter-width--wide">
+      <div className="dg-filter-range">
         <input
           type="date"
           aria-label={`${filter.label} from`}
           value={value.from ?? ""}
           onChange={(event) => update({ from: event.target.value })}
-          className={`${inputClass} flex-1`}
+          className={`${inputClass} dg-control--grow`}
         />
-        <span aria-hidden="true" className="text-slate-400">
+        <span aria-hidden="true" className="dg-filter-separator">
           –
         </span>
         <input
@@ -373,11 +371,11 @@ const DateBody = ({ filter }: { filter: GridFilter }) => {
           aria-label={`${filter.label} to`}
           value={value.to ?? ""}
           onChange={(event) => update({ to: event.target.value })}
-          className={`${inputClass} flex-1`}
+          className={`${inputClass} dg-control--grow`}
         />
       </div>
       {showPresets ? (
-        <div className="flex flex-wrap gap-1">
+        <div className="dg-filter-presets">
           {([
             ["Today", "today"],
             ["Last 7 days", "7d"],
@@ -388,7 +386,7 @@ const DateBody = ({ filter }: { filter: GridFilter }) => {
               key={preset}
               type="button"
               onClick={() => applyPreset(preset)}
-              className="h-6 rounded border border-slate-200 px-2 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+              className="dg-filter-preset"
             >
               {label}
             </button>
@@ -396,7 +394,7 @@ const DateBody = ({ filter }: { filter: GridFilter }) => {
           <button
             type="button"
             onClick={() => filter.onChange(undefined)}
-            className="h-6 rounded border border-slate-200 px-2 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+            className="dg-filter-preset"
           >
             Clear
           </button>
@@ -421,16 +419,16 @@ export const FilterBody = ({ filter, onClose }: { filter: GridFilter; onClose: (
     );
 
   return (
-    <div className="flex min-w-56 flex-col gap-3">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2">
+    <div className="dg-filter-body">
+      <div className="dg-filter-body-header">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Filter</div>
-          <div className="text-sm font-semibold text-slate-900">{filter.label}</div>
+          <div className="dg-filter-eyebrow">Filter</div>
+          <div className="dg-filter-title">{filter.label}</div>
         </div>
         <button
           type="button"
           onClick={() => filter.onChange(undefined)}
-          className="h-7 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]"
+          className="dg-filter-clear"
         >
           Clear
         </button>

@@ -40,7 +40,7 @@ describe("DataGrid header layout", () => {
     renderGrid();
 
     const table = screen.getByRole("table");
-    expect(table).toHaveClass("table-fixed");
+    expect(table).toHaveClass("dg-table");
 
     const cols = table.querySelectorAll("colgroup col");
     expect(cols).toHaveLength(3);
@@ -67,7 +67,7 @@ describe("DataGrid header layout", () => {
     const label = headerButton.querySelector("span[title]");
     expect(label).not.toBeNull();
     expect(label).toHaveAttribute("title", LONG_HEADER);
-    expect(label).toHaveClass("truncate");
+    expect(label).toHaveClass("dg-header-label");
   });
 
   it("ellipsizes non-sortable header labels via a truncating child span", () => {
@@ -77,10 +77,10 @@ describe("DataGrid header layout", () => {
     const label = header.querySelector("span[title]");
     expect(label).not.toBeNull();
     expect(label).toHaveAttribute("title", LONG_HEADER);
-    expect(label).toHaveClass("truncate");
+    expect(label).toHaveClass("dg-header-label");
     // The span must not itself be a flex container — text-overflow does not
     // apply to flex containers, which silently disables the ellipsis.
-    expect(label).not.toHaveClass("flex");
+    expect(label).not.toHaveClass("dg-header-label-row");
   });
 
   it("headerWrap line-clamps labels and top-aligns the header tools", () => {
@@ -88,19 +88,18 @@ describe("DataGrid header layout", () => {
 
     const headerButton = screen.getByRole("button", { name: LONG_HEADER });
     const label = headerButton.querySelector("span[title]");
-    expect(label).toHaveClass("line-clamp-2");
-    expect(label).not.toHaveClass("truncate");
+    expect(label).toHaveClass("dg-header-label--wrap");
+    expect(label).not.toHaveClass("dg-header-label");
 
     const headerCell = screen.getByRole("columnheader", { name: new RegExp(LONG_HEADER) });
     const toolsRow = headerCell.querySelector(":scope > div");
-    expect(toolsRow).toHaveClass("items-start");
-    expect(toolsRow).not.toHaveClass("items-center");
+    expect(toolsRow).toHaveClass("dg-header-content--wrapped");
 
     // Cells default to vertical-align middle, which re-centers single-line
     // headers against taller wrapped neighbors and misaligns the tools —
     // wrapped headers must top-align every cell in the row.
     for (const cell of screen.getAllByRole("columnheader")) {
-      expect(cell).toHaveClass("align-top");
+      expect(cell).toHaveClass("dg-header-cell--wrapped");
     }
   });
 
@@ -109,7 +108,8 @@ describe("DataGrid header layout", () => {
 
     const headerCell = screen.getByRole("columnheader", { name: new RegExp(LONG_HEADER) });
     const toolsRow = headerCell.querySelector(":scope > div");
-    expect(toolsRow).toHaveClass("items-center");
+    expect(toolsRow).toHaveClass("dg-header-content");
+    expect(toolsRow).not.toHaveClass("dg-header-content--wrapped");
   });
 });
 
@@ -128,14 +128,9 @@ describe("DataGrid header tools on demand", () => {
 
     const cluster = getToolsCluster("Dept");
     expect(cluster).not.toBeNull();
-    expect(cluster).toHaveClass("w-0", "opacity-0", "pointer-events-none");
-    // Reveal styles must exist so hover/focus/active/open can restore the cluster.
-    expect(cluster!.className).toContain("group-hover/header:w-auto");
-    expect(cluster!.className).toContain("focus-within:w-auto");
-    expect(cluster!.className).toContain("has-[[data-active]]:w-auto");
-    expect(cluster!.className).toContain("has-[[aria-expanded=true]]:w-auto");
+    expect(cluster).toHaveClass("dg-header-tools--on-demand");
     // Never display:none — the buttons must stay keyboard-reachable.
-    expect(cluster).not.toHaveClass("hidden");
+    expect(cluster).toHaveClass("dg-header-tools");
   });
 
   it("keeps the cluster expanded by default (flag off)", () => {
@@ -143,17 +138,16 @@ describe("DataGrid header tools on demand", () => {
 
     const cluster = getToolsCluster("Dept");
     expect(cluster).not.toBeNull();
-    expect(cluster).not.toHaveClass("w-0");
-    expect(cluster).not.toHaveClass("opacity-0");
+    expect(cluster).not.toHaveClass("dg-header-tools--on-demand");
   });
 
-  it("marks the header cell as the hover group", () => {
+  it("marks the header cell as the semantic reveal boundary", () => {
     renderGrid({
       features: { rowSelection: false, pagination: false, headerToolsOnDemand: true },
     });
 
     const cell = screen.getByRole("columnheader", { name: /Dept/ });
-    expect(cell).toHaveClass("group/header");
+    expect(cell).toHaveClass("dg-header-cell");
   });
 });
 
@@ -189,8 +183,8 @@ describe("DataGrid header menu placement", () => {
     renderGrid();
     fireEvent.click(screen.getByRole("button", { name: "Open Dept column menu" }));
     const menu = screen.getByRole("menu");
-    expect(menu).toHaveClass("top-full");
-    expect(menu).toHaveClass("overflow-auto");
-    expect(menu).not.toHaveClass("bottom-full");
+    expect(menu).toHaveClass("dg-popover--below");
+    expect(menu).toHaveClass("dg-menu");
+    expect(menu).not.toHaveClass("dg-popover--above");
   });
 });

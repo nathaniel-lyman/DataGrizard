@@ -328,7 +328,7 @@ describe("DataGrid density", () => {
 
     const table = screen.getByRole("table");
     expect(table).toHaveAttribute("data-density", "standard");
-    expect(screen.getByText("Acme").closest("td")).toHaveClass("px-3", "py-2");
+    expect(screen.getByText("Acme").closest("td")).toHaveClass("dg-density-cell--standard");
 
     rerender(
       <DataGrid
@@ -341,7 +341,7 @@ describe("DataGrid density", () => {
     );
 
     expect(screen.getByRole("table")).toHaveAttribute("data-density", "compact");
-    expect(screen.getByText("Acme").closest("td")).toHaveClass("px-2", "py-1");
+    expect(screen.getByText("Acme").closest("td")).toHaveClass("dg-density-cell--compact");
   });
 });
 
@@ -612,7 +612,7 @@ describe("DataGrid loading overlay", () => {
     const overlay = screen.getByRole("status");
     // The overlay must be a *sibling* of the scroller, not inside it,
     // or it scrolls out of view with the content.
-    const scroller = overlay.parentElement!.querySelector(".overflow-auto");
+    const scroller = overlay.parentElement!.querySelector(".dg-scroll-area");
     expect(scroller).not.toBeNull();
     expect(scroller!.contains(overlay)).toBe(false);
   });

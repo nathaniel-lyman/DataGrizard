@@ -118,9 +118,9 @@ describe("DataGrid column filters", () => {
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
     fireEvent.click(screen.getAllByRole("button", { name: /filter$/ })[0]);
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveClass("top-full");
-    expect(dialog).toHaveClass("overflow-auto");
-    expect(dialog).not.toHaveClass("bottom-full");
+    expect(dialog).toHaveClass("dg-popover--below");
+    expect(dialog).toHaveClass("dg-popover");
+    expect(dialog).not.toHaveClass("dg-popover--above");
   });
 
   it("lets text filters use a starts-with operator from the header popover", () => {
@@ -856,7 +856,7 @@ describe("DataGrid applied-filter chip bar", () => {
       />,
     );
     const chip = screen.getAllByTestId(/applied-filter-/)[0];
-    const label = chip.querySelector("span.truncate");
-    expect(label).toHaveClass("max-w-64", "min-w-0");
+    const label = chip.querySelector(".dg-applied-filter-label");
+    expect(label).toHaveClass("dg-applied-filter-label");
   });
 });

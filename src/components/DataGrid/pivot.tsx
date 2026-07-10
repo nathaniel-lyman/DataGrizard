@@ -340,7 +340,7 @@ export function materializePivot<TData extends object>({
 
       return (
         <div
-          className="flex min-w-0 items-center gap-1.5"
+          className="dg-pivot-label"
           style={{ paddingLeft: pivotRow.__depth * 20 }}
         >
           {pivotRow.__canExpand ? (
@@ -350,18 +350,18 @@ export function materializePivot<TData extends object>({
                 event.stopPropagation();
                 onToggleRow(pivotRow.__id);
               }}
-              className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-slate-400 bg-white leading-none text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              className="dg-pivot-toggle"
               aria-expanded={pivotRow.__isExpanded}
               aria-label={`Toggle ${pivotRow.__labelText} group`}
             >
               {pivotRow.__isExpanded ? (
-                <MinusIcon className="h-2.5 w-2.5" />
+                <MinusIcon className="dg-icon--xxs" />
               ) : (
-                <PlusIcon className="h-2.5 w-2.5" />
+                <PlusIcon className="dg-icon--xxs" />
               )}
             </button>
           ) : (
-            <span className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="dg-pivot-toggle-placeholder" aria-hidden="true" />
           )}
           {isLeafAction ? (
             <button
@@ -370,12 +370,12 @@ export function materializePivot<TData extends object>({
                 event.stopPropagation();
                 onLeafClick?.(pivotRow.__leafRow as TData);
               }}
-              className="min-w-0 truncate text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              className="dg-pivot-leaf-action"
             >
               {pivotRow.__label}
             </button>
           ) : (
-            <span className="min-w-0 truncate">{pivotRow.__label}</span>
+            <span className="dg-pivot-label-text">{pivotRow.__label}</span>
           )}
         </div>
       );

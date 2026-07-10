@@ -11,12 +11,13 @@ This repository is a Vite + React + TypeScript component-surface project for a r
   - `cells.tsx` / `filterMatch.ts` / `columnGroups.ts` / `storage.ts` hold pure engine helpers (cell rendering, the filter predicate, column-group assembly, scoped `localStorage`).
   - `filters.tsx` owns filter-control chrome (header popover, floating row, pivot Filters popover) delegating per-type bodies to `filterBodies.tsx`; `cellEditor.tsx` owns inline edit UI; `pivot.tsx` owns pivot materialization (pure helpers in `pivotColumns.ts` / `pivotHelpers.ts`).
   - `Toolbar.tsx` is a prop-driven shell that arranges sub-controls, each its own component: `ToolbarSearch.tsx`, `ToolbarColumns.tsx`, `ToolbarGrouping.tsx`, `ToolbarSavedViews.tsx`, plus Export (filtering lives in the column headers, not the toolbar).
+  - `datagrid.css` is the single styling source for the reusable package: scoped reset, theme tokens, semantic component classes, dark preset, and animation keyframes.
   - `index.ts` exports the component boundary.
 - `src/types/grid.ts` defines reusable grid column and filter configuration types.
 - `src/data/mockRetailData.ts` generates synthetic retail rows plus demo column/filter configuration.
 - `src/demo/` contains retail-specific demo UI, such as detail panels and action placeholders.
 - `src/utils/formatters.ts` contains number, currency, percent, status, and date formatters; `src/utils/export.ts` holds domain-neutral CSV/TSV + clipboard helpers.
-- `src/index.css` holds Tailwind setup and global base styles.
+- `src/index.css` holds the demo app's Tailwind setup and global base styles; Tailwind is not part of the reusable DataGrid styling contract.
 
 Tests live next to the feature they cover, for example `src/components/DataGrid/DataGrid.test.tsx`.
 
@@ -37,6 +38,8 @@ Prefer explicit, typed extension points over hidden assumptions:
 - `npm install` installs dependencies from `package-lock.json`.
 - `npm run dev` starts Vite at `http://127.0.0.1:5173/`.
 - `npm run build` runs TypeScript project build checks and produces a production Vite build in `dist/`.
+- `npm run build:package` cleans `dist/` and builds the distributable ESM/CJS bundles, rolled-up dual declarations, and scoped package CSS.
+- `npm run test:package` builds and packs the library, exercises ESM/CJS runtime and type consumers, and runs publint plus Are the Types Wrong against the tarball. Run it serially with other commands that write `dist/`.
 - `npm run preview` serves the production build locally for smoke testing.
 - `npm test` runs the Vitest suite once (jsdom). Run a single file with `npx vitest run <path>`, a single test with `npx vitest run -t "<name>"`, or watch with `npx vitest`.
 
@@ -46,9 +49,13 @@ Use TypeScript with strict types. Keep React components as focused function comp
 
 Use PascalCase for components and component files, such as `DataGrid.tsx` and `RetailDetailPanel.tsx`. Use camelCase for functions, local variables, and formatter utilities. Keep reusable grid-surface types in `src/types/grid.ts`; keep demo row-shape/domain types beside their demo data.
 
-Styling is Tailwind-first. Keep classes compact, neutral, and aligned with the internal-tool visual direction already present.
+Reusable grid styling lives in `src/components/DataGrid/datagrid.css`; do not add Tailwind utilities anywhere under `src/components/DataGrid/`. The demo may continue using Tailwind in `src/App.tsx`, `src/demo/`, and other consumer-layer files.
 
-Use `lucide-react` for UI icon chrome. Keep icon usage routed through small local wrapper modules such as `src/components/DataGrid/icons.tsx` when that preserves a stable internal component boundary. Icons should be decorative by default (`aria-hidden`) when the surrounding button, input, or text already provides the accessible name; do not add one-off inline SVG icons for ordinary controls when a Lucide icon exists.
+DataGrid classes use a flat, kebab-case `dg-` prefix: `dg-root`, `dg-toolbar`, `dg-header-cell`, `dg-cell`, `dg-menu-item`, and so on. State uses a `--modifier` suffix on the same block, such as `dg-cell--focused` or `dg-row--active`, with modifier rules declared after their base rules. Do not emit unprefixed state classes such as `is-active`. Keep package selectors to a single semantic class where possible; use `.dg-root :where(...)` only for the scoped reset. Put reusable colors, typography, radii, rings, and surfaces behind the `--dg-*` tokens, including a corresponding `.dg-theme-dark` value when needed.
+
+Consumer-provided class values (`statusStyles`, `conditionalFormats`, `getCellClassName`, and `getRowClassName`) are pass-through API and must not be rewritten or assumed to be DataGrid-owned classes.
+
+UI icon chrome uses local Lucide-derived SVG components in `src/components/DataGrid/icons.tsx` and `trendIconSet.tsx`; the package does not depend on `lucide-react`. Reuse those wrappers or add a licensed local path there instead of importing a runtime icon library. Icons should be decorative by default (`aria-hidden`) when the surrounding button, input, or text already provides the accessible name.
 
 ## Testing Guidelines
 

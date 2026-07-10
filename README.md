@@ -24,36 +24,97 @@ install them in your app if you haven't already:
 npm install react react-dom @tanstack/react-table
 ```
 
+DataGrizard has no regular runtime dependencies. Its UI icons are local SVG
+components, and its internal row-virtualization implementation is bundled, so
+consumers do not install `lucide-react` or `@tanstack/react-virtual`.
+
 ## Styling
 
-The component is styled with Tailwind utility classes. Pick **one** of:
+Import the package stylesheet once, before your own overrides:
 
-1. **You already use Tailwind (recommended).** Add the package to your
-   `content` globs so your build emits the classes the grid uses:
+```ts
+import "datagrizard/styles.css";
+import "./grid-theme.css";
+```
 
-   ```js
-   // tailwind.config.js
-   export default {
-     content: [
-       "./src/**/*.{ts,tsx}",
-       "./node_modules/datagrizard/dist/**/*.{js,cjs}",
-     ],
-   };
-   ```
+The stylesheet is hand-written, fully scoped to the grid's `dg-*` classes, and
+does not ship a global reset or require Tailwind in the consuming app. Override
+the design tokens in CSS loaded after the package stylesheet:
 
-2. **You don't use Tailwind.** Import the precompiled stylesheet once:
+```css
+.analytics-grid .dg-root {
+  --dg-accent: #1d4ed8;
+  --dg-accent-text: #ffffff;
+  --dg-radius: 0.5rem;
+}
+```
 
-   ```ts
-   import "datagrizard/styles.css";
-   ```
+### Theme tokens
 
-   > This file includes Tailwind's preflight (a CSS reset). If you already use
-   > Tailwind, prefer option 1 to avoid shipping preflight twice.
+| Token | Default | Controls |
+| --- | --- | --- |
+| `--dg-bg` | `#ffffff` | Grid and row background |
+| `--dg-surface` | `#f8fafc` | Headers, toolbars, grouped rows, and zebra surfaces |
+| `--dg-surface-raised` | `#ffffff` | Menus, popovers, and sheets |
+| `--dg-hover` | `#f1f5f9` | Hover surfaces |
+| `--dg-active` | `#e2e8f0` | Pressed and active surfaces |
+| `--dg-border` | `#e2e8f0` | Default borders |
+| `--dg-border-strong` | `#cbd5e1` | Emphasized borders and controls |
+| `--dg-text` | `#0f172a` | Primary text |
+| `--dg-text-strong` | `#020617` | Strong headings and values |
+| `--dg-text-muted` | `#64748b` | Secondary text |
+| `--dg-text-faint` | `#94a3b8` | Placeholders and tertiary text |
+| `--dg-accent` | `#0f172a` | Primary buttons and active toggles |
+| `--dg-accent-text` | `#ffffff` | Text on accent surfaces |
+| `--dg-accent-bg` | `#f1f5f9` | Selection and focus wash |
+| `--dg-accent-hover` | `#1e293b` | Hover state for accent controls |
+| `--dg-danger` | `#be123c` | Destructive text and controls |
+| `--dg-danger-bg` | `#fff1f2` | Destructive backgrounds |
+| `--dg-danger-solid` | `#be123c` | Solid validation-error surface |
+| `--dg-danger-ring` | `#fecdd3` | Validation focus ring |
+| `--dg-on-danger` | `#ffffff` | Text on solid danger surfaces |
+| `--dg-success` | `#047857` | Success text and positive states |
+| `--dg-info-bg` | `#eff6ff` | Informational backgrounds |
+| `--dg-info-text` | `#1e40af` | Informational text |
+| `--dg-radius` | `0.375rem` | Standard control radius |
+| `--dg-radius-sm` | `0.25rem` | Compact control radius |
+| `--dg-font-family` | `Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif` | Grid font stack |
+| `--dg-font-size` | `0.875rem` | Base grid font size |
+| `--dg-shadow` | `0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)` | Raised-surface shadow |
+| `--dg-ring` | `#cbd5e1` | Default focus ring |
+| `--dg-ring-strong` | `#64748b` | Emphasized focus ring |
+| `--dg-pivot-grand-bg` | `#cffafe` | Pivot grand-total background |
+| `--dg-pivot-group-bg` | `#ecfeff` | Pivot grouped-row background |
+| `--dg-pivot-border` | `#a5f3fc` | Pivot emphasis borders |
+| `--dg-range-bg` | `#dbeafe` | Selected cell-range background |
+| `--dg-selection-ring` | `#2563eb` | Cell-selection outline |
+| `--dg-info-border` | `#bfdbfe` | Informational borders |
+| `--dg-info-strong` | `#1e3a8a` | Strong informational text |
+| `--dg-danger-border` | `#fecaca` | Destructive borders |
+| `--dg-overlay-bg` | `rgb(255 255 255 / 0.9)` | Loading and state overlays |
+| `--dg-backdrop` | `rgb(15 23 42 / 0.4)` | Bottom-sheet backdrop |
+| `--dg-progress-fill` | `#0f172a` | Default progress-bar fill |
+| `--dg-data-bar` | `#0ea5e9` | Default positive data-bar fill |
+| `--dg-data-bar-negative` | `#ef4444` | Default negative data-bar fill |
+| `--dg-pinned-shadow-left` | `2px 0 4px -2px rgb(15 23 42 / 0.28)` | Left-pinned column edge |
+| `--dg-pinned-shadow-right` | `-2px 0 4px -2px rgb(15 23 42 / 0.28)` | Right-pinned column edge |
 
-**Consumer-supplied class names** (e.g. `statusStyles`, `conditionalFormats`, or
-`getRowClassName` returning `text-emerald-700`) are **your** classes — they must
-be reachable by your own Tailwind build (option 1) or already present in your
-CSS. The shipped `styles.css` only contains the grid's own classes.
+### Dark preset
+
+Opt into the built-in dark preset by placing `dg-theme-dark` on an ancestor of
+the grid. It reassigns the same token contract; no `theme` prop or automatic
+color-scheme switch is involved.
+
+```tsx
+<div className="dg-theme-dark">
+  <DataGrid data={data} columns={columns} />
+</div>
+```
+
+**Consumer-supplied class names** from `statusStyles`, `conditionalFormats`,
+`getCellClassName`, or `getRowClassName` remain pass-through values. Define
+those classes in your own stylesheet (or your own Tailwind build); the package
+stylesheet contains only DataGrizard's own `dg-*` classes.
 
 ---
 
@@ -490,8 +551,8 @@ controls expanded.
 npm run dev            # demo app at http://127.0.0.1:5173/
 npm test               # vitest
 npm run build          # type-check + build the demo app
-npm run build:package  # build the distributable library (dist/: ESM, CJS, .d.ts, CSS)
-npm run test:package   # build, pack, and smoke-test the package exports
+npm run build:package  # build ESM/CJS, .d.ts/.d.cts, and scoped CSS
+npm run test:package   # pack, smoke/type-test, publint, and run attw
 ```
 
 ## License

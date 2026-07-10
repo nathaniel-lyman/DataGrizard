@@ -25,8 +25,7 @@ type HeaderColumnMenuProps = {
   onResetWidth: () => void;
 };
 
-const itemClass =
-  "flex w-full items-center justify-between gap-4 px-3 py-1.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent";
+const itemClass = "dg-menu-item dg-menu-item--split";
 
 export function HeaderColumnMenu({
   label,
@@ -90,7 +89,7 @@ export function HeaderColumnMenu({
   };
 
   return (
-    <div className="relative shrink-0" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="dg-menu-anchor" onMouseDown={(event) => event.stopPropagation()}>
       <button
         ref={triggerRef}
         type="button"
@@ -118,9 +117,9 @@ export function HeaderColumnMenu({
             return !current;
           });
         }}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+        className="dg-menu-trigger"
       >
-        <MoreVerticalIcon className="h-3.5 w-3.5" />
+        <MoreVerticalIcon className="dg-icon--sm" />
       </button>
 
       {open ? (
@@ -129,9 +128,9 @@ export function HeaderColumnMenu({
           role="menu"
           aria-label={`${label} column menu`}
           style={placement.maxHeight ? { maxHeight: placement.maxHeight } : undefined}
-          className={`absolute z-50 min-w-48 overflow-auto rounded-md border border-slate-200 bg-white py-1 text-slate-800 shadow-lg ${
-            placement.alignEnd ? "right-0" : "left-0"
-          } ${placement.openUp ? "bottom-full mb-1" : "top-full mt-1"}`}
+          className={`dg-menu dg-column-menu ${
+            placement.alignEnd ? "dg-popover--align-end" : "dg-popover--align-start"
+          } ${placement.openUp ? "dg-popover--above" : "dg-popover--below"}`}
         >
           <button
             type="button"
@@ -162,7 +161,7 @@ export function HeaderColumnMenu({
           >
             Clear sort
           </button>
-          <div className="my-1 border-t border-slate-100" />
+          <div className="dg-menu-separator" />
           <button
             type="button"
             role="menuitem"
@@ -181,7 +180,7 @@ export function HeaderColumnMenu({
           >
             Hide column
           </button>
-          <div className="my-1 border-t border-slate-100" />
+          <div className="dg-menu-separator" />
           {pinState ? (
             <button
               type="button"
@@ -214,7 +213,7 @@ export function HeaderColumnMenu({
               </button>
             </>
           )}
-          <div className="my-1 border-t border-slate-100" />
+          <div className="dg-menu-separator" />
           <button
             type="button"
             role="menuitem"

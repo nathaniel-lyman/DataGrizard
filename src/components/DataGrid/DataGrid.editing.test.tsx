@@ -67,8 +67,8 @@ describe("DataGrid cell editing", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveClass("top-full");
-    expect(alert).not.toHaveClass("bottom-full");
+    expect(alert).toHaveClass("dg-editor-error--below");
+    expect(alert).not.toHaveClass("dg-editor-error--above");
   });
 
 

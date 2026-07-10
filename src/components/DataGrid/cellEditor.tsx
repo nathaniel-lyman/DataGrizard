@@ -82,8 +82,7 @@ export const computeEditError = <TData,>(
   return null;
 };
 
-const inputClass =
-  "h-7 w-full rounded border border-slate-400 bg-white px-1.5 text-xs text-slate-900 outline-none focus:border-slate-600 focus:ring-2 focus:ring-slate-300";
+const inputClass = "dg-editor-input";
 
 // ~40px bubble; flip when the field bottom is within that band of the viewport
 // (and there is room above). Exported for direct unit testing.
@@ -207,18 +206,18 @@ export function CellEditor<TData>({
     // Error is surfaced via a described element, not aria-label, so the field
     // keeps its own accessible name and the message is also visible.
     "aria-describedby": error ? errorId : undefined,
-    className: error ? `${inputClass} border-rose-500 ring-2 ring-rose-200` : inputClass,
+    className: error ? `${inputClass} dg-editor-input--invalid` : inputClass,
   };
 
   const withError = (field: ReactNode) => (
-    <div className="relative">
+    <div className="dg-editor">
       {field}
       {error ? (
         <span
           id={errorId}
           role="alert"
-          className={`absolute left-0 z-10 rounded bg-rose-600 px-1 py-0.5 text-[10px] font-medium text-white shadow ${
-            errorAbove ? "bottom-full mb-0.5" : "top-full mt-0.5"
+          className={`dg-editor-error ${
+            errorAbove ? "dg-editor-error--above" : "dg-editor-error--below"
           }`}
         >
           {error}

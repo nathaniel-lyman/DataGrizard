@@ -70,12 +70,12 @@ export function BottomSheet({ open, label, onClose, children }: BottomSheetProps
   };
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="dg-sheet-layer">
       <div
         aria-hidden="true"
         data-sheet-backdrop
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/40"
+        className="dg-sheet-backdrop"
       />
       <div
         ref={panelRef}
@@ -84,9 +84,9 @@ export function BottomSheet({ open, label, onClose, children }: BottomSheetProps
         aria-label={label}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="dg-sheet absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-slate-200 bg-white p-4 shadow-2xl focus:outline-none"
+        className="dg-sheet"
       >
-        <div aria-hidden="true" className="mx-auto mb-3 h-1 w-9 rounded-full bg-slate-300" />
+        <div aria-hidden="true" className="dg-sheet-handle" />
         {children}
       </div>
     </div>

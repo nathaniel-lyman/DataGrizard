@@ -28,8 +28,7 @@ type RowActionsMenuProps<TData extends object> = {
   actions: DataGridRowActions<TData>;
 };
 
-const itemClass =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent";
+const itemClass = "dg-menu-item";
 
 const resolveFlag = <TData extends object>(
   value: boolean | ((row: TData) => boolean) | undefined,
@@ -87,7 +86,7 @@ export function RowActionsMenu<TData extends object>({
   };
 
   return (
-    <div className="relative flex justify-end" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="dg-row-actions" onMouseDown={(event) => event.stopPropagation()}>
       <button
         ref={triggerRef}
         type="button"
@@ -100,9 +99,9 @@ export function RowActionsMenu<TData extends object>({
           event.stopPropagation();
           setOpen((current) => !current);
         }}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+        className="dg-menu-trigger dg-row-actions-trigger"
       >
-        <MoreVerticalIcon className="h-4 w-4" />
+        <MoreVerticalIcon className="dg-icon--md" />
       </button>
 
       {open ? (
@@ -110,7 +109,7 @@ export function RowActionsMenu<TData extends object>({
           ref={menuRef}
           role="menu"
           aria-label={`Actions for ${rowLabel}`}
-          className="absolute right-0 top-full z-50 mt-1 min-w-44 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-slate-800 shadow-lg"
+          className="dg-menu dg-row-actions-menu dg-popover--align-end dg-popover--below"
           onClick={(event) => event.stopPropagation()}
         >
           {visibleActions.map((action) => {
@@ -123,11 +122,11 @@ export function RowActionsMenu<TData extends object>({
                 disabled={disabled}
                 onClick={() => run(action)}
                 className={`${itemClass} ${
-                  action.destructive && !disabled ? "text-rose-700 hover:bg-rose-50" : ""
+                  action.destructive && !disabled ? "dg-menu-item--danger" : ""
                 }`}
               >
-                {action.icon ? <span className="shrink-0">{action.icon}</span> : null}
-                <span className="truncate">{action.label}</span>
+                {action.icon ? <span className="dg-menu-item-icon">{action.icon}</span> : null}
+                <span className="dg-truncate">{action.label}</span>
               </button>
             );
           })}

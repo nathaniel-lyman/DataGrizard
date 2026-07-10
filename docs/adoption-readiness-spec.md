@@ -1,8 +1,9 @@
 # Adoption-Readiness Spec
 
-**Status:** approved direction, not yet planned in detail. The implementing agent
-should read this whole doc, ask the owner the open questions in § 8, and then
-produce an implementation plan before writing code.
+**Status:** local implementation complete (2026-07-09). Work packages A-C and
+the local documentation/theming surface are implemented and verified. Registry
+publication, the live Next.js consumer check, demo deployment, and release/tag
+steps remain explicitly deferred to the owner-facing release package.
 
 **Goal:** a stranger can `npm install datagrizard`, import one component and one
 stylesheet into an existing app — any CSS setup, any framework, light or dark
@@ -298,10 +299,11 @@ B (packaging correctness) ──┼──> C (CI) ──> D (publish) ──> E2
       CSS line renders the grid in a fresh Vite app with **no Tailwind**.
 - [ ] Same in a fresh Next.js App Router page **without** a `"use client"`
       wrapper written by the consumer.
-- [ ] Host-app styles outside the grid are untouched by `datagrizard/styles.css`
+- [x] Host-app styles outside the grid are untouched by `datagrizard/styles.css`
       (no preflight bleed).
-- [ ] A consumer class passed via `statusStyles`/`getRowClassName` visibly wins
+- [x] A consumer class passed via `statusStyles`/`getRowClassName` visibly wins
       over the grid's default styling (layer ordering works).
-- [ ] `.dg-theme-dark` renders grid, pivot, and card modes legibly.
-- [ ] attw + publint clean; CI green; README quick start copy-pastes and runs.
-- [ ] CLAUDE.md / AGENTS.md updated (styling rules, build pipeline, naming).
+- [x] `.dg-theme-dark` renders grid, pivot, card, and filter-sheet modes legibly.
+- [x] attw + publint clean; local tests/package gates green; CI workflow added;
+      README quick start is covered by the extracted-package consumer fixture.
+- [x] CLAUDE.md / AGENTS.md updated (styling rules, build pipeline, naming).

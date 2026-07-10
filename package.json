@@ -29,14 +29,23 @@
   ],
   "main": "./dist/datagrid.cjs",
   "module": "./dist/datagrid.js",
-  "types": "./dist/types/components/DataGrid/index.d.ts",
+  "types": "./dist/datagrid.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types/components/DataGrid/index.d.ts",
-      "import": "./dist/datagrid.js",
-      "require": "./dist/datagrid.cjs"
+      "import": {
+        "types": "./dist/datagrid.d.ts",
+        "default": "./dist/datagrid.js"
+      },
+      "require": {
+        "types": "./dist/datagrid.d.cts",
+        "default": "./dist/datagrid.cjs"
+      }
     },
-    "./styles.css": "./dist/datagrid.css"
+    "./styles.css": "./dist/datagrid.css",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "files": [
     "dist"
@@ -46,9 +55,8 @@
     "build": "tsc -b && vite build",
     "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build:lib": "vite build --config vite.lib.config.ts",
-    "build:types": "tsc -p tsconfig.lib.json",
-    "build:css": "tailwindcss -c tailwind.lib.config.js -i src/styles.css -o dist/datagrid.css --minify",
-    "build:package": "npm run clean:dist && npm run build:lib && npm run build:types && npm run build:css",
+    "build:css": "esbuild src/components/DataGrid/datagrid.css --minify --outfile=dist/datagrid.css",
+    "build:package": "npm run clean:dist && npm run build:lib && npm run build:css",
     "preview": "vite preview --host 127.0.0.1",
     "server": "tsx --tsconfig tsconfig.app.json server/retailBigQueryServer.ts",
     "export:mock": "tsx --tsconfig tsconfig.app.json scripts/exportMockRows.ts",
@@ -61,8 +69,11 @@
     "react-dom": ">=18"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@google-cloud/bigquery": "^7.9.0",
+    "@microsoft/api-extractor": "^7.58.9",
     "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.5",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.0",
@@ -70,19 +81,19 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "esbuild": "^0.28.1",
     "express": "^5.1.0",
     "jsdom": "^29.1.1",
     "postcss": "^8.4.49",
+    "postcss-selector-parser": "^7.1.4",
+    "publint": "^0.3.21",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
+    "vite-plugin-dts": "^5.0.3",
     "vitest": "^4.1.9"
-  },
-  "dependencies": {
-    "@tanstack/react-virtual": "^3.14.3",
-    "lucide-react": "^1.21.0"
   }
 }

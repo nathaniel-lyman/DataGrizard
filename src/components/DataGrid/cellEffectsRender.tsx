@@ -29,14 +29,14 @@ export const renderProgressBar = (
       aria-valuenow={Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
-      className="dg-progress relative h-4 w-full min-w-[64px] overflow-hidden rounded-full bg-slate-100"
+      className="dg-progress"
     >
       <div
-        className="dg-progress-fill absolute inset-y-0 left-0 rounded-full"
-        style={{ width: `${pct}%`, background: options.color ?? "#10b981" }}
+        className="dg-progress-fill"
+        style={{ width: `${pct}%`, background: options.color ?? "var(--dg-progress-fill)" }}
       />
       {showLabel ? (
-        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-slate-900">
+        <span className="dg-progress-label">
           {formatPercent(numeric, formatOptions)}
         </span>
       ) : null}
@@ -57,7 +57,7 @@ export const renderIconSet = <TData,>(
   }
   const position = iconSet.position ?? "before";
   const icon = (
-    <span className={`dg-icon inline-flex items-center ${rule.className ?? ""}`} aria-hidden="true">
+    <span className={`dg-icon ${rule.className ?? ""}`} aria-hidden="true">
       {rule.icon}
     </span>
   );
@@ -65,7 +65,7 @@ export const renderIconSet = <TData,>(
     return icon;
   }
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="dg-icon-value">
       {position === "before" ? icon : null}
       <span>{base}</span>
       {position === "after" ? icon : null}
@@ -85,11 +85,13 @@ export const DataBarFill = ({
 }) => (
   <span
     aria-hidden="true"
-    className="dg-databar pointer-events-none absolute inset-y-1 z-0 rounded-sm opacity-50"
+    className="dg-databar"
     style={{
       left: `${geometry.leftPct}%`,
       width: `${geometry.widthPct}%`,
-      background: geometry.negative ? negativeColor ?? "#f87171" : color ?? "#60a5fa",
+      background: geometry.negative
+        ? negativeColor ?? "var(--dg-data-bar-negative)"
+        : color ?? "var(--dg-data-bar)",
     }}
   />
 );
@@ -106,7 +108,7 @@ export const FlashOverlay = ({
 }) => (
   <span
     aria-hidden="true"
-    className={`dg-flash dg-flash-${direction} pointer-events-none absolute inset-0 z-0 ${className ?? ""}`}
+    className={`dg-flash dg-flash-${direction} dg-flash-overlay ${className ?? ""}`}
     style={duration ? { animationDuration: `${duration}ms` } : undefined}
   />
 );

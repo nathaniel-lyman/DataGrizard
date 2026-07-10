@@ -67,7 +67,7 @@ describe("dataBar", () => {
     ];
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} />);
     const wrapper = screen.getByText("1,500").closest("span");
-    expect(wrapper).toHaveClass("text-transparent");
+    expect(wrapper).toHaveClass("dg-cell-effect-value--hidden");
   });
 });
 

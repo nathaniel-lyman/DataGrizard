@@ -25,40 +25,40 @@ export function ToolbarGrouping({
   );
 
   return (
-    <div className="flex min-w-72 flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+    <div className="dg-field dg-grouping-field">
       Group by
-      <div className="flex min-h-8 flex-wrap items-center gap-2 rounded-md border border-slate-300 bg-white px-2 py-1 normal-case tracking-normal">
+      <div className="dg-grouping-control">
         {groupedColumns.map((column, index) => (
           <span
             key={column.id}
-            className="inline-flex h-6 items-center gap-1 rounded border border-slate-200 bg-slate-50 pl-2 pr-1 text-xs font-medium text-slate-800"
+            className="dg-grouping-chip"
           >
             {column.label}
             <button
               type="button"
               onClick={() => onGroupingMove(column.id, "up")}
               disabled={index === 0}
-              className="flex h-5 w-5 items-center justify-center rounded text-slate-500 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-30"
+              className="dg-icon-btn dg-grouping-chip-btn"
               aria-label={`Move ${column.label} earlier`}
             >
-              <ChevronUpIcon className="h-3 w-3" />
+              <ChevronUpIcon className="dg-icon--xs" />
             </button>
             <button
               type="button"
               onClick={() => onGroupingMove(column.id, "down")}
               disabled={index === groupedColumns.length - 1}
-              className="flex h-5 w-5 items-center justify-center rounded text-slate-500 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-30"
+              className="dg-icon-btn dg-grouping-chip-btn"
               aria-label={`Move ${column.label} later`}
             >
-              <ChevronDownIcon className="h-3 w-3" />
+              <ChevronDownIcon className="dg-icon--xs" />
             </button>
             <button
               type="button"
               onClick={() => onGroupingRemove(column.id)}
-              className="flex h-5 w-5 items-center justify-center rounded text-slate-500 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+              className="dg-icon-btn dg-grouping-chip-btn"
               aria-label={`Remove ${column.label} grouping`}
             >
-              <CloseIcon className="h-3 w-3" />
+              <CloseIcon className="dg-icon--xs" />
             </button>
           </span>
         ))}
@@ -70,7 +70,7 @@ export function ToolbarGrouping({
             }
           }}
           disabled={availableGroupColumns.length === 0}
-          className="h-6 min-w-32 flex-1 border-0 bg-transparent px-1 text-xs font-medium text-slate-700 outline-none disabled:text-slate-400"
+          className="dg-grouping-select"
           aria-label="Add grouping"
         >
           <option value="">
@@ -86,7 +86,7 @@ export function ToolbarGrouping({
           <button
             type="button"
             onClick={onClearGrouping}
-            className="h-6 rounded border border-slate-200 px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            className="dg-grouping-clear"
           >
             Clear
           </button>

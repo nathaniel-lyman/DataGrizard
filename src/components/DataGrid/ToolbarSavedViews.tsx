@@ -20,20 +20,20 @@ export function ToolbarSavedViews({
   const willOverwrite = savedViews.includes(activeViewName.trim());
 
   return (
-    <div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:min-w-[360px] sm:flex-wrap">
-      <label className="order-1 col-span-2 flex min-w-0 flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:order-none sm:min-w-40 sm:flex-1">
+    <div className="dg-saved-views">
+      <label className="dg-field dg-saved-view-name">
         View name
         <input
           value={activeViewName}
           onChange={(event) => onActiveViewNameChange(event.target.value)}
           placeholder={viewNamePlaceholder}
-          className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium normal-case tracking-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          className="dg-input"
         />
       </label>
       <button
         type="button"
         onClick={onSaveView}
-        className="order-2 h-8 rounded-md border border-slate-900 bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:order-none"
+        className="dg-btn dg-btn--primary dg-saved-view-save"
       >
         {willOverwrite ? "Update view" : "Save view"}
       </button>
@@ -44,7 +44,7 @@ export function ToolbarSavedViews({
             onApplyView(event.target.value);
           }
         }}
-        className="order-4 col-span-2 h-8 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 sm:order-none sm:min-w-36"
+        className="dg-select dg-saved-view-select"
         aria-label="Apply saved view"
       >
         <option value="">Saved views</option>
@@ -57,7 +57,7 @@ export function ToolbarSavedViews({
       <button
         type="button"
         onClick={() => onDeleteView(activeViewName)}
-        className="order-3 h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:order-none"
+        className="dg-btn dg-btn--secondary dg-saved-view-delete"
       >
         Delete
       </button>

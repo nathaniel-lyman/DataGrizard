@@ -47,6 +47,7 @@ const retailColumnGroups: DataGridColumnGroup[] = [
 function App() {
   const [layoutMode, setLayoutMode] = useState<DataGridLayoutMode>("grid");
   const [dataMode, setDataMode] = useState<DataGridDataMode>("client");
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
 
   // Client mode: the grid never mutates `data`; we apply onCellEdit by item_id.
   const [rows, setRows] = useState(mockRetailData);
@@ -179,6 +180,18 @@ function App() {
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={() => setIsDarkTheme((current) => !current)}
+              aria-pressed={isDarkTheme}
+              className={`h-8 rounded-md border border-slate-200 px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 ${
+                isDarkTheme
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "bg-slate-50 text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Dark theme
+            </button>
             <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium">
               500 rows
             </span>
@@ -186,7 +199,9 @@ function App() {
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 p-3 sm:p-4">
+      <section
+        className={`flex min-h-0 flex-1 p-3 sm:p-4 ${isDarkTheme ? "dg-theme-dark" : ""}`}
+      >
         <DataGrid
           data={isServer ? serverRows : rows}
           columns={retailColumns}

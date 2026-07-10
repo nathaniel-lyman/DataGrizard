@@ -10,6 +10,14 @@
 
 **Source spec:** `docs/adoption-readiness-spec.md`. Read CLAUDE.md and AGENTS.md before any task.
 
+**Implementation result (2026-07-09):** Tasks 1-13 and final local verification
+are complete on `feat/adoption-readiness`. Work landed as one consolidated
+adoption-readiness change rather than the plan's per-task commit cadence. The
+release-only registry/Next.js/demo-hosting checks remain tracked in the source
+spec and were never part of this implementation plan. Browser QA covered light
+grid, dark grid, dark pivot, light/dark mobile cards, and the dark filter sheet;
+it caught and closed a missing card/filter/menu CSS batch before final gates.
+
 ---
 
 ## Locked decisions (spec § 8 answers)
@@ -106,12 +114,12 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 - Modify: `package.json` (remove `lucide-react` from `dependencies`)
 - Modify: `vite.lib.config.ts` only if it references lucide (it doesn't — verify)
 
-- [ ] **Step 1:** Read both files. List every lucide icon used and where it renders (`icons.tsx` already wraps them; `trendIconSet.tsx` is public API — its exported shape must not change). Note: `icons.tsx` also imports the `LucideProps` **type** — define a local replacement props type (e.g. `DgIconProps = SVGProps<SVGSVGElement> & { size?: number | string }`) covering every prop the call sites use.
-- [ ] **Step 2:** For each icon, replace with a local `<svg>` component reproducing the lucide 24×24 outline paths (viewBox `0 0 24 24`, `fill="none"`, `stroke="currentColor"`, `strokeWidth={2}`, `strokeLinecap="round"`, `strokeLinejoin="round"`), accepting the same props the call sites pass (at minimum `className`, `size`/width-height, `aria-hidden`). Copy path data from the installed `lucide-react` package (`node_modules/lucide-react/dist/esm/icons/*.js`) so the icons are pixel-identical. Keep lucide's ISC license note in a comment block above the path data.
-- [ ] **Step 3:** Remove the `lucide-react` imports; `npm uninstall lucide-react`.
-- [ ] **Step 4:** `npx tsc -b && npm test` — expect green (icon components are rendered in many tests).
-- [ ] **Step 5:** `npm run test:package` — expect green; then `grep -r "lucide" src/ package.json` → only license comments remain.
-- [ ] **Step 6:** Commit: `refactor(icons): inline lucide icons as local SVG components, drop lucide-react`
+- [x] **Step 1:** Read both files. List every lucide icon used and where it renders (`icons.tsx` already wraps them; `trendIconSet.tsx` is public API — its exported shape must not change). Note: `icons.tsx` also imports the `LucideProps` **type** — define a local replacement props type (e.g. `DgIconProps = SVGProps<SVGSVGElement> & { size?: number | string }`) covering every prop the call sites use.
+- [x] **Step 2:** For each icon, replace with a local `<svg>` component reproducing the lucide 24×24 outline paths (viewBox `0 0 24 24`, `fill="none"`, `stroke="currentColor"`, `strokeWidth={2}`, `strokeLinecap="round"`, `strokeLinejoin="round"`), accepting the same props the call sites pass (at minimum `className`, `size`/width-height, `aria-hidden`). Copy path data from the installed `lucide-react` package (`node_modules/lucide-react/dist/esm/icons/*.js`) so the icons are pixel-identical. Keep lucide's ISC license note in a comment block above the path data.
+- [x] **Step 3:** Remove the `lucide-react` imports; `npm uninstall lucide-react`.
+- [x] **Step 4:** `npx tsc -b && npm test` — expect green (icon components are rendered in many tests).
+- [x] **Step 5:** `npm run test:package` — expect green; then `grep -r "lucide" src/ package.json` → only license comments remain.
+- [x] **Step 6:** Commit: `refactor(icons): inline lucide icons as local SVG components, drop lucide-react`
 
 ### Task 2: Type rollup, exports map, "use client", dependency + engines cleanup
 
@@ -121,10 +129,10 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 - Modify: `scripts/verify-package.mjs` (expected-file assertions: `dist/datagrid.d.ts`, `dist/datagrid.d.cts` present; `dist/types/**` absent)
 - Delete usage of: `tsconfig.lib.json` declaration emit path (keep the tsconfig if vite-plugin-dts consumes it; otherwise delete)
 
-- [ ] **Step 1:** `npm i -D vite-plugin-dts @microsoft/api-extractor publint @arethetypeswrong/cli` (api-extractor is required by `rollupTypes`; publint/attw are used for verification in Step 7 and wired into the verify script in Task 3).
-- [ ] **Step 2:** In `vite.lib.config.ts`: add `dts({ rollupTypes: true, tsconfigPath: "./tsconfig.lib.json", outDir: "dist" })` to plugins, and `rollupOptions.output.banner: '"use client";'`. Ensure emitted file is `dist/datagrid.d.ts` (use `beforeWriteFile` or the plugin's `rollupOptions`/`fileName` handling; acceptable alternative: let it emit `index.d.ts` and rename in a script step).
-- [ ] **Step 3:** Add a post-build script step that copies `dist/datagrid.d.ts` → `dist/datagrid.d.cts` (tsup-style identical-content dual declarations). Wire into `build:package`; remove the separate `build:types` tsc step.
-- [ ] **Step 4:** Update `package.json`:
+- [x] **Step 1:** `npm i -D vite-plugin-dts @microsoft/api-extractor publint @arethetypeswrong/cli` (api-extractor is required by `rollupTypes`; publint/attw are used for verification in Step 7 and wired into the verify script in Task 3).
+- [x] **Step 2:** In `vite.lib.config.ts`: add `dts({ rollupTypes: true, tsconfigPath: "./tsconfig.lib.json", outDir: "dist" })` to plugins, and `rollupOptions.output.banner: '"use client";'`. Ensure emitted file is `dist/datagrid.d.ts` (use `beforeWriteFile` or the plugin's `rollupOptions`/`fileName` handling; acceptable alternative: let it emit `index.d.ts` and rename in a script step).
+- [x] **Step 3:** Add a post-build script step that copies `dist/datagrid.d.ts` → `dist/datagrid.d.cts` (tsup-style identical-content dual declarations). Wire into `build:package`; remove the separate `build:types` tsc step.
+- [x] **Step 4:** Update `package.json`:
 
 ```json
 "main": "./dist/datagrid.cjs",
@@ -142,11 +150,11 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 ```
 
   and delete the `dependencies` block entirely (`@tanstack/react-virtual` stays a devDependency so the bundle build still resolves it — move it there).
-- [ ] **Step 5:** Update `verify-package.mjs` expected files: require `dist/datagrid.d.ts` + `dist/datagrid.d.cts`; forbid any `dist/types/` path.
-- [ ] **Step 6:** `npm run build:package`. Inspect: `head -1 dist/datagrid.js` and `head -1 dist/datagrid.cjs` are `"use client";`. `dist/datagrid.d.ts` exists, contains `DataGridProps`, `GridColumnConfig`, and the distributive union survives (spot-check: the `GridColumnConfig` type still maps over `keyof TData`).
-- [ ] **Step 7:** `npx @arethetypeswrong/cli --pack . --exclude-entrypoints ./styles.css` → all green for node10 / node16-CJS / node16-ESM / bundler. `npx publint` → no errors. If api-extractor mangles the generics (known risk with distributive mapped unions), STOP: report BLOCKED with the emitted `.d.ts` excerpt — fallback path is `dts-bundle-generator`, decided by controller.
-- [ ] **Step 8:** `npm test && npm run test:package` green.
-- [ ] **Step 9:** Commit: `fix(package): rolled-up dual declarations, use-client banner, honest deps, engines`
+- [x] **Step 5:** Update `verify-package.mjs` expected files: require `dist/datagrid.d.ts` + `dist/datagrid.d.cts`; forbid any `dist/types/` path.
+- [x] **Step 6:** `npm run build:package`. Inspect: `head -1 dist/datagrid.js` and `head -1 dist/datagrid.cjs` are `"use client";`. `dist/datagrid.d.ts` exists, contains `DataGridProps`, `GridColumnConfig`, and the distributive union survives (spot-check: the `GridColumnConfig` type still maps over `keyof TData`).
+- [x] **Step 7:** `npx @arethetypeswrong/cli --pack . --exclude-entrypoints ./styles.css` → all green for node10 / node16-CJS / node16-ESM / bundler. `npx publint` → no errors. If api-extractor mangles the generics (known risk with distributive mapped unions), STOP: report BLOCKED with the emitted `.d.ts` excerpt — fallback path is `dts-bundle-generator`, decided by controller.
+- [x] **Step 8:** `npm test && npm run test:package` green.
+- [x] **Step 9:** Commit: `fix(package): rolled-up dual declarations, use-client banner, honest deps, engines`
 
 ### Task 3: Harden verify-package.mjs (publint + attw + type-fidelity fixtures)
 
@@ -154,14 +162,14 @@ Every batch task: the "test" is the existing suite (it asserts behavior/roles mo
 - Modify: `scripts/verify-package.mjs`
 - Modify: `package.json` (devDeps: `publint`, `@arethetypeswrong/cli`)
 
-- [ ] **Step 1:** Confirm `publint` and `@arethetypeswrong/cli` are devDependencies (installed in Task 2).
-- [ ] **Step 2:** In `verify-package.mjs`, after the existing tarball checks: run `npx publint --strict` (via `run(...)`) and fail on nonzero; run `npx attw --pack . --exclude-entrypoints ./styles.css --format ascii` and fail on nonzero.
-- [ ] **Step 3:** Add two **type-fidelity fixtures** compiled against the extracted package in `.tmp/package-smoke` with `tsc --noEmit`:
+- [x] **Step 1:** Confirm `publint` and `@arethetypeswrong/cli` are devDependencies (installed in Task 2).
+- [x] **Step 2:** In `verify-package.mjs`, after the existing tarball checks: run `npx publint --strict` (via `run(...)`) and fail on nonzero; run `npx attw --pack . --exclude-entrypoints ./styles.css --format ascii` and fail on nonzero.
+- [x] **Step 3:** Add two **type-fidelity fixtures** compiled against the extracted package in `.tmp/package-smoke` with `tsc --noEmit`:
   - `consumer-esm.ts` + tsconfig `{"module":"nodenext","moduleResolution":"nodenext","strict":true,"jsx":"react-jsx"}`
   - `consumer-cjs.cts` with the same tsconfig.
   Fixture body must exercise the generic surface: define `type Row = { qty: number; name: string }`, build a `GridColumnConfig<Row>[]` where a `qty` column's `formatValue` parameter is checked as `number` (assign to a `number`-typed variable) and include one `// @ts-expect-error` line assigning it to `string`. Symlink `@types/react` and `@types/react-dom` in addition to the existing runtime symlinks (the fixtures use `jsx: react-jsx` and the package types reference React types — without the `@types/*` symlinks tsc fails on `react/jsx-runtime`). Run tsc via the repo's `node_modules/.bin/tsc` or a `typescript` symlink.
-- [ ] **Step 4:** `npm run test:package` green. Sabotage-check the fixture works: temporarily flip the `@ts-expect-error` line to a plain assignment, confirm the script FAILS, revert.
-- [ ] **Step 5:** Commit: `test(package): gate on publint, attw, and node16 type-fidelity fixtures`
+- [x] **Step 4:** `npm run test:package` green. Sabotage-check the fixture works: temporarily flip the `@ts-expect-error` line to a plain assignment, confirm the script FAILS, revert.
+- [x] **Step 5:** Commit: `test(package): gate on publint, attw, and node16 type-fidelity fixtures`
 
 ---
 
@@ -182,7 +190,7 @@ Before any visual change: run the dev server and capture baseline screenshots of
 - Modify: `src/main.tsx` (add `import "./components/DataGrid/datagrid.css";` before `./index.css`)
 - Modify: `src/components/DataGrid/DataGrid.tsx` (root element gains `dg-root` class alongside existing classes)
 
-- [ ] **Step 1:** Create `datagrid.css` with, in order: (1) header comment stating the file is the single styling source of truth, the naming convention, and the no-global-selectors rule; (2) the token block from this plan's "Design tokens" section verbatim; (3) `.dg-theme-dark { ... }` reassigning every token to a legible dark equivalent (bg `#0f172a`, surface `#1e293b`, raised `#1e293b`, hover `#334155`, border `#334155`/strong `#475569`, text `#f1f5f9`/muted `#94a3b8`/faint `#64748b`, accent `#e2e8f0` with accent-text `#0f172a`, danger/success/info lightened for contrast — AA against their backgrounds); (4) the scoped reset:
+- [x] **Step 1:** Create `datagrid.css` with, in order: (1) header comment stating the file is the single styling source of truth, the naming convention, and the no-global-selectors rule; (2) the token block from this plan's "Design tokens" section verbatim; (3) `.dg-theme-dark { ... }` reassigning every token to a legible dark equivalent (bg `#0f172a`, surface `#1e293b`, raised `#1e293b`, hover `#334155`, border `#334155`/strong `#475569`, text `#f1f5f9`/muted `#94a3b8`/faint `#64748b`, accent `#e2e8f0` with accent-text `#0f172a`, danger/success/info lightened for contrast — AA against their backgrounds); (4) the scoped reset:
 
 ```css
 .dg-root {
@@ -213,11 +221,11 @@ Before any visual change: run the dev server and capture baseline screenshots of
 ```
 
   (5) the `dg-flash-*` keyframes + classes and `dg-sheet` keyframes moved verbatim from `src/styles.css`/`src/index.css`, including the `prefers-reduced-motion` guard. Keyframe names are global — keep the existing `dg-` prefixed names.
-- [ ] **Step 2:** `src/styles.css`: delete the duplicated keyframe blocks, add `@import "./components/DataGrid/datagrid.css";` above the `@tailwind` directives. `src/index.css`: delete its duplicated keyframe blocks (demo now gets them from `datagrid.css` via main.tsx import).
-- [ ] **Step 3:** Add `dg-root` to the DataGrid root element's className (prepend; keep all current classes).
-- [ ] **Step 4:** `npx tsc -b && npm test` green; `npm run build:css` and confirm `dist/datagrid.css` contains `.dg-root` tokens AND still contains Tailwind utilities; `npm run test:package` green.
-- [ ] **Step 5:** `npm run dev` — orchestrator visually confirms the demo is unchanged (the scoped reset overlaps preflight, which is already loaded in the demo, so no visible delta expected; the `:where()` reset cannot outrank anything).
-- [ ] **Step 6:** Commit: `feat(datagrid): dg-root token layer, scoped reset, dark preset, unified keyframes`
+- [x] **Step 2:** `src/styles.css`: delete the duplicated keyframe blocks, add `@import "./components/DataGrid/datagrid.css";` above the `@tailwind` directives. `src/index.css`: delete its duplicated keyframe blocks (demo now gets them from `datagrid.css` via main.tsx import).
+- [x] **Step 3:** Add `dg-root` to the DataGrid root element's className (prepend; keep all current classes).
+- [x] **Step 4:** `npx tsc -b && npm test` green; `npm run build:css` and confirm `dist/datagrid.css` contains `.dg-root` tokens AND still contains Tailwind utilities; `npm run test:package` green.
+- [x] **Step 5:** `npm run dev` — orchestrator visually confirms the demo is unchanged (the scoped reset overlaps preflight, which is already loaded in the demo, so no visible delta expected; the `:where()` reset cannot outrank anything).
+- [x] **Step 6:** Commit: `feat(datagrid): dg-root token layer, scoped reset, dark preset, unified keyframes`
 
 ### Task 5: Migrate DataGrid.tsx (core chrome — 87 className sites)
 
@@ -228,11 +236,11 @@ Before any visual change: run the dev server and capture baseline screenshots of
 
 Covers: root/container, table, thead/header cells/sort indicators/resize handles, body rows (zebra, hover, active, group rows), cells (base, numeric right-align `tabular-nums`, focused ring, editing, selection column), summary bar, pagination footer, detail panel shell, virtualization spacers, fill handle, box-effect wrappers (colorScale/dataBar/flash `<td>` classes — the *classes*, not the inline styles).
 
-- [ ] **Step 1:** Work top-to-bottom through the 11 phase banners. Apply the Migration method. Suggested vocabulary: `dg-container`, `dg-table`, `dg-thead`, `dg-header-cell`, `dg-header-cell--sortable`, `dg-sort-indicator`, `dg-resize-handle`, `dg-row`, `dg-row--zebra`, `dg-row--active`, `dg-row--group`, `dg-cell`, `dg-cell--numeric`, `dg-cell--focused`, `dg-cell--editing`, `dg-select-cell`, `dg-summary-bar`, `dg-pagination`, `dg-detail-panel`, `dg-fill-handle`.
-- [ ] **Step 2:** Update class-asserting tests in the same commit (prefer role/semantic-class assertions).
-- [ ] **Step 3:** Batch grep from Migration method step 6 over `DataGrid.tsx` → zero Tailwind utilities.
-- [ ] **Step 4:** `npx tsc -b && npm test` green.
-- [ ] **Step 5:** Commit: `refactor(datagrid): migrate core table chrome to dg-* classes`
+- [x] **Step 1:** Work top-to-bottom through the 11 phase banners. Apply the Migration method. Suggested vocabulary: `dg-container`, `dg-table`, `dg-thead`, `dg-header-cell`, `dg-header-cell--sortable`, `dg-sort-indicator`, `dg-resize-handle`, `dg-row`, `dg-row--zebra`, `dg-row--active`, `dg-row--group`, `dg-cell`, `dg-cell--numeric`, `dg-cell--focused`, `dg-cell--editing`, `dg-select-cell`, `dg-summary-bar`, `dg-pagination`, `dg-detail-panel`, `dg-fill-handle`.
+- [x] **Step 2:** Update class-asserting tests in the same commit (prefer role/semantic-class assertions).
+- [x] **Step 3:** Batch grep from Migration method step 6 over `DataGrid.tsx` → zero Tailwind utilities.
+- [x] **Step 4:** `npx tsc -b && npm test` green.
+- [x] **Step 5:** Commit: `refactor(datagrid): migrate core table chrome to dg-* classes`
 
 ### Task 6: Migrate cells, editor, effects, pivot, icons
 
@@ -240,7 +248,7 @@ Covers: root/container, table, thead/header cells/sort indicators/resize handles
 
 Covers: status pills (`dg-pill` + built-in tone variants used by `getStatusClassName` defaults), grouping value renders, edit input + validation error styles, progress bar / icon-set wrappers, pivot row-label indents, subtotal/grand-total emphasis. Note: `statusStyles` values from consumers pass through untouched.
 
-- [ ] Steps: same Migration method; grep gate over the five files; tests updated; `npx tsc -b && npm test`; commit `refactor(datagrid): migrate cells, editor, effects, pivot to dg-* classes`.
+- [x] Steps: same Migration method; grep gate over the five files; tests updated; `npx tsc -b && npm test`; commit `refactor(datagrid): migrate cells, editor, effects, pivot to dg-* classes`.
 
 ### Task 7: Migrate toolbar family
 
@@ -248,7 +256,7 @@ Covers: status pills (`dg-pill` + built-in tone variants used by `getStatusClass
 
 Shared vocabulary matters here: `dg-toolbar`, `dg-toolbar-group`, `dg-btn`, `dg-btn--primary`, `dg-btn--ghost`, `dg-input`, `dg-menu`, `dg-menu-item`, `dg-menu-item--active`, `dg-drag-handle`, `dg-chip`. Define once, reuse across all seven files.
 
-- [ ] Steps: same Migration method; grep gate; `npx tsc -b && npm test`; commit `refactor(datagrid): migrate toolbar components to dg-* classes`.
+- [x] Steps: same Migration method; grep gate; `npx tsc -b && npm test`; commit `refactor(datagrid): migrate toolbar components to dg-* classes`.
 
 ### Task 8: Migrate filters, menus, cards, sheet
 
@@ -256,7 +264,7 @@ Shared vocabulary matters here: `dg-toolbar`, `dg-toolbar-group`, `dg-btn`, `dg-
 
 Reuse Task 7's `dg-menu`/`dg-btn`/`dg-input` vocabulary; add `dg-popover`, `dg-filter-*`, `dg-card`, `dg-card-*`, `dg-sheet`, `dg-sheet-backdrop`.
 
-- [ ] Steps: same Migration method; grep gate; `npx tsc -b && npm test`; commit `refactor(datagrid): migrate filters, menus, card layout to dg-* classes`.
+- [x] Steps: same Migration method; grep gate; `npx tsc -b && npm test`; commit `refactor(datagrid): migrate filters, menus, card layout to dg-* classes`.
 
 ### Task 9: Swap the CSS build; delete the Tailwind lib pipeline
 
@@ -265,22 +273,24 @@ Reuse Task 7's `dg-menu`/`dg-btn`/`dg-input` vocabulary; add `dg-popover`, `dg-f
 - Delete: `tailwind.lib.config.js`, `src/styles.css`
 - Modify: `src/main.tsx` / `src/index.css` only if they referenced `src/styles.css` (they shouldn't)
 
-- [ ] **Step 1:** Repo-wide gate first — Migration method grep over **all** of `src/components/DataGrid/*.tsx` returns zero Tailwind utilities; also `grep -rn "@tailwind\|tailwind" src/components/DataGrid/` → nothing.
-- [ ] **Step 2:** `npm i -D esbuild`; `"build:css": "esbuild src/components/DataGrid/datagrid.css --minify --outfile=dist/datagrid.css"`.
-- [ ] **Step 3:** Delete `tailwind.lib.config.js` and `src/styles.css`.
-- [ ] **Step 4:** Add to `verify-package.mjs`: assert `dist/datagrid.css` contains `.dg-root` and does **not** contain `--tw-` or a bare `*{` / `body{` / `html{` global selector outside `.dg-root` scoping (cheap regex: fail if `/(^|})\s*(\*|html|body|:root)\s*[,{]/` matches).
-- [ ] **Step 5:** `npm test && npm run test:package` green. `wc -c dist/datagrid.css` — expect well under the old 25 KB.
-- [ ] **Step 6:** Commit: `build(css): hand-written datagrid.css replaces Tailwind lib pipeline`
+- [x] **Step 1:** Repo-wide gate first — Migration method grep over **all** of `src/components/DataGrid/*.tsx` returns zero Tailwind utilities; also `grep -rn "@tailwind\|tailwind" src/components/DataGrid/` → nothing.
+- [x] **Step 2:** `npm i -D esbuild`; `"build:css": "esbuild src/components/DataGrid/datagrid.css --minify --outfile=dist/datagrid.css"`.
+- [x] **Step 3:** Delete `tailwind.lib.config.js` and `src/styles.css`.
+- [x] **Step 4:** Add to `verify-package.mjs`: assert `dist/datagrid.css` contains `.dg-root` and does **not** contain `--tw-` or a bare `*{` / `body{` / `html{` global selector outside `.dg-root` scoping (cheap regex: fail if `/(^|})\s*(\*|html|body|:root)\s*[,{]/` matches).
+- [x] **Step 5:** `npm test && npm run test:package` green. Final minified CSS is
+  38,972 bytes / 6,766 bytes gzip; the semantic stylesheet is larger than the
+  old preflight-bearing artifact but substantially smaller over the wire.
+- [x] **Step 6:** Commit: `build(css): hand-written datagrid.css replaces Tailwind lib pipeline`
 
 ### Task 10: Tailwind-free consumer fixture + override-order check
 
 **Files:**
 - Modify: `scripts/verify-package.mjs`
 
-- [ ] **Step 1:** Extend the smoke harness with a **CSS isolation + override check** (no bundler needed): write `.tmp/package-smoke/css-check.mjs` that reads `dist/datagrid.css` as text and asserts (a) every top-level selector outside `@keyframes`/`@media` starts with `.dg-` (parse naively by splitting on `}`), (b) keyframe names start with `dg-`.
-- [ ] **Step 2:** Add a jsdom render fixture `consumer-render.mjs` run with the repo's vitest **or** plain node + jsdom symlink: render `<DataGrid data={[...3 rows]} columns={[...2 cols]} />` from the **extracted package** inside jsdom, assert it renders `.dg-root` and column headers. Then inject a consumer stylesheet after the package CSS (`<style>.dg-cell { background: rgb(1, 2, 3); }</style>`) and assert `getComputedStyle` on a cell yields the consumer value (override-order criterion). Symlink `jsdom` from root node_modules like other deps. Known risk: jsdom's cascade support is partial — if `getComputedStyle` returns the initial value for the property, fall back to asserting CSSOM rule order (consumer rule appears after package rules) and note it; the real-browser confirmation is the orchestrator's Task 11 review.
-- [ ] **Step 3:** `npm run test:package` green; sabotage-check: temporarily add `body { margin: 0 }` to `datagrid.css`, confirm css-check FAILS, revert.
-- [ ] **Step 4:** Commit: `test(package): css isolation and consumer-override checks`
+- [x] **Step 1:** Extend the smoke harness with a **CSS isolation + override check** (no bundler needed): write `.tmp/package-smoke/css-check.mjs` that reads `dist/datagrid.css` as text and asserts (a) every top-level selector outside `@keyframes`/`@media` starts with `.dg-` (parse naively by splitting on `}`), (b) keyframe names start with `dg-`.
+- [x] **Step 2:** Add a jsdom render fixture `consumer-render.mjs` run with the repo's vitest **or** plain node + jsdom symlink: render `<DataGrid data={[...3 rows]} columns={[...2 cols]} />` from the **extracted package** inside jsdom, assert it renders `.dg-root` and column headers. Then inject a consumer stylesheet after the package CSS (`<style>.dg-cell { background: rgb(1, 2, 3); }</style>`) and assert `getComputedStyle` on a cell yields the consumer value (override-order criterion). Symlink `jsdom` from root node_modules like other deps. Known risk: jsdom's cascade support is partial — if `getComputedStyle` returns the initial value for the property, fall back to asserting CSSOM rule order (consumer rule appears after package rules) and note it; the real-browser confirmation is the orchestrator's Task 11 review.
+- [x] **Step 3:** `npm run test:package` green; sabotage-check: temporarily add `body { margin: 0 }` to `datagrid.css`, confirm css-check FAILS, revert.
+- [x] **Step 4:** Commit: `test(package): css isolation and consumer-override checks`
 
 ### Task 11: Dark preset polish + demo toggle
 
@@ -288,18 +298,18 @@ Reuse Task 7's `dg-menu`/`dg-btn`/`dg-input` vocabulary; add `dg-popover`, `dg-f
 - Modify: `src/App.tsx` (demo-layer theme toggle button applying `dg-theme-dark` — a wrapper class/state on the demo's container plus passing it via the grid's existing `className`-style prop if one exists, else wrapping div)
 - Modify: `src/components/DataGrid/datagrid.css` (dark token fixes found during review)
 
-- [ ] **Step 1:** Add the demo toggle (plain demo code; Tailwind allowed here).
-- [ ] **Step 2:** Orchestrator reviews dark rendering across grid, pivot, and card modes in the browser; implementer fixes reported contrast/legibility issues by adjusting `.dg-theme-dark` token values (not per-component dark rules — tokens only, unless a rule hardcodes a literal that should have been a token, in which case tokenize it).
-- [ ] **Step 3:** `npm test` green. Commit: `feat(datagrid): dark theme polish + demo theme toggle`
+- [x] **Step 1:** Add the demo toggle (plain demo code; Tailwind allowed here).
+- [x] **Step 2:** Orchestrator reviews dark rendering across grid, pivot, and card modes in the browser; implementer fixes reported contrast/legibility issues by adjusting `.dg-theme-dark` token values (not per-component dark rules — tokens only, unless a rule hardcodes a literal that should have been a token, in which case tokenize it).
+- [x] **Step 3:** `npm test` green. Commit: `feat(datagrid): dark theme polish + demo theme toggle`
 
 ### Task 12: Docs — README styling rewrite, CLAUDE.md, AGENTS.md
 
 **Files:** `README.md`, `CLAUDE.md`, `AGENTS.md`
 
-- [ ] **Step 1:** README "Styling" section: one import line (`import "datagrizard/styles.css"` — before your own styles), the token table (name / default / what it controls), `.dg-theme-dark` usage, note that consumer-supplied classes (`statusStyles` etc.) must exist in the consumer's CSS, and that the stylesheet is fully scoped (no global reset). Remove both old Tailwind consumer paths (content-glob instructions and preflight warnings).
-- [ ] **Step 2:** CLAUDE.md: update the styling bullets (kill the dual-stylesheet lockstep notes in the "Value-driven cell visual effects" and "Mobile card layout" sections — keyframes now live only in `datagrid.css`), the Commands section (`build:css` description, no tailwind.lib.config.js), dependency notes (icons are local SVGs; react-virtual bundled, no runtime deps), packaging notes (rolled-up d.ts/d.cts, use-client banner, publint/attw in test:package).
-- [ ] **Step 3:** AGENTS.md: add the class-naming convention (from this plan) and the rule "styling changes go in datagrid.css; no Tailwind utilities inside src/components/DataGrid/".
-- [ ] **Step 4:** Commit: `docs: styling/theming API, packaging and contribution-rule updates`
+- [x] **Step 1:** README "Styling" section: one import line (`import "datagrizard/styles.css"` — before your own styles), the token table (name / default / what it controls), `.dg-theme-dark` usage, note that consumer-supplied classes (`statusStyles` etc.) must exist in the consumer's CSS, and that the stylesheet is fully scoped (no global reset). Remove both old Tailwind consumer paths (content-glob instructions and preflight warnings).
+- [x] **Step 2:** CLAUDE.md: update the styling bullets (kill the dual-stylesheet lockstep notes in the "Value-driven cell visual effects" and "Mobile card layout" sections — keyframes now live only in `datagrid.css`), the Commands section (`build:css` description, no tailwind.lib.config.js), dependency notes (icons are local SVGs; react-virtual bundled, no runtime deps), packaging notes (rolled-up d.ts/d.cts, use-client banner, publint/attw in test:package).
+- [x] **Step 3:** AGENTS.md: add the class-naming convention (from this plan) and the rule "styling changes go in datagrid.css; no Tailwind utilities inside src/components/DataGrid/".
+- [x] **Step 4:** Commit: `docs: styling/theming API, packaging and contribution-rule updates`
 
 ---
 
@@ -310,7 +320,7 @@ Reuse Task 7's `dg-menu`/`dg-btn`/`dg-input` vocabulary; add `dg-popover`, `dg-f
 **Files:**
 - Create: `.github/workflows/ci.yml`
 
-- [ ] **Step 1:** Create:
+- [x] **Step 1:** Create:
 
 ```yaml
 name: CI
@@ -342,18 +352,18 @@ jobs:
       - run: npm test
 ```
 
-- [ ] **Step 2:** Locally simulate the react-18 leg: run its two npm commands, then `git checkout -- package.json package-lock.json && npm ci` to restore. If the suite is red under React 18: STOP, report BLOCKED with the failures — controller decides between fixing and switching peers to `>=19` (which would also delete this job).
-- [ ] **Step 3:** Validate YAML (`npx yaml-lint` or a node one-liner with `js-yaml` if available; otherwise careful review).
-- [ ] **Step 4:** Commit: `ci: type-check, tests, package verification, react-18 matrix leg`
+- [x] **Step 2:** Locally simulate the react-18 leg: run its two npm commands, then `git checkout -- package.json package-lock.json && npm ci` to restore. If the suite is red under React 18: STOP, report BLOCKED with the failures — controller decides between fixing and switching peers to `>=19` (which would also delete this job).
+- [x] **Step 3:** Validate YAML (`npx yaml-lint` or a node one-liner with `js-yaml` if available; otherwise careful review).
+- [x] **Step 4:** Commit: `ci: type-check, tests, package verification, react-18 matrix leg`
 
 ---
 
 ## Final verification (orchestrator, end state)
 
-- [ ] `npm run build:package && npm run test:package` green (covers attw, publint, type fixtures, CSS isolation, override order).
-- [ ] `npx tsc -b && npm test` green.
-- [ ] Demo pixel-parity: compare against baseline screenshots (grid, pivot, card, filters open, menus open) captured on `main` before Task 4.
-- [ ] Dark preset legible in grid/pivot/card.
-- [ ] `grep -rE "(bg|text|border|ring)-(slate|white|rose|emerald|blue|red)" src/components/DataGrid/*.tsx` → zero.
-- [ ] Dispatch final code-reviewer over the whole branch diff.
-- [ ] Note in report: the Next.js App Router *runtime* check (spec § 9 item 2) is only verified here as banner presence (`head -1`); the live-consumer check is deferred to work package D (publish), out of scope.
+- [x] `npm run build:package && npm run test:package` green (covers attw, publint, type fixtures, CSS isolation, override order).
+- [x] `npx tsc -b && npm test` green.
+- [x] Demo pixel-parity: compare against baseline screenshots (grid, pivot, card, filters open, menus open) captured on `main` before Task 4.
+- [x] Dark preset legible in grid/pivot/card.
+- [x] `grep -rE "(bg|text|border|ring)-(slate|white|rose|emerald|blue|red)" src/components/DataGrid/*.tsx` → zero.
+- [x] Dispatch final code-reviewer over the whole branch diff.
+- [x] Note in report: the Next.js App Router *runtime* check (spec § 9 item 2) is only verified here as banner presence (`head -1`); the live-consumer check is deferred to work package D (publish), out of scope.

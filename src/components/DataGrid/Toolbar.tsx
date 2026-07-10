@@ -99,9 +99,9 @@ export function Toolbar({
   }
 
   return (
-    <div className="border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
+    <div className="dg-toolbar">
       {showFilterControls ? (
-        <div className="flex min-w-0 flex-wrap items-end gap-3">
+        <div className="dg-toolbar-row">
           {enableGlobalSearch ? (
             <ToolbarSearch
               search={search}
@@ -116,7 +116,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onClearFilters}
-              className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              className="dg-btn dg-btn--secondary"
             >
               Clear filters
             </button>
@@ -126,7 +126,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onExportCsv}
-              className="h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 sm:ml-auto"
+              className="dg-btn dg-btn--surface dg-toolbar-export"
             >
               Export CSV
             </button>
@@ -181,16 +181,16 @@ export function Toolbar({
           </ToolbarAdvancedControls>
         ) : (
           <>
-            <div className={`${showFilterControls ? "mt-3 " : ""}flex min-w-0 flex-wrap items-end gap-3`}>
+            <div className={`dg-toolbar-row ${showFilterControls ? "dg-toolbar-row--spaced" : ""}`}>
               <button
                 type="button"
                 onClick={onResetView}
-                className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                className="dg-btn dg-btn--secondary"
               >
                 Reset view
               </button>
             </div>
-            <div className="mt-3 flex min-w-0 flex-wrap items-end gap-3 border-t border-slate-100 pt-3 sm:gap-4">
+            <div className="dg-toolbar-row dg-toolbar-row--secondary">
               {showGroupingControls ? (
                 <ToolbarGrouping
                   groupableColumns={groupableColumns}

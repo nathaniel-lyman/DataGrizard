@@ -9,6 +9,19 @@ afterEach(() => {
 });
 
 describe("App server-mode demo", () => {
+  it("applies the dark preset through a demo wrapper", () => {
+    const { container } = render(<App />);
+    const toggle = screen.getByRole("button", { name: "Dark theme" });
+
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(container.querySelector(".dg-theme-dark .dg-root")).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelector(".dg-theme-dark .dg-root")).toBeInTheDocument();
+  });
+
   it("loads a server page (total from the fake server) when toggled on", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Grid" }));

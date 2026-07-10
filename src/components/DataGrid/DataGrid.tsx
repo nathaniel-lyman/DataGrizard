@@ -420,9 +420,21 @@ const defaultFeatures: DataGridFeatures = {
 const EMPTY_FILTERS: never[] = [];
 
 const densityStyles: Record<DataGridDensity, { header: string; cell: string; rowHeight: number }> = {
-  compact: { header: "px-2 py-1", cell: "px-2 py-1", rowHeight: 28 },
-  standard: { header: "px-3 py-2", cell: "px-3 py-2", rowHeight: 36 },
-  comfortable: { header: "px-3 py-3", cell: "px-3 py-3", rowHeight: 44 },
+  compact: {
+    header: "dg-density-header--compact",
+    cell: "dg-density-cell--compact",
+    rowHeight: 28,
+  },
+  standard: {
+    header: "dg-density-header--standard",
+    cell: "dg-density-cell--standard",
+    rowHeight: 36,
+  },
+  comfortable: {
+    header: "dg-density-header--comfortable",
+    cell: "dg-density-cell--comfortable",
+    rowHeight: 44,
+  },
 };
 
 const parseClipboardTsv = (text: string): string[][] => {
@@ -1158,7 +1170,7 @@ export function DataGrid<TData extends object>({
                   }}
                   onChange={table.getToggleAllPageRowsSelectedHandler()}
                   aria-label="Select all visible rows"
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  className="dg-checkbox"
                 />
               ),
               cell: ({ row }) => (
@@ -1169,7 +1181,7 @@ export function DataGrid<TData extends object>({
                   onClick={(event) => event.stopPropagation()}
                   onChange={row.getToggleSelectedHandler()}
                   aria-label={`Select ${getRowLabel?.(row.original) ?? row.id}`}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  className="dg-checkbox"
                 />
               ),
               enableSorting: false,
@@ -1222,7 +1234,7 @@ export function DataGrid<TData extends object>({
       showRowActions && rowActions
         ? {
             id: ROW_ACTIONS_COLUMN_ID,
-            header: () => <span className="sr-only">Actions</span>,
+            header: () => <span className="dg-sr-only">Actions</span>,
             cell: ({ row }) => {
               const original = row.original;
               const sourceRow = isPivotRow(original) ? original.__leafRow : original;
@@ -1436,7 +1448,7 @@ export function DataGrid<TData extends object>({
               }}
               onChange={table.getToggleAllPageRowsSelectedHandler()}
               aria-label="Select all visible pivot rows"
-              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              className="dg-checkbox"
             />
           );
         }
@@ -1454,7 +1466,7 @@ export function DataGrid<TData extends object>({
             }}
             onChange={(event) => setSourceRowsSelected(pivotSourceRows, event.currentTarget.checked)}
             aria-label="Select all filtered source rows"
-            className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            className="dg-checkbox"
           />
         );
       },
@@ -1468,7 +1480,7 @@ export function DataGrid<TData extends object>({
               onClick={(event) => event.stopPropagation()}
               onChange={row.getToggleSelectedHandler()}
               aria-label={`Select ${row.original.__labelText} pivot row`}
-              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              className="dg-checkbox"
             />
           );
         }
@@ -1489,7 +1501,7 @@ export function DataGrid<TData extends object>({
               setSourceRowsSelected(row.original.__sourceRows, event.currentTarget.checked)
             }
             aria-label={`Select source rows for ${row.original.__labelText}`}
-            className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            className="dg-checkbox"
           />
         );
       },
@@ -2016,49 +2028,49 @@ export function DataGrid<TData extends object>({
               ? headerRowCount + (rowVisibleIndexById.get(row.id) ?? 0) + 1
               : undefined
           }
-          className="bg-slate-50"
+          className="dg-row dg-row--group"
         >
           <td
             colSpan={visibleCellCount}
-            className="border-b border-slate-200 p-0"
+            className="dg-group-cell"
           >
             <button
               type="button"
               onClick={() => toggleGroupRow(row)}
-              className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 ${densityStyle.cell} text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300`}
+              className={`dg-group-toggle ${densityStyle.cell}`}
               style={{ paddingLeft: 12 + row.depth * 18 }}
               aria-expanded={row.getIsExpanded()}
               aria-label={`Toggle ${groupColumnLabel} ${groupValueLabel} group`}
             >
               <span
                 aria-hidden="true"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600"
+                className="dg-group-expander"
               >
                 {row.getIsExpanded() ? (
-                  <MinusIcon className="h-3 w-3" />
+                  <MinusIcon className="dg-icon--xs" />
                 ) : (
-                  <PlusIcon className="h-3 w-3" />
+                  <PlusIcon className="dg-icon--xs" />
                 )}
               </span>
-              <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              <span className="dg-group-label">
                 {groupColumnLabel}
               </span>
-              <span className="min-w-0 truncate">
+              <span className="dg-group-value">
                 {renderedGroupValue}
               </span>
-              <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              <span className="dg-group-count">
                 {leafRows.length} {rowLabel}
               </span>
 
               {summaryItemsForGroup.map((item) => (
                 <span
                   key={item.id}
-                  className="inline-flex items-center gap-1 border-l border-slate-200 pl-3 text-[11px]"
+                  className="dg-group-measure"
                 >
-                  <span className="font-medium uppercase tracking-wide text-slate-500">
+                  <span className="dg-group-measure-label">
                     {item.label}
                   </span>
-                  <span className="font-semibold text-slate-900">
+                  <span className="dg-group-measure-value">
                     {item.value(groupContext)}
                   </span>
                 </span>
@@ -2077,8 +2089,8 @@ export function DataGrid<TData extends object>({
       left: 0,
       zIndex: 1,
       width: labelWidth,
-      backgroundColor: "#f8fafc",
-      boxShadow: "2px 0 4px -2px rgba(15, 23, 42, 0.28)",
+      backgroundColor: "var(--dg-surface)",
+      boxShadow: "var(--dg-pinned-shadow-left)",
       clipPath:
         visibleLabelWidth < labelWidth
           ? `inset(0 ${labelWidth - visibleLabelWidth}px 0 0)`
@@ -2095,39 +2107,39 @@ export function DataGrid<TData extends object>({
             ? headerRowCount + (rowVisibleIndexById.get(row.id) ?? 0) + 1
             : undefined
         }
-        className="bg-slate-50"
+        className="dg-row dg-row--group"
       >
         <td
           colSpan={firstSummaryColumnIndex}
           aria-colindex={1}
           style={columnSummaryLabelStyle}
-          className="border-b border-r border-slate-200 p-0 last:border-r-0"
+          className="dg-group-cell dg-group-cell--summary-label"
         >
           <button
             type="button"
             onClick={() => toggleGroupRow(row)}
-            className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 ${densityStyle.cell} text-left text-xs font-semibold text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-300`}
+            className={`dg-group-toggle ${densityStyle.cell}`}
             style={{ paddingLeft: 12 + row.depth * 18 }}
             aria-expanded={row.getIsExpanded()}
             aria-label={`Toggle ${groupColumnLabel} ${groupValueLabel} group`}
           >
             <span
               aria-hidden="true"
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600"
+              className="dg-group-expander"
             >
               {row.getIsExpanded() ? (
-                <MinusIcon className="h-3 w-3" />
+                <MinusIcon className="dg-icon--xs" />
               ) : (
-                <PlusIcon className="h-3 w-3" />
+                <PlusIcon className="dg-icon--xs" />
               )}
             </span>
-            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            <span className="dg-group-label">
               {groupColumnLabel}
             </span>
-            <span className="min-w-0 truncate">
+            <span className="dg-group-value">
               {renderedGroupValue}
             </span>
-            <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+            <span className="dg-group-count">
               {leafRows.length} {rowLabel}
             </span>
           </button>
@@ -2145,14 +2157,14 @@ export function DataGrid<TData extends object>({
               key={`${row.id}:${column.id}`}
               aria-colindex={visibleLeafColumns.findIndex((visible) => visible.id === column.id) + 1}
               style={{ width: column.getSize() }}
-              className={`border-b border-r border-slate-200 ${densityStyle.cell} text-xs last:border-r-0 ${
-                isNumeric ? "text-right tabular-nums" : "text-left"
+              className={`dg-group-summary-cell ${densityStyle.cell} ${
+                isNumeric ? "dg-cell--numeric" : "dg-cell--text"
               }`}
               title={item?.label}
             >
               {item ? (
-                <span className="font-semibold text-slate-900">
-                  <span className="sr-only">{item.label}: </span>
+                <span className="dg-group-summary-value">
+                  <span className="dg-sr-only">{item.label}: </span>
                   {item.value(groupContext)}
                 </span>
               ) : null}
@@ -2280,9 +2292,7 @@ export function DataGrid<TData extends object>({
     }
   };
   // Single-line ellipsis by default; headerWrap clamps to two lines instead.
-  const headerLabelClass = headerWrap
-    ? "line-clamp-2 whitespace-normal break-words"
-    : "truncate";
+  const headerLabelClass = headerWrap ? "dg-header-label--wrap" : "dg-header-label";
   const clampColumnWidth = (
     column: Column<TData | PivotRow<TData>, unknown>,
     width: number,
@@ -3084,9 +3094,9 @@ export function DataGrid<TData extends object>({
       zIndex: options.header ? 30 : 1,
       backgroundColor: options.backgroundColor,
       boxShadow: isLeftEdge
-        ? "2px 0 4px -2px rgba(15, 23, 42, 0.28)"
+        ? "var(--dg-pinned-shadow-left)"
         : isRightEdge
-          ? "-2px 0 4px -2px rgba(15, 23, 42, 0.28)"
+          ? "var(--dg-pinned-shadow-right)"
           : undefined,
     };
   };
@@ -3103,27 +3113,25 @@ export function DataGrid<TData extends object>({
         : pivotRow?.__kind === "leaf" && hasLeafRowAction && Boolean(sourceRow);
     const rowBackground = pivotRow
       ? pivotRow.__kind === "grandTotal"
-        ? "#cffafe"
+        ? "var(--dg-pivot-grand-bg)"
         : pivotRow.__depth === 0
-          ? "#ecfeff"
-          : "#ffffff"
+          ? "var(--dg-pivot-group-bg)"
+          : "var(--dg-bg)"
       : row.getIsSelected()
-        ? "#eff6ff"
-        : "#ffffff";
+        ? "var(--dg-info-bg)"
+        : "var(--dg-bg)";
     const rowClassName = pivotRow
-      ? `border-b border-slate-200 ${
+      ? `dg-row dg-row--pivot ${
           pivotRow.__kind === "grandTotal"
-            ? "bg-cyan-100 font-bold"
+            ? "dg-row--grand-total"
             : pivotRow.__depth === 0
-              ? "bg-cyan-50 font-semibold"
-              : "bg-white hover:bg-slate-50"
+              ? "dg-row--pivot-group"
+              : "dg-row--pivot-leaf"
         }`
-      : `${isActionable ? "cursor-pointer" : ""} border-b border-slate-100 transition ${
-          row.getIsSelected() ? "bg-blue-50" : "bg-white hover:bg-slate-50"
-        } ${activeRow === sourceRow ? "ring-2 ring-inset ring-slate-400" : ""} ${
-          isActionable
-            ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400"
-            : ""
+      : `dg-row ${isActionable ? "dg-row--actionable" : ""} ${
+          row.getIsSelected() ? "dg-row--selected" : "dg-row--default"
+        } ${activeRow === sourceRow ? "dg-row--active" : ""} ${
+          isActionable ? "dg-row--focusable" : ""
         } ${sourceRow ? getRowClassName?.(sourceRow as TData) ?? "" : ""}`;
 
     return (
@@ -3261,32 +3269,34 @@ export function DataGrid<TData extends object>({
                   : {}),
                 ...getPinnedColumnStyle(cell.column, {
                   backgroundColor: isCellRangeSelected
-                    ? "#dbeafe"
+                    ? "var(--dg-range-bg)"
                     : row.getIsSelected()
-                      ? "#eff6ff"
+                      ? "var(--dg-info-bg)"
                       : useScaleStyle
                         ? cellColorScale?.backgroundColor
                         : rowBackground,
                 }),
               }}
-              className={`break-words border-b border-r ${densityStyle.cell} align-middle last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
-                pivotRow ? "border-slate-200" : "border-slate-100"
+              className={`dg-cell ${densityStyle.cell} ${
+                pivotRow ? "dg-cell--pivot" : "dg-cell--body"
               } ${
                 isPivotMeasure
-                  ? "text-right tabular-nums text-slate-950"
+                  ? "dg-cell--numeric dg-cell--strong"
                   : columnConfig
                     ? getCellClasses(columnConfig, cell.getValue(), sourceRow as TData)
-                    : "text-left text-slate-950"
-              } ${isCellRangeSelected ? "shadow-[inset_0_0_0_1px_rgb(37_99_235)]" : ""} ${
-                cellSelectionEnabled ? "select-none" : ""
+                    : "dg-cell--text dg-cell--strong"
+              } ${isCellRangeSelected ? "dg-cell--selected" : ""} ${
+                cellSelectionEnabled ? "dg-cell--selection-enabled" : ""
+              } ${
+                isEditingCell ? "dg-cell--editing" : ""
               } ${
                 hasCellOverlay
-                  ? "relative overflow-hidden"
+                  ? "dg-cell--effect"
                   : fillHandleEnabled && isFillHandleCell
-                    ? "relative"
+                    ? "dg-cell--fill-target"
                     : ""
               } ${
-                isFillPreviewCell ? "outline outline-2 outline-dashed outline-blue-500 outline-offset-[-2px]" : ""
+                isFillPreviewCell ? "dg-cell--fill-preview" : ""
               }`}
             >
               {barGeometry ? (
@@ -3315,8 +3325,8 @@ export function DataGrid<TData extends object>({
                 />
               ) : hasCellOverlay ? (
                 <span
-                  className={`relative z-[1] ${
-                    columnConfig?.dataBar?.showValue === false ? "text-transparent" : ""
+                  className={`dg-cell-effect-value ${
+                    columnConfig?.dataBar?.showValue === false ? "dg-cell-effect-value--hidden" : ""
                   }`}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -3328,7 +3338,7 @@ export function DataGrid<TData extends object>({
                 <span
                   data-fill-handle
                   aria-hidden="true"
-                  className="absolute bottom-0 right-0 z-[2] h-1.5 w-1.5 cursor-crosshair bg-blue-600"
+                  className="dg-fill-handle"
                   onMouseDown={(event) => {
                     event.stopPropagation();
                     if (event.button !== 0) {
@@ -3390,8 +3400,8 @@ export function DataGrid<TData extends object>({
   };
   const overlay: ReactNode =
     error !== undefined && error !== null ? (
-      <div className="flex max-w-sm flex-col items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
-        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.6}>
+      <div className="dg-state-message dg-state-message--error">
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="dg-state-icon" fill="none" stroke="currentColor" strokeWidth={1.6}>
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7.5v5" strokeLinecap="round" />
           <circle cx="12" cy="16" r="0.6" fill="currentColor" />
@@ -3400,18 +3410,18 @@ export function DataGrid<TData extends object>({
       </div>
     ) : isLoading ? (
       loadingState ?? (
-        <div className="flex flex-col items-center gap-3 text-sm font-medium text-slate-600">
+        <div className="dg-state-message dg-state-message--loading">
           <span
             aria-hidden="true"
-            className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
+            className="dg-spinner"
           />
           <span>Loading {rowLabel}...</span>
         </div>
       )
     ) : visibleRows.length === 0 ? (
       emptyState ?? (
-        <div className="flex flex-col items-center gap-2 text-sm font-medium text-slate-500">
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 text-slate-300" fill="none" stroke="currentColor" strokeWidth={1.4}>
+        <div className="dg-state-message dg-state-message--empty">
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="dg-state-icon dg-state-icon--empty" fill="none" stroke="currentColor" strokeWidth={1.4}>
             <rect x="3.5" y="5" width="17" height="14" rx="2" />
             <path d="M3.5 9.5h17M9 5v14" />
           </svg>
@@ -3421,8 +3431,8 @@ export function DataGrid<TData extends object>({
     ) : null;
 
   return (
-    <div ref={rootRef} className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:flex-row">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div ref={rootRef} className="dg-root dg-container">
+      <div className="dg-main">
         {features.toolbar ? (
           isCardMode ? (
             <ToolbarCompact
@@ -3490,18 +3500,18 @@ export function DataGrid<TData extends object>({
           )
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+        <div className="dg-status-bar">
           <span>
             {displayedTotalRowCount != null
               ? `${filteredRowCount} of ${displayedTotalRowCount} ${rowLabel}`
               : `${filteredRowCount} ${rowLabel}`}
           </span>
-          <div className="flex items-center gap-3">
+          <div className="dg-status-actions">
             {features.sorting && currentSorting.length > 0 ? (
               <button
                 type="button"
                 onClick={() => emitSortingChangeWithServerReset([])}
-                className="font-medium text-slate-600 underline underline-offset-2 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                className="dg-link-button"
               >
                 Clear sort
               </button>
@@ -3520,7 +3530,7 @@ export function DataGrid<TData extends object>({
         ) : null}
 
         {showSelectAllBanner ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-800">
+          <div className="dg-selection-banner">
             <span>
               All {selectedRowCount} {rowLabel} on this page are selected.
             </span>
@@ -3533,7 +3543,7 @@ export function DataGrid<TData extends object>({
                   ),
                 )
               }
-              className="font-semibold underline underline-offset-2 transition hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+              className="dg-selection-banner-action"
             >
               Select all {filteredRowCount} {rowLabel}
             </button>
@@ -3542,24 +3552,24 @@ export function DataGrid<TData extends object>({
 
         {showSummaries ? (
           isCardMode ? (
-            <div className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2">
+            <div className="dg-summary-bar">
               {summaryItems.map((item) => (
                 <div
                   key={item.id}
-                  className="flex shrink-0 items-baseline gap-1.5 rounded-full border border-slate-200 bg-slate-50/60 px-3 py-1"
+                  className="dg-summary-chip"
                 >
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                  <span className="dg-summary-chip-label">
                     {item.label}
                   </span>
-                  <span className="text-xs font-semibold text-slate-950">
+                  <span className="dg-summary-chip-value">
                     {item.value(summaryContext)}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-          <div className="border-b border-slate-200 bg-white px-4 py-3">
-            <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+          <div className="dg-summary-panel">
+            <div className="dg-summary-heading">
               <span>Summary</span>
               <span>
                 {summaryScope === "selected"
@@ -3567,20 +3577,20 @@ export function DataGrid<TData extends object>({
                   : `${filteredSummaryRows.length} filtered`}
               </span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="dg-summary-grid">
               {summaryItems.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2"
+                  className="dg-summary-item"
                 >
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  <div className="dg-summary-item-label">
                     {item.label}
                   </div>
-                  <div className="mt-1 text-sm font-semibold text-slate-950">
+                  <div className="dg-summary-item-value">
                     {item.value(summaryContext)}
                   </div>
                   {item.description ? (
-                    <div className="mt-0.5 text-[11px] text-slate-500">
+                    <div className="dg-summary-item-description">
                       {item.description(summaryContext)}
                     </div>
                   ) : null}
@@ -3591,12 +3601,12 @@ export function DataGrid<TData extends object>({
           )
         ) : null}
 
-        <div className="relative flex min-h-0 flex-col md:flex-1">
+        <div className="dg-table-region">
           {overlay ? (
             <div
               role={error ? "alert" : "status"}
               aria-live="polite"
-              className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 px-6 text-center"
+              className="dg-overlay"
             >
               {overlay}
             </div>
@@ -3604,7 +3614,7 @@ export function DataGrid<TData extends object>({
           <div
             ref={scrollRef}
             onScroll={(event) => setHorizontalScrollLeft(event.currentTarget.scrollLeft)}
-            className="h-[min(68dvh,640px)] min-h-72 overflow-auto md:h-auto md:min-h-0 md:flex-1"
+            className="dg-scroll-area"
           >
           {isCardMode ? (
             <CardList
@@ -3624,7 +3634,7 @@ export function DataGrid<TData extends object>({
           ) : (
           <table
             data-density={density}
-            className="w-full table-fixed border-separate border-spacing-0 text-xs"
+            className="dg-table"
             style={{ minWidth: minTableWidth }}
             aria-rowcount={
               headerRowCount +
@@ -3634,7 +3644,7 @@ export function DataGrid<TData extends object>({
             }
             aria-colcount={visibleLeafColumns.length}
           >
-            {tableLabel ? <caption className="sr-only">{tableLabel}</caption> : null}
+            {tableLabel ? <caption className="dg-sr-only">{tableLabel}</caption> : null}
             {/* Fixed layout reads column widths from the first row, which can
                 be a band-header row with colSpans — a colgroup keeps leaf
                 widths authoritative so getSize() matches what renders (pinned
@@ -3645,10 +3655,10 @@ export function DataGrid<TData extends object>({
               ))}
             </colgroup>
             <thead
-              className={`sticky top-0 z-10 text-left shadow-[0_2px_4px_-1px_rgba(15,23,42,0.12)] ${
+              className={`dg-thead ${
                 isPivotLayout
-                  ? "bg-cyan-100 text-xs text-slate-950"
-                  : "bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600"
+                  ? "dg-thead--pivot"
+                  : "dg-thead--grid"
               }`}
             >
               {table.getHeaderGroups().map((headerGroup, headerRowIndex) => (
@@ -3704,25 +3714,29 @@ export function DataGrid<TData extends object>({
                           width: header.getSize(),
                           ...getPinnedColumnStyle(header.column, {
                             header: true,
-                            backgroundColor: isPivotLayout ? "#cffafe" : "#f1f5f9",
+                            backgroundColor: isPivotLayout
+                              ? "var(--dg-pivot-grand-bg)"
+                              : "var(--dg-hover)",
                           }),
                         }}
-                        className={`group/header relative border-r ${densityStyle.header} font-semibold last:border-r-0 ${
-                          headerWrap ? "align-top" : ""
-                        } ${isPivotLayout ? "border-cyan-200" : "border-slate-200"}`}
+                        className={`dg-header-cell ${densityStyle.header} ${
+                          headerWrap ? "dg-header-cell--wrapped" : ""
+                        } ${isPivotLayout ? "dg-header-cell--pivot" : "dg-header-cell--grid"}`}
                       >
                         {header.isPlaceholder ? null : (
                           <div
-                            className={`flex w-full gap-1 ${headerWrap ? "items-start" : "items-center"}`}
+                            className={`dg-header-content ${
+                              headerWrap ? "dg-header-content--wrapped" : ""
+                            }`}
                           >
-                            <div className="min-w-0 flex-1">
+                            <div className="dg-header-main">
                               {canSort ? (
                                 <button
                                   type="button"
                                   onClick={header.column.getToggleSortingHandler()}
                                   title="Click to sort. Shift-click to add to multi-sort."
-                                  className={`flex w-full cursor-pointer gap-1 rounded-sm hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
-                                    headerWrap ? "items-start text-left" : "items-center"
+                                  className={`dg-header-sort-button ${
+                                    headerWrap ? "dg-header-sort-button--wrapped" : ""
                                   }`}
                                 >
                                   <span
@@ -3733,13 +3747,13 @@ export function DataGrid<TData extends object>({
                                   </span>
                                   <SortIcon state={sortState} />
                                   {currentSorting.length > 1 && header.column.getSortIndex() >= 0 ? (
-                                    <span className="ml-0.5 rounded bg-slate-200 px-1 text-[9px] font-semibold leading-tight text-slate-600">
+                                    <span className="dg-sort-order">
                                       {header.column.getSortIndex() + 1}
                                     </span>
                                   ) : null}
                                 </button>
                               ) : (
-                                <div className="flex w-full items-center">
+                                <div className="dg-header-label-row">
                                   <span title={headerTitle} className={headerLabelClass}>
                                     {flexRender(header.column.columnDef.header, header.getContext())}
                                   </span>
@@ -3749,13 +3763,9 @@ export function DataGrid<TData extends object>({
                             {headerFilter || showHeaderMenu ? (
                               <div
                                 data-header-tools
-                                className={`flex shrink-0 items-center gap-1 ${
+                                className={`dg-header-tools ${
                                   features.headerToolsOnDemand
-                                    ? "w-0 opacity-0 pointer-events-none transition-opacity " +
-                                      "group-hover/header:w-auto group-hover/header:opacity-100 group-hover/header:pointer-events-auto " +
-                                      "focus-within:w-auto focus-within:opacity-100 focus-within:pointer-events-auto " +
-                                      "has-[[data-active]]:w-auto has-[[data-active]]:opacity-100 has-[[data-active]]:pointer-events-auto " +
-                                      "has-[[aria-expanded=true]]:w-auto has-[[aria-expanded=true]]:opacity-100 has-[[aria-expanded=true]]:pointer-events-auto"
+                                    ? "dg-header-tools--on-demand"
                                     : ""
                                 }`}
                               >
@@ -3825,8 +3835,8 @@ export function DataGrid<TData extends object>({
                                 header.column.resetSize();
                               }
                             }}
-                            className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none bg-slate-300 opacity-0 transition hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
-                              header.column.getIsResizing() ? "bg-slate-500 opacity-100" : ""
+                            className={`dg-resize-handle ${
+                              header.column.getIsResizing() ? "dg-resize-handle--active" : ""
                             }`}
                           />
                         ) : null}
@@ -3846,10 +3856,10 @@ export function DataGrid<TData extends object>({
                           width: column.getSize(),
                           ...getPinnedColumnStyle(column, {
                             header: true,
-                            backgroundColor: "#f8fafc",
+                            backgroundColor: "var(--dg-surface)",
                           }),
                         }}
-                        className={`border-r border-slate-200 ${densityStyle.cell} align-top last:border-r-0`}
+                        className={`dg-floating-filter-cell ${densityStyle.cell}`}
                       >
                         {filter ? <FilterPopover filter={filter} variant="inline" /> : null}
                       </td>
@@ -3865,8 +3875,8 @@ export function DataGrid<TData extends object>({
         </div>
 
         {features.pagination ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-2 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
+          <div className="dg-pagination">
+            <div className="dg-pagination-group">
               <span>
                 Page {table.getState().pagination.pageIndex + 1}
                 {displayedTotalRowCount == null
@@ -3876,7 +3886,7 @@ export function DataGrid<TData extends object>({
               <select
                 value={table.getState().pagination.pageSize}
                 onChange={(event) => table.setPageSize(Number(event.target.value))}
-                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                className="dg-pagination-select"
                 aria-label={`${rowLabel} per page`}
               >
                 {pageSizeOptions.map((pageSize) => (
@@ -3886,12 +3896,12 @@ export function DataGrid<TData extends object>({
                 ))}
               </select>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="dg-pagination-group">
               <button
                 type="button"
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
-                className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="dg-pagination-button"
               >
                 Previous
               </button>
@@ -3899,7 +3909,7 @@ export function DataGrid<TData extends object>({
                 type="button"
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
-                className="h-8 rounded-md border border-slate-300 bg-slate-50 px-3 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="dg-pagination-button"
               >
                 Next
               </button>

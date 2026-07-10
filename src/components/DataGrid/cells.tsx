@@ -121,11 +121,11 @@ const renderBaseCellValue = <TData extends object>(
     const statusClassName =
       column.getStatusClassName?.(value, row) ??
       column.statusStyles?.[String(value)] ??
-      "border-slate-200 bg-slate-50 text-slate-700";
+      "dg-pill--muted";
 
     return (
       <span
-        className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClassName}`}
+        className={`dg-pill ${statusClassName}`}
       >
         {formatStatusLabel(String(value))}
       </span>
@@ -221,12 +221,12 @@ export const getCellClasses = <TData extends object>(
   value: unknown,
   row: TData,
 ) => {
-  const alignment = isNumericDataType(column.dataType) ? "text-right tabular-nums" : "text-left";
+  const alignment = isNumericDataType(column.dataType) ? "dg-cell--numeric" : "dg-cell--text";
 
   const conditional = (column.conditionalFormats ?? [])
     .filter((rule) => rule.when(value, row))
     .map((rule) => rule.className)
     .join(" ");
 
-  return `${alignment} text-slate-800 ${column.getCellClassName?.(value, row) ?? ""} ${conditional}`.trim();
+  return `${alignment} dg-cell--content ${column.getCellClassName?.(value, row) ?? ""} ${conditional}`.trim();
 };
