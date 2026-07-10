@@ -368,6 +368,39 @@ Controllable slices: `sorting`, `globalFilter`, `columnFilters`,
 `activeViewName`. When a slice is controlled, the grid never writes it to
 `localStorage` — persistence is yours.
 
+## Programmatic grid API
+
+Pass an `apiRef` when an assistant, application command palette, or other
+automation needs to inspect and manipulate the grid. The API exposes detached
+snapshots and domain-neutral commands; it does not expose the internal TanStack
+Table instance or row data.
+
+```tsx
+import { useRef } from "react";
+import { DataGrid, type DataGridApi } from "datagrizard";
+
+const gridApi = useRef<DataGridApi<Product>>(null);
+
+<DataGrid apiRef={gridApi} data={data} columns={columns} getRowId={(row) => row.id} />;
+
+const snapshot = gridApi.current?.getSnapshot();
+const result = gridApi.current?.dispatch([
+  { type: "set_column_visibility", columnIds: ["margin"], visible: false },
+  { type: "move_columns", columnIds: ["revenue"], beforeColumnId: "category" },
+  { type: "set_sorting", sorting: [{ id: "revenue", desc: true }] },
+]);
+```
+
+Command batches are transactional: the grid validates every command first and
+applies none of them if any command is invalid. Commands use the same state
+emitters as visible grid controls, so controlled callbacks and scoped
+column-state persistence keep their existing behavior.
+
+The first API surface supports column visibility, ordering, pinning, sizing and
+reset; sorting; global and column filters; row selection; grouping; and pivot
+state. The snapshot reports column capabilities, current view state, feature
+flags, layout/data modes, and loaded/filtered/selected/visible row counts.
+
 ## Server data
 
 For the common server-backed table, pass `dataSource`. The grid owns sorting,

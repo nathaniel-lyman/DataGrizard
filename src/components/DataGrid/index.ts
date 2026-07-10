@@ -1,5 +1,14 @@
 export { DataGrid } from "./DataGrid";
 export type {
+  DataGridApi,
+  DataGridColumnSnapshot,
+  DataGridCommand,
+  DataGridCommandError,
+  DataGridCommandErrorCode,
+  DataGridCommandResult,
+  DataGridSnapshot,
+} from "./dataGridApi";
+export type {
   DataGridFeatures,
   DataGridCellEdit,
   DataGridCellEditBatch,

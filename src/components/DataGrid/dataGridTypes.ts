@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import type {
   ColumnFiltersState,
   ColumnOrderState,
@@ -20,6 +20,7 @@ import type {
 import type { DataGridColumnGroup } from "./columnGroups";
 import type { DataGridRowActions } from "./RowActionsMenu";
 import type { DataGridPivotConfig, DataGridPivotState } from "./pivot";
+import type { DataGridApi } from "./dataGridApi";
 
 export type DataGridFeatures = {
   toolbar: boolean;
@@ -188,6 +189,8 @@ export type DataGridProps<TData extends object> = {
   error?: ReactNode;
   emptyState?: ReactNode;
   loadingState?: ReactNode;
+  /** Imperative, provider-neutral inspection and command surface for automation. */
+  apiRef?: Ref<DataGridApi<TData>>;
   state?: DataGridControlledState;
   onSortingChange?: (sorting: SortingState) => void;
   onGlobalFilterChange?: (globalFilter: string) => void;

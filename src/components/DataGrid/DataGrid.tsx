@@ -82,6 +82,7 @@ import { useCellRangeInteractions } from "./useCellRangeInteractions";
 import { useColumnOrchestration } from "./useColumnOrchestration";
 import { useDataSourceController } from "./useDataSourceController";
 import { useGridState } from "./useGridState";
+import { useDataGridApi } from "./useDataGridApi";
 import { usePivotOrchestration } from "./usePivotOrchestration";
 import { ROW_ACTIONS_COLUMN_ID, SELECT_COLUMN_ID } from "./gridConstants";
 import { MinusIcon, PlusIcon } from "./icons";
@@ -129,6 +130,15 @@ export type {
   DataGridSummaryScope,
   DataGridSummarySelectionMode,
 } from "./dataGridTypes";
+export type {
+  DataGridApi,
+  DataGridColumnSnapshot,
+  DataGridCommand,
+  DataGridCommandError,
+  DataGridCommandErrorCode,
+  DataGridCommandResult,
+  DataGridSnapshot,
+} from "./dataGridApi";
 
 const defaultFeatures: DataGridFeatures = {
   toolbar: true,
@@ -254,6 +264,7 @@ export function DataGrid<TData extends object>({
   error: externalError,
   emptyState,
   loadingState,
+  apiRef,
   state: externalControlledState,
   onSortingChange: externalOnSortingChange,
   onGlobalFilterChange: externalOnGlobalFilterChange,
@@ -1359,6 +1370,61 @@ export function DataGrid<TData extends object>({
         ? table.getRowModel().rows
         : flattenExpandedRows(table.getExpandedRowModel().rows)
     : table.getRowModel().rows;
+
+  useDataGridApi({
+    apiRef,
+    table,
+    columnsById,
+    resolvedFilterIds: resolvedFilters.map((filter) => filter.accessorKey),
+    groupableColumnIds: groupableColumns.map((column) => column.id),
+    pivotMeasureIds,
+    layoutMode,
+    dataMode: effectiveDataMode,
+    displayMode,
+    features,
+    state: {
+      sorting: currentSorting,
+      globalFilter: currentGlobalFilter,
+      columnFilters: currentColumnFilters,
+      columnVisibility: effectiveColumnVisibility,
+      columnSizing: currentColumnSizing,
+      columnOrder: effectiveColumnOrder,
+      columnPinning: effectiveColumnPinning,
+      pagination: currentPagination,
+      rowSelection: currentRowSelection,
+      grouping: currentGrouping,
+      expanded: currentExpanded,
+      pivot: currentPivot,
+    },
+    emitters: {
+      sorting: emitSortingChangeWithServerReset,
+      globalFilter: emitGlobalFilterChangeWithServerReset,
+      columnFilters: emitColumnFiltersChange,
+      columnVisibility: emitColumnVisibilityChange,
+      columnSizing: emitColumnSizingChange,
+      columnOrder: emitColumnOrderChange,
+      columnPinning: emitColumnPinningChange,
+      rowSelection: emitRowSelectionChange,
+      grouping: emitGroupingChange,
+      pivot: emitPivotChange,
+    },
+    counts: {
+      loaded: data.length,
+      filtered: filteredRowCount,
+      selected: selectedRowCount,
+      visible: visibleRows.length,
+      total: displayedTotalRowCount,
+    },
+    defaultColumnOrder: effectiveDefaultColumnOrder,
+    defaultColumnPinning: defaultPinningState,
+    lockedLeftColumnIds,
+    controlledState,
+    storageKeys,
+    getColumnLabel: (columnId) => {
+      const column = table.getColumn(columnId);
+      return column ? getColumnControlLabel(column) : columnId;
+    },
+  });
 
   // Card layout renders leaf rows only (grouping defaults off in card mode,
   // but a consumer can force it back on — group rows are filtered, not shown).
