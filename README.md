@@ -1,24 +1,59 @@
 # DataGrizard
 
-A trustworthy, **domain-neutral analytical control plane for agents**, delivered
-as a reusable React data grid built on
-[TanStack Table v8](https://tanstack.com/table/v8). One component, two layouts
-(**grid** and Excel-style **pivot**), with grouping, saved views, summaries,
-column management, column pinning, conditional formatting, and a fully controllable state
-surface.
+A trustworthy, domain-neutral analytical control plane for agents and people,
+delivered as a reusable React data grid built on
+[TanStack Table v8](https://tanstack.com/table/v8).
+
+[![CI](https://github.com/nathaniel-lyman/DataGrizard/actions/workflows/ci.yml/badge.svg)](https://github.com/nathaniel-lyman/DataGrizard/actions/workflows/ci.yml)
+[![Reliability benchmark](https://github.com/nathaniel-lyman/DataGrizard/actions/workflows/reliability-benchmark.yml/badge.svg)](https://github.com/nathaniel-lyman/DataGrizard/actions/workflows/reliability-benchmark.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![DataGrizard grid with grouped analytical rows and column bands](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/datagrizard-grid-ux-2026-06-26/02-grid-default-wide-with-column-groups.png)
+
+One component supports a standard grid, Excel-style pivot tables, and an
+opt-in responsive card layout. It includes type-aware filtering and formatting,
+grouping, saved views, summaries, editing, range selection, column management,
+virtualization, server-backed data, and a fully controllable state surface.
+The same mounted grid also exposes bounded reads and transactional commands for
+assistants and application automation.
 
 The product is the `DataGrid` component. The retail "Recommendation Workbench"
 screen in `src/App.tsx` is only a demo consumer that exercises the public API.
 
+**Start here:** [Install](#install) · [Quick start](#quick-start) ·
+[Styling](#styling) · [Pivot](#pivot-layout) ·
+[Responsive cards](#responsive-card-layout) ·
+[Grid API](#programmatic-grid-api) · [Agent toolkit](#agent-toolkit) ·
+[Server data](#server-data) · [Accessibility](#accessibility)
+
+## Why DataGrizard
+
+- **One typed surface for people and agents.** Human interactions, controlled
+  React state, imperative commands, and provider-neutral agent tools operate on
+  the same grid state and column contracts.
+- **Batteries included without host-CSS coupling.** The package ships working
+  grid chrome and scoped CSS; it does not require Tailwind or leak a reset into
+  the consuming app.
+- **Safe automation primitives.** Agent mutations follow
+  `plan -> validate -> apply -> undo`, with revision checks, bounded reads,
+  detached receipts, and consumer-owned policy hooks.
+- **Truthful server boundaries.** A loaded page is never represented as the
+  complete remote dataset. Whole-dataset queries require an explicit
+  `serverAnalysis` adapter and advertised capabilities.
+
+DataGrizard is a React analytical workspace, not a spreadsheet formula engine
+or a backend authorization layer. Applications remain responsible for data
+access, persistence, mutation handling, and server-side policy enforcement.
+
 ## Public reliability benchmark
 
-DataGrizard ships an [84-case public reliability benchmark](benchmarks/reliability/README.md)
+DataGrizard ships an [84-case public reliability benchmark](https://github.com/nathaniel-lyman/DataGrizard/tree/main/benchmarks/reliability)
 for ambiguous columns, row/column selections, transactional view changes,
 aggregation, invalid requests, server-mode boundaries, and sensitive-column
 policies. The deterministic corpus and oracle gate every pull request; sampled
 OpenAI runs track valid tool calls, analytical correctness, leakage, calls per
 task, latency, and replay consistency. See the
-[latest reviewed result](benchmarks/reliability/results/latest.md).
+[latest reviewed result](https://github.com/nathaniel-lyman/DataGrizard/blob/main/benchmarks/reliability/results/latest.md).
 
 ---
 
@@ -28,8 +63,7 @@ task, latency, and replay consistency. See the
 npm install datagrizard
 ```
 
-`react`, `react-dom`, and `@tanstack/react-table` are **peer dependencies** —
-install them in your app if you haven't already:
+In a new React project, also install the peer dependencies:
 
 ```bash
 npm install react react-dom @tanstack/react-table
@@ -38,6 +72,19 @@ npm install react react-dom @tanstack/react-table
 DataGrizard has no regular runtime dependencies. Its UI icons are local SVG
 components, and its internal row-virtualization implementation is bundled, so
 consumers do not install `lucide-react` or `@tanstack/react-virtual`.
+
+The package exposes three supported entry points:
+
+| Import | Purpose |
+| --- | --- |
+| `datagrizard` | `DataGrid`, helpers, and public TypeScript types |
+| `datagrizard/styles.css` | Required grid stylesheet |
+| `datagrizard/package.json` | Package metadata for tooling |
+
+ESM and CommonJS consumers receive separate JavaScript and declaration files.
+Both JavaScript bundles include the `"use client"` directive, so Next.js App
+Router can recognize `DataGrid` as a client component without a wrapper whose
+only purpose is to add that directive.
 
 ## Compatibility
 
@@ -138,9 +185,10 @@ stylesheet contains only DataGrizard's own `dg-*` classes.
 
 ---
 
-## Quick start (grid)
+## Quick start
 
 ```tsx
+import "datagrizard/styles.css";
 import { DataGrid, type GridColumnConfig } from "datagrizard";
 
 type Product = {
@@ -155,17 +203,12 @@ const columns: GridColumnConfig<Product>[] = [
   { accessorKey: "name", header: "Product", dataType: "text" },
   { accessorKey: "category", header: "Category", dataType: "text", enableGrouping: true },
   { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
-  {
-    accessorKey: "margin",
-    header: "Margin",
-    dataType: "percent",
-    conditionalFormats: [{ when: (value) => value < 0.2, className: "text-amber-700 font-semibold" }],
-  },
+  { accessorKey: "margin", header: "Margin", dataType: "percent" },
 ];
 
 export function Demo({ data }: { data: Product[] }) {
   return (
-    <div className="h-[600px]">
+    <div style={{ height: 600 }}>
       <DataGrid
         data={data}
         columns={columns}
@@ -173,14 +216,6 @@ export function Demo({ data }: { data: Product[] }) {
         rowLabel="products"
         tableLabel="Product performance"
         storageKey="product-grid"
-        renderDetailPanel={(row, { close }) =>
-          row ? (
-            <aside className="w-72 border-l p-4">
-              <button onClick={close}>Close</button>
-              <h2>{row.name}</h2>
-            </aside>
-          ) : null
-        }
       />
     </div>
   );
@@ -188,7 +223,9 @@ export function Demo({ data }: { data: Product[] }) {
 ```
 
 `getRowId` is strongly recommended — stable IDs keep row selection and the
-active detail row correct across data updates.
+active detail row correct across data updates. `tableLabel` supplies the
+table's accessible name. The container should provide a useful height when row
+virtualization or a scrolling workspace is desired.
 
 ## Pivot layout
 
@@ -233,37 +270,87 @@ Total column group. Measures can choose `totalBehavior: "aggregate"`,
 `summaryItems` / `groupSummaryItems` are still accepted in pivot mode as a
 compatibility adapter, but new consumers should use `pivot.measures`.
 
----
+## Responsive card layout
+
+Card layout is opt-in and container-driven, so a grid can respond to the width
+of a dashboard tile or split pane instead of the browser viewport:
+
+```tsx
+<DataGrid
+  data={data}
+  columns={columns}
+  getRowId={(row) => row.id}
+  features={{ cardLayout: true }}
+  cardView={{
+    breakpoint: 640,
+    card: {
+      title: "name",
+      subtitle: ["category"],
+      metrics: ["revenue", "margin"],
+    },
+  }}
+/>
+```
+
+In `mode: "auto"` (the default), a `ResizeObserver` switches between table and
+cards at `breakpoint`. Use `mode: "cards"` or `mode: "table"` to pin the
+display. Unassigned card roles are composed from visible column types and
+order, while `card.renderCard` can replace the generated card body entirely.
+
+Card mode defaults desktop-only interactions such as editing, cell selection,
+export, grouping, saved views, and row actions off. Explicit feature overrides
+still win. Card layout applies to grid mode only; pivot mode always renders its
+table layout.
 
 ## Column configuration
 
 ```ts
-type GridColumnConfig<TData> = {
-  accessorKey: keyof TData & string;
-  header: string;
-  dataType: "text" | "number" | "currency" | "percent" | "status" | "date" | "boolean";
-  semantic?: {
-    description?: string;
-    synonyms?: string[];
-    unit?: string;
-    currency?: string;
-    allowedValues?: Array<string | number | boolean | null>;
-    sensitivity?: string;
-  };
-  width?: number; minWidth?: number; maxWidth?: number;
-  pinned?: "left" | "right";
-  enablePinning?: boolean;
-  enableGrouping?: boolean;
-  // value is typed as TData[accessorKey] — not `unknown`.
-  formatValue?: (value, row) => ReactNode;
-  getCellClassName?: (value, row) => string;
-  getStatusClassName?: (value, row) => string;
-  statusStyles?: Record<string, string>;          // declarative status pills
-  conditionalFormats?: { when: (value, row) => boolean; className: string }[];
-  formatGroupingValue?: (value, rows) => ReactNode;
-  getGroupingValue?: (row) => unknown;
-};
+const advancedColumns = [
+  {
+    accessorKey: "name",
+    header: "Product",
+    dataType: "text",
+    pinned: "left",
+    enableGrouping: true,
+    semantic: {
+      description: "Customer-facing product name",
+      synonyms: ["item", "sku name"],
+      sensitivity: "public",
+    },
+  },
+  {
+    accessorKey: "revenue",
+    header: "Revenue",
+    dataType: "currency",
+    editable: true,
+    validate: (value) => (value < 0 ? "Revenue cannot be negative" : null),
+    dataBar: { color: "#38bdf8" },
+    flashOnChange: true,
+  },
+  {
+    accessorKey: "margin",
+    header: "Margin",
+    dataType: "percent",
+    conditionalFormats: [
+      { when: (value) => value < 0.2, className: "product-grid__low-margin" },
+    ],
+  },
+] satisfies GridColumnConfig<Product>[];
 ```
+
+`GridColumnConfig<TData>` distributes over the keys of `TData`, so callbacks
+for a `revenue: number` column receive `number`, not `unknown`. The generated
+package declarations are the complete API reference; common option groups are:
+
+- Layout and behavior: `width`, `minWidth`, `maxWidth`, `pinned`,
+  `enablePinning`, `enableGrouping`, `enableFiltering`, and `enableSorting`.
+- Formatting: `formatValue`, `dateFormat`, `statusStyles`,
+  `getStatusClassName`, `getCellClassName`, `conditionalFormats`, `colorScale`,
+  `dataBar`, `iconSet`, `progressBar`, and `flashOnChange`.
+- Editing: `editable`, `parseValue`, `validate`, and `renderEditCell`.
+- Grouping: `getGroupingValue` and `formatGroupingValue`.
+- Agent metadata: `semantic.description`, `synonyms`, `unit`, `currency`,
+  `allowedValues`, and the consumer-defined `sensitivity` label.
 
 - `dataType` drives default formatting and alignment. `number`/`currency`/`percent`
   right-align with `tabular-nums`; non-finite / blank values render empty (no
@@ -271,7 +358,7 @@ type GridColumnConfig<TData> = {
 - `boolean` renders `True` / `False`, participates in boolean-aware sorting,
   global search, filtering, and inline editing.
 - `status` renders a pill. Style it declaratively with `statusStyles`
-  (`{ active: "bg-emerald-50 text-emerald-700 border-emerald-200" }`) or
+  (`{ active: "product-status product-status--active" }`) or
   imperatively with `getStatusClassName`.
 - `conditionalFormats` rules compose — every matching rule contributes its class.
 - `pinned` sets an initial frozen side for a column. Set `enablePinning: false`
@@ -786,35 +873,64 @@ For a bare table with only sortable, resizable columns:
     pagination: false,
     rowSelection: false,
     detailPanel: false,
+    floatingFilters: false,
+    headerFilters: false,
+    autoColumnFilters: false,
+    filterSummary: false,
+    editing: false,
+    cellSelection: false,
+    fillHandle: false,
+    export: false,
+    clipboard: false,
     rowActions: false,
     headerMenu: false,
+    headerToolsOnDemand: false,
     collapsibleToolbar: false,
+    cardLayout: false,
   }}
 />
 ```
 
-| feature              | grid default | pivot default |
-| -------------------- | ------------ | ------------- |
-| `toolbar`            | ✅           | ✅            |
-| `globalSearch`       | ✅           | ✅            |
-| `sorting`            | ✅           | ✅            |
-| `columnVisibility`   | ✅           | ✅            |
-| `columnResizing`     | ✅           | ✅            |
-| `columnOrdering`     | ✅           | ✅            |
-| `columnPinning`      | ✅           | ✅            |
-| `savedViews`         | ✅           | ✅            |
-| `grouping`           | ✅           | ✅ (forced)   |
-| `summaries`          | ✅           | ✅            |
-| `pagination`         | ✅           | ✅            |
-| `rowSelection`       | ✅           | ✅            |
-| `detailPanel`        | ✅           | ✅            |
-| `editing`            | ✅           | ❌            |
-| `cellSelection`      | ✅           | ❌            |
-| `fillHandle`         | ✅           | ❌            |
-| `clipboard`          | ✅           | ❌            |
-| `rowActions`         | ✅           | ✅            |
-| `headerMenu`         | ✅           | ✅            |
-| `collapsibleToolbar` | ✅           | ✅            |
+| Feature | Default | Purpose |
+| --- | :---: | --- |
+| `toolbar` | On | Toolbar shell |
+| `globalSearch` | On | Formatted-value search |
+| `sorting` | On | Column sorting and multi-sort |
+| `columnVisibility` | On | Show/hide columns |
+| `columnResizing` | On | Pointer and keyboard resizing |
+| `columnOrdering` | On | Reorder visible columns |
+| `columnPinning` | On | Pin columns left or right |
+| `savedViews` | On | Named view state |
+| `pagination` | On | Client or controlled server pagination |
+| `rowSelection` | On | Row selection and select-all |
+| `detailPanel` | On | Active-row detail surface when a renderer is supplied |
+| `summaries` | On | Summary bar when summary items are supplied |
+| `grouping` | On | Grid grouping and pivot row axes |
+| `floatingFilters` | Off | Always-visible filter row below grid headers |
+| `headerFilters` | On | Header-filter controls and resolved filter definitions |
+| `autoColumnFilters` | On | Infer filters from column data types |
+| `filterSummary` | On | Applied-filter chip bar |
+| `editing` | On | Inline editing for columns marked `editable` |
+| `cellSelection` | On | Rectangular cell selection |
+| `fillHandle` | On | Drag or keyboard fill over a selection |
+| `export` | On | Toolbar CSV export |
+| `clipboard` | On | TSV copy and paste |
+| `headerMenu` | On | Sort/filter/hide/pin/width column menu |
+| `headerToolsOnDemand` | Off | Reveal header tools on interaction |
+| `rowActions` | On | Row menu when actions are supplied |
+| `collapsibleToolbar` | On | Place advanced controls under **View controls** |
+| `cardLayout` | Off | Responsive card display in grid mode |
+
+These are the base defaults. Layout and data mode apply safer behavior on top:
+
+- Pivot mode uses the shared filter, search, column, selection, pagination, and
+  saved-view state, but inline editing, cell ranges, fill, clipboard, and card
+  layout do not apply to generated pivot cells.
+- Server mode defaults grouping and summaries off because a loaded page cannot
+  produce truthful whole-dataset results. Explicit overrides remain possible.
+- Active card mode defaults editing, cell selection, fill, clipboard, row
+  selection, export, grouping, saved views, column resizing, floating filters,
+  and row actions off. Explicit feature overrides win.
 
 `collapsibleToolbar` keeps search, filters, and export visible while placing
 advanced view setup controls (grouping, columns, saved views, reset view) behind
@@ -829,8 +945,26 @@ npm test               # vitest
 npm run build          # type-check + build the demo app
 npm run build:package  # build ESM/CJS, .d.ts/.d.cts, and scoped CSS
 npm run test:package   # pack, smoke/type-test, publint, and run attw
+npm run benchmark:contract # deterministic 84-case agent contract
 ```
+
+The demo build and package build both write `dist/`; each replaces the other's
+output. Always run `npm run test:package` immediately before inspecting,
+packing, or publishing the npm artifact.
+
+## Maintainer release checklist
+
+1. Start from a clean, up-to-date `main` branch with passing GitHub Actions.
+2. Choose the release version, update `package.json` and `CHANGELOG.md`, and
+   ensure the changelog describes every public API added since the last tag.
+3. Run `npm test`, `npm run benchmark:contract`, and `npm run test:package`.
+4. Inspect the exact artifact with `npm publish --dry-run --access public`.
+   It should contain only `LICENSE`, `README.md`, `package.json`, and the five
+   package files under `dist/`.
+5. Authenticate with npm, then run `npm publish --access public`.
+6. Create and push the matching git tag and GitHub release from the finalized
+   changelog entry.
 
 ## License
 
-MIT
+[MIT](LICENSE)

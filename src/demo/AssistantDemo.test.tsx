@@ -1,9 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AssistantDemo } from "./AssistantDemo";
 
 afterEach(cleanup);
+afterEach(() => vi.unstubAllGlobals());
 
 const receipt = {
   queryId: "dg-aggregate-7-test-1",
@@ -42,6 +43,42 @@ const receipt = {
 };
 
 describe("AssistantDemo", () => {
+  it("executes model-selected tools through the toolkit before rendering the final answer", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        responseId: "resp-first",
+        text: "",
+        toolCalls: [{ callId: "call-context", name: "grid_get_context", arguments: "{}" }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        responseId: "resp-final",
+        text: "Grocery is now the active analysis view. I inspected the live grid first.",
+        toolCalls: [],
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const execute = vi.fn().mockResolvedValue({ revision: 4, rowCount: 500 });
+    const toolkit = {
+      getTools: () => [{
+        name: "grid_get_context" as const,
+        description: "Inspect the live grid.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      }],
+      execute,
+    };
+
+    render(<AssistantDemo toolkit={toolkit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ask live agent" }));
+
+    expect(await screen.findByText(/Grocery is now the active analysis view/)).toBeInTheDocument();
+    expect(execute).toHaveBeenCalledWith("grid_get_context", {});
+    expect(screen.getByText(/grid_get_context/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      previousResponseId: "resp-first",
+      toolOutputs: [{ callId: "call-context", output: { revision: 4, rowCount: 500 } }],
+    });
+  });
+
   it("reveals the receipt behind a completed assistant answer", async () => {
     let planSequence = 0;
     const toolkit = {
@@ -119,7 +156,7 @@ describe("AssistantDemo", () => {
     };
 
     render(<AssistantDemo toolkit={toolkit} />);
-    fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run deterministic proof" }));
 
     expect(await screen.findByText(/\$4,200,000 sales/)).toBeInTheDocument();
     const disclosure = screen.getByText("View analysis receipt");
