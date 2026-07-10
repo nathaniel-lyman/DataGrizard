@@ -666,9 +666,8 @@ describe("DataGrid pivot layout mode", () => {
       initialRevenueWidth,
     );
 
-    fireEvent.change(screen.getByLabelText("Apply saved view"), {
-      target: { value: "Pivot columns" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply saved view" }));
+    fireEvent.click(screen.getByRole("option", { name: "Pivot columns" }));
 
     expect(screen.queryByRole("columnheader", { name: "Units" })).not.toBeInTheDocument();
     const revenueHeader = screen.getByRole("columnheader", { name: "Revenue" });
@@ -692,9 +691,8 @@ describe("DataGrid pivot layout mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset view" }));
     expect(screen.getByText("Nut Butter")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Apply saved view"), {
-      target: { value: "By department" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply saved view" }));
+    fireEvent.click(screen.getByRole("option", { name: "By department" }));
     expect(screen.queryByText("Nut Butter")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Reset view" }));

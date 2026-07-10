@@ -443,9 +443,8 @@ describe("DataGrid data access API", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "View controls" }));
-    fireEvent.change(screen.getByLabelText("Apply saved view"), {
-      target: { value: "Revenue bars" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply saved view" }));
+    fireEvent.click(screen.getByRole("option", { name: "Revenue bars" }));
     expect(document.querySelectorAll(".dg-databar").length).toBe(3);
   });
 });

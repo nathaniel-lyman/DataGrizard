@@ -22,6 +22,11 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+const chooseDropdownOption = (label: string, option: string) => {
+  fireEvent.click(screen.getByRole("button", { name: label }));
+  fireEvent.click(screen.getByRole("option", { name: option }));
+};
+
 describe("DataGrid column filters", () => {
   it("filters select columns by exact match (no substring leakage)", () => {
     const filters: GridFilterConfig<Row>[] = [
@@ -130,7 +135,7 @@ describe("DataGrid column filters", () => {
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Dept filter/i }));
-    fireEvent.change(screen.getByLabelText("Dept operator"), { target: { value: "startsWith" } });
+    chooseDropdownOption("Dept operator", "Starts with");
     fireEvent.change(screen.getByLabelText("Dept contains"), { target: { value: "Wo" } });
 
     expect(screen.queryByText("$500")).not.toBeInTheDocument();
@@ -145,7 +150,7 @@ describe("DataGrid column filters", () => {
     render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} filters={filters} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Revenue filter/i }));
-    fireEvent.change(screen.getByLabelText("Revenue operator"), { target: { value: "gt" } });
+    chooseDropdownOption("Revenue operator", "Greater than");
     fireEvent.change(screen.getByLabelText("Revenue value"), { target: { value: "1000" } });
 
     expect(screen.queryByText("$500")).not.toBeInTheDocument();
@@ -478,7 +483,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: gt keeps rows strictly greater than bound", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gt" } });
+    chooseDropdownOption("N operator", "Greater than");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "3.5" } });
     // only 10 > 3.5
     expect(screen.getByText("hi")).toBeInTheDocument();
@@ -491,7 +496,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: gte keeps rows >= bound (includes the exact match)", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gte" } });
+    chooseDropdownOption("N operator", "Greater than or equal");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "3.5" } });
     // 3.5 and 10 pass
     expect(screen.getByText("dec")).toBeInTheDocument();
@@ -504,7 +509,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: lt keeps rows strictly less than bound", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "lt" } });
+    chooseDropdownOption("N operator", "Less than");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "0" } });
     // only -2 < 0
     expect(screen.getByText("neg")).toBeInTheDocument();
@@ -517,7 +522,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: lte keeps rows <= bound (includes the exact match)", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "lte" } });
+    chooseDropdownOption("N operator", "Less than or equal");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "0" } });
     // -2 and 0 pass
     expect(screen.getByText("neg")).toBeInTheDocument();
@@ -530,7 +535,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: equals keeps only the exact matched row", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "equals" } });
+    chooseDropdownOption("N operator", "Equals");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "10" } });
     expect(screen.getByText("hi")).toBeInTheDocument();
     expect(screen.queryByText("neg")).not.toBeInTheDocument();
@@ -542,7 +547,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: notEquals excludes matched row; blank/NaN cell is also excluded", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "notEquals" } });
+    chooseDropdownOption("N operator", "Does not equal");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "10" } });
     // -2, 0, 3.5 pass; 10 excluded; NaN excluded (non-finite)
     expect(screen.getByText("neg")).toBeInTheDocument();
@@ -555,7 +560,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: negative bound — gt -2 excludes the -2 row itself", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gt" } });
+    chooseDropdownOption("N operator", "Greater than");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "-2" } });
     // 0, 3.5, 10 > -2; -2 is not strictly greater than -2; NaN excluded
     expect(screen.getByText("zero")).toBeInTheDocument();
@@ -581,7 +586,7 @@ describe("type-aware filter predicate coverage", () => {
   it("number: zero is a real value — gte 0 keeps the zero row", () => {
     render(<DataGrid data={nData} columns={nColumns} getRowId={(r) => r.id} />);
     openNFilter();
-    fireEvent.change(screen.getByLabelText("N operator"), { target: { value: "gte" } });
+    chooseDropdownOption("N operator", "Greater than or equal");
     fireEvent.change(screen.getByLabelText("N value"),    { target: { value: "0" } });
     // 0, 3.5, 10 >= 0; -2 does not; NaN excluded
     expect(screen.getByText("zero")).toBeInTheDocument();

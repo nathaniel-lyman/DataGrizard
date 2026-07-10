@@ -9,6 +9,7 @@ import {
 } from "./filterMatch";
 import type { GridFilterOperator, GridFilterType } from "../../types/grid";
 import { resolveFilterOperators } from "./filterDefaults";
+import { DropdownSelect } from "./DropdownSelect";
 
 export const formatOptionLabel = (option: string) =>
   option
@@ -17,8 +18,6 @@ export const formatOptionLabel = (option: string) =>
     .join(" ");
 
 const inputClass = "dg-filter-input";
-
-const operatorClass = "dg-filter-operator";
 
 const operatorLabels: Record<GridFilterOperator, string> = {
   is: "Is",
@@ -90,18 +89,18 @@ const OperatorSelect = ({ filter }: { filter: GridFilter }) => {
   return (
     <label className="dg-filter-operator-field">
       Match
-      <select
-        aria-label={`${filter.label} operator`}
+      <DropdownSelect
+        ariaLabel={`${filter.label} operator`}
         value={operator}
-        onChange={(event) => commitFilterValue(filter, event.target.value as GridFilterOperator, value)}
-        className={`${operatorClass} dg-control--full`}
-      >
-        {operators.map((item) => (
-          <option key={item} value={item}>
-            {operatorLabels[item]}
-          </option>
-        ))}
-      </select>
+        onChange={(nextOperator) =>
+          commitFilterValue(filter, nextOperator as GridFilterOperator, value)
+        }
+        options={operators.map((item) => ({
+          value: item,
+          label: operatorLabels[item],
+        }))}
+        className="dg-filter-operator dg-control--full"
+      />
     </label>
   );
 };

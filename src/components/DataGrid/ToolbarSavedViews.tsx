@@ -1,3 +1,5 @@
+import { DropdownSelect } from "./DropdownSelect";
+
 type ToolbarSavedViewsProps = {
   savedViews: string[];
   activeViewName: string;
@@ -37,23 +39,16 @@ export function ToolbarSavedViews({
       >
         {willOverwrite ? "Update view" : "Save view"}
       </button>
-      <select
+      <DropdownSelect
         value=""
-        onChange={(event) => {
-          if (event.target.value) {
-            onApplyView(event.target.value);
-          }
+        onChange={(value) => {
+          onApplyView(value);
         }}
-        className="dg-select dg-saved-view-select"
-        aria-label="Apply saved view"
-      >
-        <option value="">Saved views</option>
-        {savedViews.map((view) => (
-          <option key={view} value={view}>
-            {view}
-          </option>
-        ))}
-      </select>
+        options={savedViews.map((view) => ({ value: view, label: view }))}
+        placeholder="Saved views"
+        className="dg-saved-view-select"
+        ariaLabel="Apply saved view"
+      />
       <button
         type="button"
         onClick={() => onDeleteView(activeViewName)}

@@ -1,5 +1,6 @@
 import type { Table } from "@tanstack/react-table";
 import type { PivotRow } from "./pivot";
+import { DropdownSelect } from "./DropdownSelect";
 
 type DataGridPaginationProps<TData extends object> = {
   table: Table<TData | PivotRow<TData>>;
@@ -23,18 +24,16 @@ export function DataGridPagination<TData extends object>({
             ? ""
             : ` of ${Math.max(table.getPageCount(), 1)}`}
         </span>
-        <select
-          value={table.getState().pagination.pageSize}
-          onChange={(event) => table.setPageSize(Number(event.target.value))}
+        <DropdownSelect
+          value={String(table.getState().pagination.pageSize)}
+          onChange={(value) => table.setPageSize(Number(value))}
           className="dg-pagination-select"
-          aria-label={`${rowLabel} per page`}
-        >
-          {pageSizeOptions.map((pageSize) => (
-            <option key={pageSize} value={pageSize}>
-              {pageSize} {rowLabel}
-            </option>
-          ))}
-        </select>
+          ariaLabel={`${rowLabel} per page`}
+          options={pageSizeOptions.map((pageSize) => ({
+            value: String(pageSize),
+            label: `${pageSize} ${rowLabel}`,
+          }))}
+        />
       </div>
       <div className="dg-pagination-group">
         <button

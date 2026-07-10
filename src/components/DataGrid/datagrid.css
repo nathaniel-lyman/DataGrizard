@@ -331,8 +331,7 @@
 
 .dg-pagination { gap: 0.75rem; padding: 0.5rem 1rem; border-top: 1px solid var(--dg-border); background: var(--dg-bg); font-size: 0.75rem; line-height: 1rem; color: var(--dg-text-muted); }
 .dg-pagination-group { gap: 0.5rem; }
-.dg-pagination-select { height: 2rem; padding: 0 0.5rem; border: 1px solid var(--dg-border-strong); border-radius: var(--dg-radius); background: var(--dg-bg); font-size: 0.75rem; line-height: 1rem; font-weight: 500; color: var(--dg-text); outline: none; }
-.dg-pagination-select:focus { border-color: var(--dg-ring-strong); box-shadow: 0 0 0 2px var(--dg-active); }
+.dg-pagination-select { width: auto; min-width: 6.5rem; }
 .dg-pagination-button { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--dg-border-strong); border-radius: var(--dg-radius); background: var(--dg-surface); font-weight: 600; color: var(--dg-text); transition: background-color 150ms; }
 .dg-pagination-button:hover { background: var(--dg-hover); }
 .dg-pagination-button:disabled { cursor: not-allowed; opacity: 0.4; }
@@ -371,6 +370,17 @@
 .dg-select-trigger:hover { background: var(--dg-surface); }
 .dg-select-trigger:focus-visible { border-color: var(--dg-ring-strong); }
 .dg-select-chevron { color: var(--dg-text-faint); }
+.dg-dropdown { position: relative; min-width: 0; color: var(--dg-text); text-transform: none; letter-spacing: normal; }
+.dg-dropdown-trigger { display: flex; width: 100%; min-width: 0; height: 2rem; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0 0.625rem; border: 1px solid var(--dg-border-strong); border-radius: var(--dg-radius); background: var(--dg-bg); color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; text-align: left; transition: background-color 150ms, border-color 150ms, box-shadow 150ms; }
+.dg-dropdown-trigger:hover { background: var(--dg-surface); }
+.dg-dropdown-trigger:focus-visible { outline: none; border-color: var(--dg-ring-strong); box-shadow: 0 0 0 2px var(--dg-ring); }
+.dg-dropdown-trigger:disabled { cursor: not-allowed; color: var(--dg-text-faint); opacity: 0.7; }
+.dg-dropdown-chevron { display: inline-flex; flex-shrink: 0; color: var(--dg-text-faint); }
+.dg-dropdown-menu { position: absolute; z-index: 60; top: calc(100% + 0.25rem); left: 0; width: max(100%, max-content); min-width: 100%; max-width: min(20rem, calc(100vw - 2rem)); max-height: 16rem; overflow: auto; padding: 0.25rem; border: 1px solid var(--dg-border); border-radius: var(--dg-radius); background: var(--dg-surface-raised); color: var(--dg-text); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.12), 0 4px 6px -4px rgb(0 0 0 / 0.12); }
+.dg-dropdown-option { display: flex; width: 100%; min-width: 0; height: 2rem; align-items: center; padding: 0 0.5rem; border-radius: var(--dg-radius-sm); color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; text-align: left; }
+.dg-dropdown-option:hover, .dg-dropdown-option:focus-visible { outline: none; background: var(--dg-surface); }
+.dg-dropdown-option--selected { background: var(--dg-accent); color: var(--dg-accent-text); }
+.dg-dropdown-option--selected:hover, .dg-dropdown-option--selected:focus-visible { background: var(--dg-accent-hover); }
 .dg-columns-menu { position: absolute; left: 0; top: 100%; z-index: 20; width: 18rem; margin-top: 0.25rem; padding: 0.5rem; border: 1px solid var(--dg-border); border-radius: var(--dg-radius); background: var(--dg-surface-raised); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
 .dg-columns-list { max-height: 18rem; overflow: auto; }
 .dg-columns-item { display: flex; height: 2rem; align-items: center; gap: 0.5rem; padding: 0 0.5rem; border-radius: var(--dg-radius-sm); color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; text-transform: none; letter-spacing: normal; }
@@ -395,8 +405,8 @@
 .dg-grouping-chip { display: inline-flex; height: 1.5rem; align-items: center; gap: 0.25rem; padding-left: 0.5rem; padding-right: 0.25rem; border: 1px solid var(--dg-border); border-radius: var(--dg-radius-sm); background: var(--dg-surface); color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; }
 .dg-grouping-chip-btn { width: 1.25rem; height: 1.25rem; border-radius: var(--dg-radius-sm); }
 .dg-grouping-chip-btn:hover { background: var(--dg-active); }
-.dg-grouping-select { min-width: 8rem; height: 1.5rem; flex: 1 1 0%; padding: 0 0.25rem; border: 0; background: transparent; color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; font-weight: 500; outline: none; }
-.dg-grouping-select:disabled { color: var(--dg-text-faint); }
+.dg-grouping-select { min-width: 8rem; flex: 1 1 0%; }
+.dg-grouping-select .dg-dropdown-trigger { height: 1.5rem; padding: 0 0.25rem; border: 0; background: transparent; }
 .dg-grouping-clear { height: 1.5rem; padding: 0 0.5rem; border: 1px solid var(--dg-border); border-radius: var(--dg-radius-sm); color: var(--dg-text-muted); font-size: 0.75rem; line-height: 1rem; font-weight: 600; }
 .dg-grouping-clear:hover { background: var(--dg-surface); }
 
@@ -404,7 +414,7 @@
 .dg-saved-view-name { order: 1; grid-column: span 2 / span 2; min-width: 0; }
 .dg-saved-view-save { order: 2; }
 .dg-saved-view-delete { order: 3; }
-.dg-saved-view-select { order: 4; grid-column: span 2 / span 2; padding: 0 0.5rem; }
+.dg-saved-view-select { order: 4; grid-column: span 2 / span 2; }
 
 .dg-advanced-controls { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--dg-hover); }
 .dg-advanced-header { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
@@ -461,10 +471,10 @@
 .dg-filters-field { position: relative; min-width: 9rem; }
 .dg-filters-popover { display: flex; width: 16rem; flex-direction: column; gap: 0.75rem; padding: 0.75rem; }
 
-.dg-filter-input, .dg-filter-operator { height: 2rem; padding: 0 0.5rem; border: 1px solid var(--dg-border-strong); border-radius: var(--dg-radius); background: var(--dg-bg); color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; outline: none; transition: border-color 150ms, box-shadow 150ms; }
+.dg-filter-input { height: 2rem; padding: 0 0.5rem; border: 1px solid var(--dg-border-strong); border-radius: var(--dg-radius); background: var(--dg-bg); color: var(--dg-text); font-size: 0.75rem; line-height: 1rem; outline: none; transition: border-color 150ms, box-shadow 150ms; }
 .dg-filter-input { font-weight: 500; }
-.dg-filter-operator { font-weight: 600; }
-.dg-filter-input:focus-visible, .dg-filter-operator:focus-visible { border-color: var(--dg-ring-strong); box-shadow: 0 0 0 2px var(--dg-ring); }
+.dg-filter-operator .dg-dropdown-trigger { font-weight: 600; }
+.dg-filter-input:focus-visible { border-color: var(--dg-ring-strong); box-shadow: 0 0 0 2px var(--dg-ring); }
 .dg-filter-empty { padding: 0.375rem 0.5rem; color: var(--dg-text-muted); font-size: 0.75rem; line-height: 1rem; font-weight: 500; }
 .dg-filter-operator-field { display: flex; flex-direction: column; gap: 0.25rem; color: var(--dg-text-muted); font-size: 0.6875rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; }
 .dg-control--full { width: 100%; }

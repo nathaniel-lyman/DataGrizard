@@ -203,6 +203,7 @@ describe("DataGrid scoped localStorage persistence", () => {
 
     render(<DataGrid data={rows} columns={columns} getRowId={(r) => r.id} storageKey="grid-A" />);
     openViewControls();
+    fireEvent.click(screen.getByRole("button", { name: "Apply saved view" }));
     expect(screen.getByRole("option", { name: "My view" })).toBeInTheDocument();
   });
 

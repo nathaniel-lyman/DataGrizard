@@ -1,4 +1,5 @@
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from "./icons";
+import { DropdownSelect } from "./DropdownSelect";
 
 type ToolbarGroupingProps = {
   groupableColumns: Array<{ id: string; label: string }>;
@@ -62,26 +63,20 @@ export function ToolbarGrouping({
             </button>
           </span>
         ))}
-        <select
+        <DropdownSelect
           value=""
-          onChange={(event) => {
-            if (event.target.value) {
-              onGroupingAdd(event.target.value);
-            }
+          onChange={(value) => {
+            onGroupingAdd(value);
           }}
           disabled={availableGroupColumns.length === 0}
           className="dg-grouping-select"
-          aria-label="Add grouping"
-        >
-          <option value="">
-            {groupedColumns.length ? "Add level" : "No grouping"}
-          </option>
-          {availableGroupColumns.map((column) => (
-            <option key={column.id} value={column.id}>
-              {column.label}
-            </option>
-          ))}
-        </select>
+          ariaLabel="Add grouping"
+          placeholder={groupedColumns.length ? "Add level" : "No grouping"}
+          options={availableGroupColumns.map((column) => ({
+            value: column.id,
+            label: column.label,
+          }))}
+        />
         {groupedColumns.length > 0 ? (
           <button
             type="button"
