@@ -8,6 +8,8 @@ const clampPct = (value: number) => Math.min(Math.max(value, 0), 100);
 /**
  * Renders a `percent` cell as a 0–100% progress bar. Domain defaults to [0, 1]
  * (the fraction convention used by the formatters). Blank/non-finite → empty.
+ * The label sits beside the track, not centered over the fill, so it never
+ * straddles the fill/track edge at mid-range values.
  */
 export const renderProgressBar = (
   value: unknown,
@@ -24,21 +26,21 @@ export const renderProgressBar = (
   const pct = clampPct(span === 0 ? 0 : ((numeric - min) / span) * 100);
   const showLabel = options.showLabel !== false;
   return (
-    <div
-      role="progressbar"
-      aria-valuenow={Math.round(pct)}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      className="dg-progress"
-    >
+    <div className="dg-progress-row">
       <div
-        className="dg-progress-fill"
-        style={{ width: `${pct}%`, background: options.color ?? "var(--dg-progress-fill)" }}
-      />
+        role="progressbar"
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="dg-progress"
+      >
+        <div
+          className="dg-progress-fill"
+          style={{ width: `${pct}%`, background: options.color ?? "var(--dg-progress-fill)" }}
+        />
+      </div>
       {showLabel ? (
-        <span className="dg-progress-label">
-          {formatPercent(numeric, formatOptions)}
-        </span>
+        <span className="dg-progress-label">{formatPercent(numeric, formatOptions)}</span>
       ) : null}
     </div>
   );

@@ -61,14 +61,45 @@ export const interpolateColor = (from: string, to: string, t: number): string =>
   });
 };
 
-/** Perceived-luminance pick of a readable foreground for a given background. */
+const srgbChannelToLinear = (channel: number): number => {
+  const normalized = channel / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : Math.pow((normalized + 0.055) / 1.055, 2.4);
+};
+
+/** WCAG relative luminance (linearized sRGB), used for contrast-ratio math. */
+const relativeLuminance = ({ r, g, b }: Rgb): number =>
+  0.2126 * srgbChannelToLinear(r) + 0.7152 * srgbChannelToLinear(g) + 0.0722 * srgbChannelToLinear(b);
+
+/** WCAG contrast ratio between two relative luminances (always ≥ 1). */
+const contrastRatio = (a: number, b: number): number => {
+  const lighter = Math.max(a, b);
+  const darker = Math.min(a, b);
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+const DARK_TEXT = "#0f172a";
+const LIGHT_TEXT = "#f8fafc";
+const DARK_TEXT_LUMINANCE = relativeLuminance({ r: 15, g: 23, b: 42 });
+const LIGHT_TEXT_LUMINANCE = relativeLuminance({ r: 248, g: 250, b: 252 });
+
+/**
+ * WCAG contrast-ratio pick of a readable foreground (--dg-text vs. an
+ * off-white) for a given background. Picking by perceived luminance alone
+ * (a 0-1 threshold) flips to white far too early on mid-tone backgrounds —
+ * e.g. a mid-ramp emerald passes ~2:1 contrast with white text (fails the
+ * 4.5:1 WCAG minimum) while dark text on the same background clears ~8:1.
+ */
 export const getReadableTextColor = (background: string): string => {
   const rgb = parseColor(background);
   if (!rgb) {
-    return "#0f172a";
+    return DARK_TEXT;
   }
-  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  return luminance > 0.6 ? "#0f172a" : "#f8fafc";
+  const bgLuminance = relativeLuminance(rgb);
+  const contrastWithDark = contrastRatio(bgLuminance, DARK_TEXT_LUMINANCE);
+  const contrastWithLight = contrastRatio(bgLuminance, LIGHT_TEXT_LUMINANCE);
+  return contrastWithDark >= contrastWithLight ? DARK_TEXT : LIGHT_TEXT;
 };
 
 const resolveScaleDomain = (

@@ -231,12 +231,13 @@
 .dg-editor-error--above { bottom: 100%; margin-bottom: 0.125rem; }
 .dg-editor-error--below { top: 100%; margin-top: 0.125rem; }
 
-.dg-progress { position: relative; width: 100%; min-width: 64px; height: 1rem; overflow: hidden; border-radius: 9999px; background: var(--dg-hover); }
-.dg-progress-fill { position: absolute; inset-block: 0; left: 0; border-radius: 9999px; }
-.dg-progress-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; line-height: 1rem; font-weight: 600; color: var(--dg-text); }
+.dg-progress-row { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.dg-progress { position: relative; flex: 1 1 auto; min-width: 40px; height: 0.5rem; overflow: hidden; border-radius: var(--dg-radius-sm); background: var(--dg-hover); }
+.dg-progress-fill { position: absolute; inset-block: 0; left: 0; border-radius: var(--dg-radius-sm); }
+.dg-progress-label { flex: 0 0 auto; font-size: 0.6875rem; line-height: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--dg-text); }
 .dg-icon { display: inline-flex; align-items: center; }
 .dg-icon-value { display: inline-flex; align-items: center; gap: 0.375rem; }
-.dg-databar { position: absolute; inset-block: 0.25rem; z-index: 0; border-radius: var(--dg-radius-sm); opacity: 0.5; pointer-events: none; }
+.dg-databar { position: absolute; top: 50%; left: 0; transform: translateY(-50%); height: 0.5rem; z-index: 0; border-radius: var(--dg-radius-sm); opacity: 0.5; pointer-events: none; }
 .dg-flash-overlay { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 
 .dg-pivot-label { display: flex; min-width: 0; align-items: center; gap: 0.375rem; }

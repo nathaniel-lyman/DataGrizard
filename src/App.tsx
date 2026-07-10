@@ -5,6 +5,7 @@ import {
   type DataGridColumnGroup,
   type DataGridDataMode,
   type DataGridLayoutMode,
+  type GridColorScale,
 } from "./components/DataGrid";
 import {
   mockRetailData,
@@ -33,6 +34,11 @@ const dataModes: { id: DataGridDataMode; label: string }[] = [
   { id: "server", label: "Server" },
 ];
 
+// colorScale interpolates literal colors, so it can't ride the --dg-* CSS
+// tokens that handle every other theme switch automatically — the demo swaps
+// in a dark-appropriate ramp itself when dg-theme-dark is active.
+const darkSalesColorScale: GridColorScale = { colors: ["#2e1065", "#a78bfa"] };
+
 // Grid-mode header bands (ignored in pivot mode).
 const retailColumnGroups: DataGridColumnGroup[] = [
   { groupId: "item", header: "Item", children: ["item_id", "item_name"] },
@@ -48,6 +54,12 @@ function App() {
   const [layoutMode, setLayoutMode] = useState<DataGridLayoutMode>("grid");
   const [dataMode, setDataMode] = useState<DataGridDataMode>("client");
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const themedRetailColumns = useMemo(() => {
+    if (!isDarkTheme) return retailColumns;
+    return retailColumns.map((column) =>
+      column.accessorKey === "sales" ? { ...column, colorScale: darkSalesColorScale } : column,
+    );
+  }, [isDarkTheme]);
 
   // Client mode: the grid never mutates `data`; we apply onCellEdit by item_id.
   const [rows, setRows] = useState(mockRetailData);
@@ -204,7 +216,7 @@ function App() {
       >
         <DataGrid
           data={isServer ? serverRows : rows}
-          columns={retailColumns}
+          columns={themedRetailColumns}
           layoutMode={layoutMode}
           dataMode={isServer ? "server" : "client"}
           rowCount={isServer ? serverRowCount : undefined}

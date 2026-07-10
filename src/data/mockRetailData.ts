@@ -108,7 +108,10 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     header: "Sales",
     dataType: "currency",
     width: 128,
-    colorScale: { colors: ["#ecfdf5", "#10b981", "#065f46"] },
+    // Sequential (one hue, light→dark), not diverging — sales magnitude has no
+    // meaningful zero-crossing/polarity. Violet keeps it distinct from the
+    // green/amber/rose/indigo already spoken for by recommendation_status.
+    colorScale: { colors: ["#f5f3ff", "#7c3aed"] },
   },
   {
     accessorKey: "units",
@@ -125,7 +128,9 @@ export const retailColumns: GridColumnConfig<RetailItem>[] = [
     header: "Margin",
     dataType: "percent",
     width: 128,
-    progressBar: { color: "#10b981" },
+    // Pinned to the mock data's real spread (12%–50%) instead of the [0, 1]
+    // default, so bars actually differentiate rows across the full track.
+    progressBar: { color: "#10b981", domain: [0.1, 0.5] },
   },
   {
     accessorKey: "price_gap",

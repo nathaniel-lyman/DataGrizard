@@ -35,6 +35,12 @@ describe("getReadableTextColor", () => {
     expect(getReadableTextColor("#ffffff")).toBe("#0f172a");
     expect(getReadableTextColor("#000000")).toBe("#f8fafc");
   });
+  it("picks the higher-contrast option on a mid-tone background", () => {
+    // rgb(62, 199, 153) is a mid-ramp emerald: white-on-it is ~2:1 contrast
+    // (fails WCAG's 4.5:1), while dark text on it is ~8:1. A perceived-luminance
+    // heuristic (threshold at 0.6) picks white here; contrast ratio must not.
+    expect(getReadableTextColor("rgb(62, 199, 153)")).toBe("#0f172a");
+  });
 });
 
 describe("colorScaleStyle", () => {
