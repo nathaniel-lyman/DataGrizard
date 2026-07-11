@@ -99,5 +99,8 @@
     "vite": "^6.0.5",
     "vite-plugin-dts": "^5.0.3",
     "vitest": "^4.1.9"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans": "^5.2.8"
   }
 }

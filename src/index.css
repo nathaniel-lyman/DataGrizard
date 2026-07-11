@@ -18,6 +18,11 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 a { color: inherit; }
 
+/* Demo typography: show the reusable grid with Carbon's IBM Plex Sans. */
+.showcase-grid-shell .dg-root {
+  --dg-font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
 :focus-visible {
   outline: 3px solid rgba(109, 40, 217, 0.3);
   outline-offset: 3px;
