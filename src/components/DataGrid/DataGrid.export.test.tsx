@@ -193,6 +193,26 @@ describe("DataGrid clipboard copy", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied 1 cell."));
   });
 
+  it("clipboardIncludeHeaders makes plain Ctrl/Cmd-C include the header row", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(
+      <DataGrid
+        data={data}
+        columns={columns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        clipboardIncludeHeaders
+      />,
+    );
+    const cell = cellOf("Alpha");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "c", ctrlKey: true });
+
+    expect(writeText).toHaveBeenCalledWith("Name\r\nAlpha");
+  });
+
   it("header row follows the selected range's columns, not all visible columns", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

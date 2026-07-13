@@ -41,6 +41,7 @@ type CellRangeInteractionsArgs<TData extends object> = {
   columnsById: Map<string, AnyColumnConfig<TData>>;
   formatOptions: FormatOptions;
   locale?: string;
+  clipboardIncludeHeaders?: boolean;
   navRowIds: string[];
   navColumnIds: string[];
   rowById: Map<string, Row<TData | PivotRow<TData>>>;
@@ -66,6 +67,7 @@ export function useCellRangeInteractions<TData extends object>({
   columnsById,
   formatOptions,
   locale,
+  clipboardIncludeHeaders = false,
   navRowIds,
   navColumnIds,
   rowById,
@@ -524,7 +526,7 @@ export function useCellRangeInteractions<TData extends object>({
     const ctrl = event.ctrlKey || event.metaKey;
     if (ctrl && (event.key === "c" || event.key === "C")) {
       if (features.clipboard) {
-        copyFromCell(row, columnId, { includeHeaders: event.shiftKey });
+        copyFromCell(row, columnId, { includeHeaders: clipboardIncludeHeaders || event.shiftKey });
         event.preventDefault();
       }
       return;

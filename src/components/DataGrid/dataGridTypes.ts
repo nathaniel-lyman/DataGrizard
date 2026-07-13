@@ -251,6 +251,8 @@ export type DataGridProps<TData extends object> = {
   rowLabel?: string;
   tableLabel?: string;
   locale?: string;
+  /** When true, plain Ctrl/Cmd-C prepends a header row. Ctrl/Cmd-Shift-C always includes headers. */
+  clipboardIncludeHeaders?: boolean;
   currency?: string;
   dateFormat?: Intl.DateTimeFormatOptions;
   density?: DataGridDensity;
