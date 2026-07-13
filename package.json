@@ -73,6 +73,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
     "@google-cloud/bigquery": "^7.9.0",
     "@microsoft/api-extractor": "^7.58.9",
     "@tanstack/react-table": "^8.21.3",
@@ -99,8 +100,5 @@
     "vite": "^6.0.5",
     "vite-plugin-dts": "^5.0.3",
     "vitest": "^4.1.9"
-  },
-  "dependencies": {
-    "@fontsource/ibm-plex-sans": "^5.2.8"
   }
 }

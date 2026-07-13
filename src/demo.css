@@ -1,0 +1,10 @@
+/*
+ * Keep the demo cascade explicit: font faces, reusable package styles, then
+ * consumer styles. The published package continues to ship datagrid.css only.
+ */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-sans/latin-700.css";
+@import "./components/DataGrid/datagrid.css";
+@import "./index.css";

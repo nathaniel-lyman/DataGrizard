@@ -137,6 +137,12 @@ mkdirSync(packageRoot, { recursive: true });
 const tarballPath = join(smokeRoot, packResult.filename);
 run("tar", ["-xzf", tarballPath, "--strip-components=1", "-C", packageRoot]);
 
+const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+const runtimeDependencies = Object.keys(packageJson.dependencies ?? {});
+if (runtimeDependencies.length > 0) {
+  fail(`runtime dependencies must remain empty; found ${runtimeDependencies.join(", ")}`);
+}
+
 symlinkDependency("react");
 symlinkDependency("react-dom");
 symlinkDependency("@tanstack/react-table");
@@ -281,7 +287,6 @@ run(process.execPath, [join(smokeRoot, "consumer-render.mjs")], {
   stdio: "inherit",
 });
 
-const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
 const expectedReactPeerRange = "^18.2 || ^19";
 for (const peer of ["react", "react-dom"]) {
   if (packageJson.peerDependencies?.[peer] !== expectedReactPeerRange) {
