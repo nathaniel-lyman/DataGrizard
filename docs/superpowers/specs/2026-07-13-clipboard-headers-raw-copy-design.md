@@ -45,6 +45,8 @@ existing `getCellText`. Rules, dispatched on the column config's `dataType`:
 - `date`: ISO 8601 via the existing `toDate` helper
   (`src/utils/formatters.ts`); unparseable → empty string.
 - `status` / `text` / `boolean` and unknown types: `String(value)`.
+- Columns with no matching `columnConfig` (the existing `getCellText`
+  fallback case): `String(value)`, same as today.
 - `null` / `undefined`: empty string.
 - `formatValue` overrides are **ignored** in raw mode by definition.
 - Pivot rows: unchanged from today (`String(value)`; measure values are
@@ -64,15 +66,20 @@ The header row follows whichever column set the copy matrix used, which
 2. selected rows → visible non-synthetic leaf columns;
 3. single focused cell → that one column.
 
+Header labels containing tabs or newlines are safe by construction: the
+header row goes through the same `toTsv` quoting/escaping as data rows.
+
 ## Wiring
 
 - `copyFromCell(row, columnId)` gains an options argument
   `{ includeHeaders: boolean }` and consults `clipboardValueMode` when
   building the matrix (choosing `getCellText` vs `getCellRawText`).
 - The Ctrl/Cmd-C branch in `onCellKeyDown` passes
-  `includeHeaders: clipboardIncludeHeaders || event.shiftKey`. Today the
-  branch matches plain `c` with ctrl/meta; it must accept the Shift variant
-  instead of falling through.
+  `includeHeaders: clipboardIncludeHeaders || event.shiftKey`. The existing
+  branch already matches `"c"`/`"C"`, so Ctrl/Cmd-Shift-C triggers a copy
+  today; the change is reading `event.shiftKey` inside the branch. This is
+  one small intended behavior change: Ctrl/Cmd-Shift-C goes from headerless
+  copy to header copy. Plain Ctrl/Cmd-C is unchanged.
 - The ARIA-live announcement keeps counting **data cells only** (the header
   row does not change the announced count).
 - No changes to paste: `normalizeClipboardInput` already passes plain numeric
@@ -98,8 +105,10 @@ case:
 4. Default mode output is byte-identical to today's formatted copy.
 5. Header row follows the rectangular range's columns (not all visible
    columns).
-6. Pivot copy behavior unchanged.
-7. Announcement counts exclude the header row.
+6. Selected-rows copy path with headers uses the visible non-synthetic
+   column set (distinct from the range path).
+7. Pivot copy behavior unchanged.
+8. Announcement counts exclude the header row.
 
 ## Constraints honored
 
