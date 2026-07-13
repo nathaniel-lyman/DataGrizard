@@ -423,7 +423,18 @@ export function useCellRangeInteractions<TData extends object>({
         : String(value);
   };
 
-  const copyFromCell = (row: Row<TData | PivotRow<TData>>, columnId: string) => {
+  const getHeaderLabel = (column: Column<TData | PivotRow<TData>, unknown>) => {
+    const columnConfig = columnsById.get(column.id);
+    if (columnConfig) return columnConfig.header;
+    const defHeader = column.columnDef.header;
+    return typeof defHeader === "string" ? defHeader : column.id;
+  };
+
+  const copyFromCell = (
+    row: Row<TData | PivotRow<TData>>,
+    columnId: string,
+    options?: { includeHeaders?: boolean },
+  ) => {
     const columns = table
       .getVisibleLeafColumns()
       .filter((column) => column.id !== SELECT_COLUMN_ID && column.id !== ROW_ACTIONS_COLUMN_ID);
@@ -432,26 +443,31 @@ export function useCellRangeInteractions<TData extends object>({
       : table.getSelectedRowModel().flatRows.filter((selectedRow) => !selectedRow.getIsGrouped());
     const focusedColumn = table.getColumn(columnId);
     const normalized = normalizeCellRange(cellSelection);
-    const rangeMatrix =
-      normalized && normalized.area > 1
-        ? normalized.rowIds.map((rowId) => {
-            const selectedRow = rowById.get(rowId);
-            return normalized.columnIds.map((selectedColumnId) => {
-              const selectedColumn = table.getColumn(selectedColumnId);
-              return selectedRow && selectedColumn ? getCellText(selectedRow, selectedColumn) : "";
-            });
-          })
-        : null;
-    const matrix = rangeMatrix
-      ? rangeMatrix
-      : selected.length
-        ? selected.map((selectedRow) => columns.map((column) => getCellText(selectedRow, column)))
-        : focusedColumn
-          ? [[getCellText(row, focusedColumn)]]
-          : [];
+    let matrix: string[][] = [];
+    let headerLabels: string[] = [];
+    if (normalized && normalized.area > 1) {
+      headerLabels = normalized.columnIds.map((selectedColumnId) => {
+        const selectedColumn = table.getColumn(selectedColumnId);
+        return selectedColumn ? getHeaderLabel(selectedColumn) : "";
+      });
+      matrix = normalized.rowIds.map((rowId) => {
+        const selectedRow = rowById.get(rowId);
+        return normalized.columnIds.map((selectedColumnId) => {
+          const selectedColumn = table.getColumn(selectedColumnId);
+          return selectedRow && selectedColumn ? getCellText(selectedRow, selectedColumn) : "";
+        });
+      });
+    } else if (selected.length) {
+      headerLabels = columns.map(getHeaderLabel);
+      matrix = selected.map((selectedRow) => columns.map((column) => getCellText(selectedRow, column)));
+    } else if (focusedColumn) {
+      headerLabels = [getHeaderLabel(focusedColumn)];
+      matrix = [[getCellText(row, focusedColumn)]];
+    }
     if (!matrix.length) return;
     const cellCount = matrix.reduce((count, matrixRow) => count + matrixRow.length, 0);
-    void writeClipboardText(toTsv(matrix)).then((copied) => {
+    const clipboardRows = options?.includeHeaders ? [headerLabels, ...matrix] : matrix;
+    void writeClipboardText(toTsv(clipboardRows)).then((copied) => {
       announceClipboard(
         copied
           ? `Copied ${cellCount} ${cellCount === 1 ? "cell" : "cells"}.`
@@ -508,7 +524,7 @@ export function useCellRangeInteractions<TData extends object>({
     const ctrl = event.ctrlKey || event.metaKey;
     if (ctrl && (event.key === "c" || event.key === "C")) {
       if (features.clipboard) {
-        copyFromCell(row, columnId);
+        copyFromCell(row, columnId, { includeHeaders: event.shiftKey });
         event.preventDefault();
       }
       return;

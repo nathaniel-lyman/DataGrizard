@@ -177,6 +177,52 @@ describe("DataGrid clipboard copy", () => {
     expect(writeText).toHaveBeenCalledWith("Alpha\t$1,200\r\nBravo\t$900");
   });
 
+  it("prepends a header row on Ctrl/Cmd-Shift-C", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} features={{ rowSelection: false }} />);
+    const cell = cellOf("Alpha");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "C", ctrlKey: true, shiftKey: true });
+
+    expect(writeText).toHaveBeenCalledWith("Name\r\nAlpha");
+    // The announcement fires in the writeClipboardText microtask and the status
+    // element renders conditionally, so it must be awaited (same pattern as the
+    // existing legacy-copy-path test). Header row does not change the count.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Copied 1 cell."));
+  });
+
+  it("header row follows the selected range's columns, not all visible columns", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} features={{ rowSelection: false }} />);
+    const start = cellOf("Alpha");
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("$900"), { buttons: 1 });
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "C", ctrlKey: true, shiftKey: true });
+
+    expect(writeText).toHaveBeenCalledWith("Name\tRevenue\r\nAlpha\t$1,200\r\nBravo\t$900");
+  });
+
+  it("selected-rows copy with headers uses the visible non-synthetic column set", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<DataGrid data={data} columns={columns} getRowId={(r) => r.id} />);
+    fireEvent.click(screen.getByLabelText("Select 1")); // Alpha
+
+    const cell = cellOf("Bravo");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "C", metaKey: true, shiftKey: true });
+
+    const tsv = writeText.mock.calls[0][0] as string;
+    expect(tsv.split("\r\n")[0]).toBe("Name\tRevenue"); // no select-column header
+    expect(tsv).toContain("Alpha\t$1,200");
+  });
+
   it("falls back to the legacy copy path when async clipboard permission is denied", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     const execCommand = vi.fn().mockReturnValue(true);
