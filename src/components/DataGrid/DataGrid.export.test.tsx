@@ -316,4 +316,3 @@ describe("DataGrid raw clipboard mode", () => {
     expect(writeText).toHaveBeenCalledWith("Label\r\nFirst");
   });
 });
-
