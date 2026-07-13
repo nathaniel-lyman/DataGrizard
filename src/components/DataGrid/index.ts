@@ -82,6 +82,7 @@ export type {
   DataGridDataSource,
   DataGridDataSourceRequest,
   DataGridDataSourceResult,
+  DataGridClipboardValueMode,
   DataGridDataMode,
   DataGridDensity,
   DataGridExpandedState,

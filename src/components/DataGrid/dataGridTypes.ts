@@ -81,6 +81,7 @@ export type DataGridExpandedState = ExpandedState;
 export type DataGridColumnPinningState = ColumnPinningState;
 export type DataGridLayoutMode = "grid" | "pivot";
 export type DataGridDataMode = "client" | "server";
+export type DataGridClipboardValueMode = "formatted" | "raw";
 export type DataGridGroupSummaryDisplay = "inline" | "columns";
 export type DataGridDensity = "compact" | "standard" | "comfortable";
 export type DataGridFocusedCell = { rowId: string; columnId: string } | null;
@@ -253,6 +254,8 @@ export type DataGridProps<TData extends object> = {
   locale?: string;
   /** When true, plain Ctrl/Cmd-C prepends a header row. Ctrl/Cmd-Shift-C always includes headers. */
   clipboardIncludeHeaders?: boolean;
+  /** What Ctrl/Cmd-C serializes per cell: formatted display text (default) or underlying raw values. */
+  clipboardValueMode?: DataGridClipboardValueMode;
   currency?: string;
   dateFormat?: Intl.DateTimeFormatOptions;
   density?: DataGridDensity;

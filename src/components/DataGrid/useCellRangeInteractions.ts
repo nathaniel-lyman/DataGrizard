@@ -9,14 +9,16 @@ import {
 } from "react";
 import type { Column, Row, Table, Updater } from "@tanstack/react-table";
 import type { FormatOptions } from "../../utils/formatters";
+import { toDate } from "../../utils/formatters";
 import { toTsv, writeClipboardText } from "../../utils/export";
 import { normalizeClipboardInput, parseClipboardTsv } from "./clipboard";
 import { computeEditError, parseEditValue, type EditCellColumn } from "./cellEditor";
-import { getColumnSearchText, type AnyColumnConfig } from "./cells";
+import { getColumnSearchText, isNumericDataType, type AnyColumnConfig } from "./cells";
 import type {
   DataGridCellEdit,
   DataGridCellEditBatchSource,
   DataGridCellRange,
+  DataGridClipboardValueMode,
   DataGridFeatures,
   DataGridFocusedCell,
   DataGridProps,
@@ -42,6 +44,7 @@ type CellRangeInteractionsArgs<TData extends object> = {
   formatOptions: FormatOptions;
   locale?: string;
   clipboardIncludeHeaders?: boolean;
+  clipboardValueMode?: DataGridClipboardValueMode;
   navRowIds: string[];
   navColumnIds: string[];
   rowById: Map<string, Row<TData | PivotRow<TData>>>;
@@ -68,6 +71,7 @@ export function useCellRangeInteractions<TData extends object>({
   formatOptions,
   locale,
   clipboardIncludeHeaders = false,
+  clipboardValueMode = "formatted",
   navRowIds,
   navColumnIds,
   rowById,
@@ -425,6 +429,25 @@ export function useCellRangeInteractions<TData extends object>({
         : String(value);
   };
 
+  const getCellRawText = (
+    row: Row<TData | PivotRow<TData>>,
+    column: Column<TData | PivotRow<TData>, unknown>,
+  ) => {
+    const value = row.getValue(column.id);
+    if (value == null) return "";
+    if (isPivotRow(row.original)) return String(value);
+    const columnConfig = columnsById.get(column.id);
+    if (!columnConfig) return String(value);
+    if (isNumericDataType(columnConfig.dataType)) {
+      return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+    }
+    if (columnConfig.dataType === "date") {
+      const date = toDate(value);
+      return date ? date.toISOString() : "";
+    }
+    return String(value);
+  };
+
   const getHeaderLabel = (column: Column<TData | PivotRow<TData>, unknown>) => {
     const columnConfig = columnsById.get(column.id);
     if (columnConfig) return columnConfig.header;
@@ -437,6 +460,7 @@ export function useCellRangeInteractions<TData extends object>({
     columnId: string,
     options?: { includeHeaders?: boolean },
   ) => {
+    const cellText = clipboardValueMode === "raw" ? getCellRawText : getCellText;
     const columns = table
       .getVisibleLeafColumns()
       .filter((column) => column.id !== SELECT_COLUMN_ID && column.id !== ROW_ACTIONS_COLUMN_ID);
@@ -456,15 +480,15 @@ export function useCellRangeInteractions<TData extends object>({
         const selectedRow = rowById.get(rowId);
         return normalized.columnIds.map((selectedColumnId) => {
           const selectedColumn = table.getColumn(selectedColumnId);
-          return selectedRow && selectedColumn ? getCellText(selectedRow, selectedColumn) : "";
+          return selectedRow && selectedColumn ? cellText(selectedRow, selectedColumn) : "";
         });
       });
     } else if (selected.length) {
       headerLabels = columns.map(getHeaderLabel);
-      matrix = selected.map((selectedRow) => columns.map((column) => getCellText(selectedRow, column)));
+      matrix = selected.map((selectedRow) => columns.map((column) => cellText(selectedRow, column)));
     } else if (focusedColumn) {
       headerLabels = [getHeaderLabel(focusedColumn)];
-      matrix = [[getCellText(row, focusedColumn)]];
+      matrix = [[cellText(row, focusedColumn)]];
     }
     if (!matrix.length) return;
     const cellCount = matrix.reduce((count, matrixRow) => count + matrixRow.length, 0);

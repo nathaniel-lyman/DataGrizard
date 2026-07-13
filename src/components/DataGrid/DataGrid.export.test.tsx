@@ -258,3 +258,62 @@ describe("DataGrid clipboard copy", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Copied 1 cell.");
   });
 });
+
+describe("DataGrid raw clipboard mode", () => {
+  type RawRow = { id: string; label: string; margin: number; price: number; when: Date; state: string };
+  const rawData: RawRow[] = [
+    {
+      id: "1",
+      label: "First",
+      margin: 0.23,
+      price: 1234.5,
+      when: new Date(Date.UTC(2026, 0, 15)),
+      state: "in_stock",
+    },
+  ];
+  const rawColumns: GridColumnConfig<RawRow>[] = [
+    { accessorKey: "label", header: "Label", dataType: "text" },
+    { accessorKey: "margin", header: "Margin", dataType: "percent" },
+    { accessorKey: "price", header: "Price", dataType: "currency", formatValue: () => "OVERRIDDEN" },
+    { accessorKey: "when", header: "When", dataType: "date" },
+    { accessorKey: "state", header: "State", dataType: "status" },
+  ];
+
+  const renderRaw = () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(
+      <DataGrid
+        data={rawData}
+        columns={rawColumns}
+        getRowId={(r) => r.id}
+        features={{ rowSelection: false }}
+        clipboardValueMode="raw"
+      />,
+    );
+    return writeText;
+  };
+
+  it("copies underlying values: fraction percent, plain number, ISO date, raw status; formatValue ignored", () => {
+    const writeText = renderRaw();
+    const start = cellOf("First");
+    fireEvent.mouseDown(start, { button: 0, buttons: 1 });
+    fireEvent.mouseEnter(cellOf("In Stock"), { buttons: 1 });
+    fireEvent.mouseUp(document);
+    fireEvent.keyDown(start, { key: "c", ctrlKey: true });
+
+    expect(writeText).toHaveBeenCalledWith(
+      "First\t0.23\t1234.5\t2026-01-15T00:00:00.000Z\tin_stock",
+    );
+  });
+
+  it("headers stay plain text in raw mode", () => {
+    const writeText = renderRaw();
+    const cell = cellOf("First");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "C", ctrlKey: true, shiftKey: true });
+
+    expect(writeText).toHaveBeenCalledWith("Label\r\nFirst");
+  });
+});
+
