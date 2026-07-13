@@ -259,6 +259,65 @@ describe("DataGrid clipboard copy", () => {
   });
 });
 
+describe("DataGrid pivot clipboard copy (regression guard)", () => {
+  type PivotRow = { id: string; group: string; amount: number };
+  const pivotData: PivotRow[] = [
+    { id: "1", group: "North", amount: 1200 },
+    { id: "2", group: "North", amount: 900 },
+    { id: "3", group: "South", amount: 1500 },
+  ];
+  const pivotColumns: GridColumnConfig<PivotRow>[] = [
+    { accessorKey: "group", header: "Group", dataType: "text", enableGrouping: true },
+    { accessorKey: "amount", header: "Amount", dataType: "number" },
+  ];
+
+  const renderPivot = (props?: { clipboardValueMode?: "raw" }) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const view = render(
+      <DataGrid
+        data={pivotData}
+        columns={pivotColumns}
+        getRowId={(r) => r.id}
+        layoutMode="pivot"
+        features={{ rowSelection: false }}
+        pivot={{
+          rows: ["group"],
+          measures: [{ id: "amount", label: "Amount", columnId: "amount", aggregation: "sum" }],
+        }}
+        {...props}
+      />,
+    );
+    return { writeText, unmount: view.unmount };
+  };
+
+  it("copies a focused pivot measure cell via String(value) identically in formatted and raw modes", () => {
+    // Formatted (default) mode: North's sum is 2100.
+    const formatted = renderPivot();
+    const cell = cellOf("2100");
+    cell.focus();
+    fireEvent.keyDown(cell, { key: "c", ctrlKey: true });
+
+    expect(formatted.writeText).toHaveBeenCalledTimes(1);
+    const formattedPayload = formatted.writeText.mock.calls[0][0] as string;
+    expect(formattedPayload).not.toBe(""); // pivot path actually produced a payload
+    expect(formattedPayload).toBe(cell.textContent);
+    expect(formattedPayload).toBe("2100");
+
+    formatted.unmount();
+
+    // Raw mode: pivot rows serialize through String(value) in both modes,
+    // so the payload must be byte-for-byte identical.
+    const raw = renderPivot({ clipboardValueMode: "raw" });
+    const rawCell = cellOf("2100");
+    rawCell.focus();
+    fireEvent.keyDown(rawCell, { key: "c", ctrlKey: true });
+
+    expect(raw.writeText).toHaveBeenCalledTimes(1);
+    expect(raw.writeText.mock.calls[0][0]).toBe(formattedPayload);
+  });
+});
+
 describe("DataGrid raw clipboard mode", () => {
   type RawRow = { id: string; label: string; margin: number; price: number; when: Date; state: string };
   const rawData: RawRow[] = [
