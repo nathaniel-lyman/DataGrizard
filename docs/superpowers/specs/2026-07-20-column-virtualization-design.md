@@ -62,7 +62,10 @@ siblings, engine orchestrates), three pure functions:
 - `clipHeaderGroups(headerGroups, renderedLeafIds)` → per header row, each
   band header's `colSpan` clipped to the count of its rendered leaves; bands
   with zero rendered leaves are dropped. Leaf-level header rows pass through
-  filtered to rendered leaves.
+  filtered to rendered leaves. `clipHeaderGroups` only clips/filters — the
+  **renderer** inserts the spacer `<th>`s in band rows (same positions as in
+  leaf rows), so every header row consumes the spacer `<col>`s and column
+  alignment holds under `table-layout: fixed`.
 
 All three take plain data in and return plain data out — unit-testable in
 jsdom without mocking the virtualizer.
@@ -84,7 +87,14 @@ width is 0.
 - **Body rows**: `row.getVisibleCells()` is filtered to pinned + windowed
   columns, with spacer `<td>`s. Full-width single-cell rows (group toggle
   rows, the summary row, detail-panel rows) keep their existing
-  full-leaf-count `colSpan` and are not windowed.
+  full-leaf-count `colSpan` and are not windowed. That `colSpan` exceeds the
+  windowed colgroup's `<col>` count — intentional; HTML clamps overlong
+  colSpans, and clamping to "span everything rendered" is exactly the wanted
+  behavior. Do not "fix" it to the rendered count.
+- **Synthetic columns without pinning**: when `features.columnPinning` is off,
+  the `select` / row-actions columns are ordinary center columns and window
+  out on horizontal scroll — visually identical to today, where unpinned
+  columns scroll off-screen anyway. Not a defect; no special-casing.
 - **Composition with `virtualizeRows`**: both spacer systems coexist. Row
   spacer `<tr>`s keep spanning `bodyColSpan` (full leaf count) as today.
 
@@ -116,9 +126,11 @@ width is 0.
   no spacers, layout identical to today.
 - Window narrower than one column: the virtualizer always yields at least the
   column at the scroll offset; overscan pads the rest.
-- jsdom (zero-size scroll element): virtual items are empty; tests drive the
-  window through mocked `getBoundingClientRect`/scroll offsets, mirroring the
-  existing `DataGrid.virtual.test.tsx` setup.
+- jsdom (zero-size scroll element): the virtualizer still yields a small
+  overscan-sized default window — this is what the existing
+  `DataGrid.virtual.test.tsx` relies on (no mocking; it asserts a strict
+  subset of 1000 rows renders and the last row is unmounted). Column tests
+  use the same pattern.
 
 ## Testing (test-first)
 
@@ -127,9 +139,14 @@ width is 0.
   window); `clipHeaderGroups` colSpan clipping incl. band fully outside the
   window and band straddling the window edge.
 - **Integration** (`DataGrid.columnVirtual.test.tsx`, mirroring the row
-  virtual test's jsdom scroll mocking): only windowed + pinned columns render;
-  pinned columns render at both scroll extremes; colgroup spacer widths sum to
-  the hidden columns' widths; band header colSpan matches rendered leaves;
-  keyboard nav to an offscreen column scrolls it into view and focuses it;
-  pivot measure columns window; `virtualizeColumns` off → full column render
-  (regression guard).
+  virtual test's no-mock jsdom pattern — assert a strict subset renders and
+  far columns are unmounted): with many columns, only a subset of center
+  `<th>`/`<td>`s render while pinned columns always render; colgroup spacer
+  widths sum to the hidden columns' widths; band header colSpan matches
+  rendered leaves; pivot measure columns window; `virtualizeColumns` off →
+  full column render (regression guard).
+- **Keyboard scroll-into-view**: jsdom cannot drive real horizontal scroll,
+  so this path is verified the way `DataGrid.a11y.test.tsx` handles the row
+  equivalent — assert `scrollToIndex` is invoked with the target center index
+  (virtualizer stub/spy), plus the deferred-focus effect focusing the cell
+  once rendered.
