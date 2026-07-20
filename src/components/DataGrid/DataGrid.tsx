@@ -17,6 +17,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  type Cell,
   type ColumnDef,
   type Column,
   type FilterFn,
@@ -76,6 +77,12 @@ import {
   flattenExpandedRows,
   isPivotRow,
 } from "./gridHelpers";
+import {
+  computeColumnWindow,
+  partitionLeafColumns,
+  windowLeafCells,
+  type ColumnWindow,
+} from "./columnVirtual";
 import { useCellEditing } from "./useCellEditing";
 import { useCellFocus } from "./useCellFocus";
 import { useCellRangeInteractions } from "./useCellRangeInteractions";
@@ -328,6 +335,7 @@ export function DataGrid<TData extends object>({
   pageSizeOptions = [25, 50, 100, 250],
   virtualizeRows = false,
   estimatedRowHeight,
+  virtualizeColumns = false,
   renderDetailPanel,
   rowActions,
   getRowId,
@@ -1595,6 +1603,46 @@ export function DataGrid<TData extends object>({
     overscan: 12,
     enabled: virtualizeRows,
   });
+
+  // Column windowing (spec: docs/superpowers/specs/2026-07-20-column-virtualization-design.md).
+  // Pinned columns always render; only the unpinned center is windowed. Widths
+  // come from columnSizing via getSize(), so estimates are exact — no
+  // measureElement pass. Card layout has no table; pivot works unchanged
+  // because windowing runs on the post-reconciliation visible leaf set.
+  const columnPartition = partitionLeafColumns(
+    table.getVisibleLeafColumns(),
+    (column) => column.getIsPinned(),
+  );
+  const virtualizeColumnsEnabled = virtualizeColumns && !isCardMode;
+  const columnVirtualizer = useVirtualizer({
+    horizontal: true,
+    count: columnPartition.center.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => columnPartition.center[index]?.getSize() ?? 0,
+    overscan: 4,
+    enabled: virtualizeColumnsEnabled,
+  });
+  // Re-measure when widths / order / visibility change so drag-resize,
+  // autosize, and column chooser keep offsets true.
+  useEffect(() => {
+    if (virtualizeColumnsEnabled) {
+      columnVirtualizer.measure();
+    }
+  }, [virtualizeColumnsEnabled, currentColumnSizing, currentColumnOrder, currentColumnVisibility, columnVirtualizer]);
+  const totalCenterWidth = columnPartition.center.reduce(
+    (sum, column) => sum + column.getSize(),
+    0,
+  );
+  const columnWindow: ColumnWindow | null = virtualizeColumnsEnabled
+    ? computeColumnWindow({
+        virtualItems: columnVirtualizer.getVirtualItems(),
+        centerColumns: columnPartition.center,
+        getId: (column) => column.id,
+        totalCenterWidth,
+        pinnedLeafIds: [...columnPartition.left, ...columnPartition.right].map((c) => c.id),
+      })
+    : null;
+
   const bodyColSpan = table.getVisibleLeafColumns().length;
   const rowById = useMemo(
     () => new Map(visibleRows.map((row) => [row.id, row])),

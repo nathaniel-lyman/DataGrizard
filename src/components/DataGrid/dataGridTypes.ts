@@ -267,6 +267,9 @@ export type DataGridProps<TData extends object> = {
   virtualizeRows?: boolean;
   /** Estimated row height in px used to seed the virtualizer. */
   estimatedRowHeight?: number;
+  /** Window unpinned center columns to the horizontal viewport (opt-in).
+   *  Pinned columns always render. Ignored in card layout. */
+  virtualizeColumns?: boolean;
   renderDetailPanel?: (row: TData | null, controls: { close: () => void }) => ReactNode;
   rowActions?: DataGridRowActions<TData>;
   getRowId?: (row: TData, index: number, parent?: Row<TData>) => string;
