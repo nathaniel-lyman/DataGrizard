@@ -17,6 +17,8 @@ type UseCellFocusOptions<TData extends object> = {
   nonNavigableColumnIds?: string[];
   virtualizeRows: boolean;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
+  virtualizeColumns: boolean;
+  columnVirtualizer: Pick<Virtualizer<HTMLDivElement, Element>, "scrollToIndex">;
   onFocusedCellChange?: (cell: DataGridFocusedCell) => void;
 };
 
@@ -28,6 +30,8 @@ export function useCellFocus<TData extends object>({
   nonNavigableColumnIds = ["select"],
   virtualizeRows,
   rowVirtualizer,
+  virtualizeColumns,
+  columnVirtualizer,
   onFocusedCellChange,
 }: UseCellFocusOptions<TData>) {
   const [focusedCell, setFocusedCell] = useState<DataGridFocusedCell>(null);
@@ -48,6 +52,23 @@ export function useCellFocus<TData extends object>({
     () => new Map(visibleRows.map((row, index) => [row.id, index])),
     [visibleRows],
   );
+  // Unpinned visible leaves only, in center-window order — mirrors the
+  // partition the column virtualizer itself windows over. Tolerant
+  // `getIsPinned?.()` keeps the older stub-based renderHook test (whose table
+  // stub predates virtualizeColumns) passing without a getIsPinned mock.
+  // Deps: `visibleRows` proxies "table state changed", same rationale as the
+  // navColumnIds recompute above (table is a stable TanStack instance).
+  const centerColumnIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    let index = 0;
+    for (const column of table.getVisibleLeafColumns()) {
+      if (!(column.getIsPinned?.() ?? false)) {
+        map.set(column.id, index);
+        index += 1;
+      }
+    }
+    return map;
+  }, [table, visibleRows]);
   const headerRowCount =
     table.getHeaderGroups().length + (floatingFiltersEnabled && !isPivotLayout ? 1 : 0);
   const cellKey = (rowId: string, columnId: string) => `${rowId}\u0000${columnId}`;
@@ -80,6 +101,16 @@ export function useCellFocus<TData extends object>({
       const index = rowVisibleIndexById.get(rowId);
       if (index != null) {
         rowVirtualizer.scrollToIndex(index, { align: "auto" });
+      }
+      pendingFocusKey.current = key;
+    }
+    // Same deferred-focus treatment for a column outside the horizontal
+    // window (both branches may fire together for a diagonal jump like
+    // Ctrl+End).
+    if (virtualizeColumns) {
+      const centerIndex = centerColumnIndexById.get(columnId);
+      if (centerIndex != null) {
+        columnVirtualizer.scrollToIndex(centerIndex, { align: "auto" });
       }
       pendingFocusKey.current = key;
     }

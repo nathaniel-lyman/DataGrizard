@@ -101,6 +101,9 @@ export type WindowedHeaderEntry<T> =
  *  the leaf rows under table-layout: fixed. */
 export function windowHeaderRow<T>(options: {
   headers: T[];
+  /** Must return unique ids — TanStack's `getLeafHeaders()` self-pushes a
+   *  leaf onto its own list, so callers dedupe before passing here (see
+   *  DataGridHeader's dedup). */
   getLeafIds: (header: T) => string[];
   getPinned: (header: T) => false | "left" | "right";
   window: ColumnWindow;

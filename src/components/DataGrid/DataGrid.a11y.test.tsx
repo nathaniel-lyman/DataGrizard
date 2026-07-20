@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataGrid } from "./DataGrid";
 import { useCellFocus } from "./useCellFocus";
@@ -195,6 +195,8 @@ describe("DataGrid accessibility", () => {
       floatingFiltersEnabled: false,
       virtualizeRows,
       rowVirtualizer,
+      virtualizeColumns: false,
+      columnVirtualizer: { scrollToIndex: () => {} },
     });
 
     const virtual = renderHook(() => useCellFocus(options(true)));
@@ -205,6 +207,34 @@ describe("DataGrid accessibility", () => {
     // Same global index source with virtualization off — windowing never shifts it.
     expect(Object.fromEntries(plain.result.current.rowVisibleIndexById)).toEqual(globalIndex);
     expect(virtual.result.current.headerRowCount).toBe(1);
+  });
+
+  it("scrolls an off-window column into view via the column virtualizer and defers focus", () => {
+    const scrolled: number[] = [];
+    const visibleRows = [{ id: "a", getIsGrouped: () => false }];
+    const table = {
+      getVisibleLeafColumns: () => [
+        { id: "pin", getIsPinned: () => "left" },
+        { id: "c0", getIsPinned: () => false },
+        { id: "c1", getIsPinned: () => false },
+      ],
+      getHeaderGroups: () => [{ id: "h" }],
+    };
+    const options: any = {
+      visibleRows,
+      isPivotLayout: false,
+      table,
+      floatingFiltersEnabled: false,
+      virtualizeRows: false,
+      rowVirtualizer: { scrollToIndex: () => {} },
+      virtualizeColumns: true,
+      columnVirtualizer: { scrollToIndex: (i: number) => scrolled.push(i) },
+    };
+    const { result } = renderHook(() => useCellFocus(options));
+    // "c1" is not mounted (no cellRef registered): focusCell must ask the
+    // column virtualizer for its CENTER index (1), not its leaf index (2).
+    act(() => result.current.focusCell("a", "c1"));
+    expect(scrolled).toEqual([1]);
   });
 
   it("preserves pivot table accessibility through generated headers and controls", () => {

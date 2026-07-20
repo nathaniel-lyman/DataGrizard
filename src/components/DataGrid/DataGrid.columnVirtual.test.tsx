@@ -156,7 +156,9 @@ describe("DataGrid column virtualization", () => {
     // Late band's leaves are all outside the initial window: band dropped.
     expect(screen.queryByText("Late")).not.toBeInTheDocument();
     // Band row and leaf row must consume identical total column slots:
-    const [bandRow, leafRow] = document.querySelectorAll("thead tr");
+    const headerRows = document.querySelectorAll("thead tr");
+    expect(headerRows.length).toBe(2);
+    const [bandRow, leafRow] = headerRows;
     const slots = (tr: Element) =>
       [...tr.children].reduce((sum, cell) => sum + Number(cell.getAttribute("colspan") ?? "1"), 0);
     expect(slots(bandRow)).toBe(slots(leafRow));

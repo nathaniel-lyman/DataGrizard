@@ -1789,6 +1789,8 @@ export function DataGrid<TData extends object>({
     nonNavigableColumnIds: [SELECT_COLUMN_ID, ROW_ACTIONS_COLUMN_ID],
     virtualizeRows,
     rowVirtualizer,
+    virtualizeColumns: virtualizeColumnsEnabled,
+    columnVirtualizer,
     onFocusedCellChange,
   });
   const {
