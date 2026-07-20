@@ -6,8 +6,8 @@ import {
   windowHeaderRow,
 } from "./columnVirtual";
 
-type Col = { id: string; pinned: false | "left" | "right"; size: number };
-const col = (id: string, pinned: Col["pinned"] = false, size = 100): Col => ({ id, pinned, size });
+type Col = { id: string; pinned: false | "left" | "right" };
+const col = (id: string, pinned: Col["pinned"] = false): Col => ({ id, pinned });
 const getId = (c: Col) => c.id;
 const getPinned = (c: Col) => c.pinned;
 

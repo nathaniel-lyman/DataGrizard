@@ -2086,6 +2086,185 @@ export function DataGrid<TData extends object>({
           isActionable ? "dg-row--focusable" : ""
         } ${sourceRow ? getRowClassName?.(sourceRow as TData) ?? "" : ""}`;
 
+    const renderBodyCell = (cell: Cell<TData | PivotRow<TData>, unknown>) => {
+      const columnConfig = !pivotRow ? presentedColumnsById.get(cell.column.id) : undefined;
+      const isPivotMeasure =
+        Boolean(pivotRow) &&
+        cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID &&
+        cell.column.id !== ROW_ACTIONS_COLUMN_ID;
+      const isNavCell = navColumnIds.includes(cell.column.id);
+      const isTabStop =
+        activeTabCell?.rowId === row.id && activeTabCell?.columnId === cell.column.id;
+      const colIndex = visibleLeafColumns.findIndex((column) => column.id === cell.column.id);
+      const isEditingCell =
+        editingCell?.rowId === row.id && editingCell?.columnId === cell.column.id;
+      const canEditCell = isNavCell && Boolean(columnConfig) && isCellEditable(row, cell.column.id);
+      const {
+        isSelected: isCellRangeSelected,
+        isFillHandle: isFillHandleCell,
+        isFillPreview: isFillPreviewCell,
+      } = getCellRangeState(row.id, cell.column.id);
+
+      // Value-driven visual effects (grid data cells only; suppressed while editing).
+      const cellValue = cell.getValue();
+      const effectDomain = columnConfig ? columnDomains.get(cell.column.id) : undefined;
+      const cellColorScale =
+        columnConfig?.colorScale && !isEditingCell
+          ? colorScaleStyle(cellValue, columnConfig.colorScale, effectDomain)
+          : null;
+      const barGeometry =
+        columnConfig?.dataBar && !isEditingCell
+          ? computeBarGeometry(cellValue, columnConfig.dataBar, effectDomain)
+          : null;
+      const flashEntry =
+        flashEnabled && columnConfig?.flashOnChange && !isEditingCell
+          ? flashMap.get(`${row.id}:${cell.column.id}`)
+          : undefined;
+      const hasCellOverlay = Boolean(barGeometry || flashEntry);
+      const useScaleStyle = Boolean(cellColorScale) && !isCellRangeSelected && !row.getIsSelected();
+
+      return (
+        <td
+          key={cell.id}
+          onDoubleClick={
+            canEditCell ? () => beginEdit(row.id, cell.column.id) : undefined
+          }
+          onClick={
+            cell.column.id === ROW_ACTIONS_COLUMN_ID
+              ? (event) => event.stopPropagation()
+              : isNavCell
+              ? onCellClick
+              : undefined
+          }
+          onMouseDown={
+            isNavCell && cellSelectionEnabled
+              ? (event) =>
+                  onCellMouseDown(event, { rowId: row.id, columnId: cell.column.id })
+              : undefined
+          }
+          onMouseEnter={
+            isNavCell && cellSelectionEnabled
+              ? (event) =>
+                  onCellMouseEnter(event, { rowId: row.id, columnId: cell.column.id })
+              : undefined
+          }
+          ref={
+            isNavCell
+              ? (node) => {
+                  const key = cellKey(row.id, cell.column.id);
+                  if (node) {
+                    cellRefs.current.set(key, node);
+                  } else {
+                    cellRefs.current.delete(key);
+                  }
+                }
+              : undefined
+          }
+          aria-colindex={colIndex >= 0 ? colIndex + 1 : undefined}
+          tabIndex={isNavCell ? (isTabStop ? 0 : -1) : undefined}
+          onKeyDown={isNavCell ? (event) => onCellKeyDown(event, row, cell.column.id) : undefined}
+          onPaste={
+            isNavCell
+              ? (event) => onCellPaste(event, row, cell.column.id)
+              : undefined
+          }
+          onFocus={
+            isNavCell
+              ? () => updateFocusedCell({ rowId: row.id, columnId: cell.column.id })
+              : undefined
+          }
+          aria-selected={isCellRangeSelected ? true : undefined}
+          data-cell-selected={isCellRangeSelected ? "true" : undefined}
+          data-column-selected={
+            currentSelectedColumnIds.includes(cell.column.id) ? "true" : undefined
+          }
+          data-fill-preview={isFillPreviewCell ? "true" : undefined}
+          style={{
+            width: cell.column.getSize(),
+            ...(useScaleStyle
+              ? { backgroundColor: cellColorScale?.backgroundColor, color: cellColorScale?.color }
+              : {}),
+            ...getPinnedColumnStyle(cell.column, {
+              backgroundColor: isCellRangeSelected
+                ? "var(--dg-range-bg)"
+                : row.getIsSelected()
+                  ? "var(--dg-info-bg)"
+                  : useScaleStyle
+                    ? cellColorScale?.backgroundColor
+                    : rowBackground,
+            }),
+          }}
+          className={`dg-cell ${densityStyle.cell} ${
+            pivotRow ? "dg-cell--pivot" : "dg-cell--body"
+          } ${
+            isPivotMeasure
+              ? "dg-cell--numeric dg-cell--strong"
+              : columnConfig
+                ? getCellClasses(columnConfig, cell.getValue(), sourceRow as TData)
+                : "dg-cell--text dg-cell--strong"
+          } ${isCellRangeSelected ? "dg-cell--selected" : ""} ${
+            currentSelectedColumnIds.includes(cell.column.id) ? "dg-cell--column-selected" : ""
+          } ${
+            cellSelectionEnabled ? "dg-cell--selection-enabled" : ""
+          } ${
+            isEditingCell ? "dg-cell--editing" : ""
+          } ${
+            hasCellOverlay
+              ? "dg-cell--effect"
+              : fillHandleEnabled && isFillHandleCell
+                ? "dg-cell--fill-target"
+                : ""
+          } ${
+            isFillPreviewCell ? "dg-cell--fill-preview" : ""
+          }`}
+        >
+          {barGeometry ? (
+            <DataBarFill
+              geometry={barGeometry}
+              color={columnConfig?.dataBar?.color}
+              negativeColor={columnConfig?.dataBar?.negativeColor}
+            />
+          ) : null}
+          {flashEntry ? (
+            <FlashOverlay
+              key={flashEntry.token}
+              direction={flashEntry.direction}
+              className={flashEntry.className}
+              duration={flashEntry.duration}
+            />
+          ) : null}
+          {isEditingCell && columnConfig ? (
+            <CellEditor<TData>
+              column={columnConfig as unknown as EditCellColumn<TData>}
+              value={cell.getValue()}
+              row={sourceRow as TData}
+              statusOptions={statusEditOptions(cell.column.id)}
+              onCommit={(value, advance) => commitEdit(row, cell.column.id, value, advance)}
+              onCancel={() => cancelEdit(row.id, cell.column.id)}
+            />
+          ) : hasCellOverlay ? (
+            <span
+              className={`dg-cell-effect-value ${
+                columnConfig?.dataBar?.showValue === false ? "dg-cell-effect-value--hidden" : ""
+              }`}
+            >
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </span>
+          ) : (
+            flexRender(cell.column.columnDef.cell, cell.getContext())
+          )}
+          {fillHandleEnabled && isFillHandleCell ? (
+            <span
+              data-fill-handle
+              aria-hidden="true"
+              className="dg-fill-handle"
+              onMouseDown={onFillHandleMouseDown}
+            />
+          ) : null}
+        </td>
+      );
+    };
+
     return (
       <tr
         key={row.id}
@@ -2103,184 +2282,25 @@ export function DataGrid<TData extends object>({
         }}
         className={rowClassName}
       >
-        {row.getVisibleCells().map((cell) => {
-          const columnConfig = !pivotRow ? presentedColumnsById.get(cell.column.id) : undefined;
-          const isPivotMeasure =
-            Boolean(pivotRow) &&
-            cell.column.id !== PIVOT_ROW_LABEL_COLUMN_ID &&
-            cell.column.id !== ROW_ACTIONS_COLUMN_ID;
-          const isNavCell = navColumnIds.includes(cell.column.id);
-          const isTabStop =
-            activeTabCell?.rowId === row.id && activeTabCell?.columnId === cell.column.id;
-          const colIndex = visibleLeafColumns.findIndex((column) => column.id === cell.column.id);
-          const isEditingCell =
-            editingCell?.rowId === row.id && editingCell?.columnId === cell.column.id;
-          const canEditCell = isNavCell && Boolean(columnConfig) && isCellEditable(row, cell.column.id);
-          const {
-            isSelected: isCellRangeSelected,
-            isFillHandle: isFillHandleCell,
-            isFillPreview: isFillPreviewCell,
-          } = getCellRangeState(row.id, cell.column.id);
-
-          // Value-driven visual effects (grid data cells only; suppressed while editing).
-          const cellValue = cell.getValue();
-          const effectDomain = columnConfig ? columnDomains.get(cell.column.id) : undefined;
-          const cellColorScale =
-            columnConfig?.colorScale && !isEditingCell
-              ? colorScaleStyle(cellValue, columnConfig.colorScale, effectDomain)
-              : null;
-          const barGeometry =
-            columnConfig?.dataBar && !isEditingCell
-              ? computeBarGeometry(cellValue, columnConfig.dataBar, effectDomain)
-              : null;
-          const flashEntry =
-            flashEnabled && columnConfig?.flashOnChange && !isEditingCell
-              ? flashMap.get(`${row.id}:${cell.column.id}`)
-              : undefined;
-          const hasCellOverlay = Boolean(barGeometry || flashEntry);
-          const useScaleStyle = Boolean(cellColorScale) && !isCellRangeSelected && !row.getIsSelected();
-
-          return (
+        {(columnWindow
+          ? windowLeafCells({
+              items: row.getVisibleCells(),
+              getId: (cell) => cell.column.id,
+              getPinned: (cell) => cell.column.getIsPinned(),
+              window: columnWindow,
+            })
+          : row.getVisibleCells().map((cell) => ({ kind: "cell" as const, item: cell }))
+        ).map((entry) =>
+          entry.kind === "cell" ? (
+            renderBodyCell(entry.item)
+          ) : (
             <td
-              key={cell.id}
-              onDoubleClick={
-                canEditCell ? () => beginEdit(row.id, cell.column.id) : undefined
-              }
-              onClick={
-                cell.column.id === ROW_ACTIONS_COLUMN_ID
-                  ? (event) => event.stopPropagation()
-                  : isNavCell
-                  ? onCellClick
-                  : undefined
-              }
-              onMouseDown={
-                isNavCell && cellSelectionEnabled
-                  ? (event) =>
-                      onCellMouseDown(event, { rowId: row.id, columnId: cell.column.id })
-                  : undefined
-              }
-              onMouseEnter={
-                isNavCell && cellSelectionEnabled
-                  ? (event) =>
-                      onCellMouseEnter(event, { rowId: row.id, columnId: cell.column.id })
-                  : undefined
-              }
-              ref={
-                isNavCell
-                  ? (node) => {
-                      const key = cellKey(row.id, cell.column.id);
-                      if (node) {
-                        cellRefs.current.set(key, node);
-                      } else {
-                        cellRefs.current.delete(key);
-                      }
-                    }
-                  : undefined
-              }
-              aria-colindex={colIndex >= 0 ? colIndex + 1 : undefined}
-              tabIndex={isNavCell ? (isTabStop ? 0 : -1) : undefined}
-              onKeyDown={isNavCell ? (event) => onCellKeyDown(event, row, cell.column.id) : undefined}
-              onPaste={
-                isNavCell
-                  ? (event) => onCellPaste(event, row, cell.column.id)
-                  : undefined
-              }
-              onFocus={
-                isNavCell
-                  ? () => updateFocusedCell({ rowId: row.id, columnId: cell.column.id })
-                  : undefined
-              }
-              aria-selected={isCellRangeSelected ? true : undefined}
-              data-cell-selected={isCellRangeSelected ? "true" : undefined}
-              data-column-selected={
-                currentSelectedColumnIds.includes(cell.column.id) ? "true" : undefined
-              }
-              data-fill-preview={isFillPreviewCell ? "true" : undefined}
-              style={{
-                width: cell.column.getSize(),
-                ...(useScaleStyle
-                  ? { backgroundColor: cellColorScale?.backgroundColor, color: cellColorScale?.color }
-                  : {}),
-                ...getPinnedColumnStyle(cell.column, {
-                  backgroundColor: isCellRangeSelected
-                    ? "var(--dg-range-bg)"
-                    : row.getIsSelected()
-                      ? "var(--dg-info-bg)"
-                      : useScaleStyle
-                        ? cellColorScale?.backgroundColor
-                        : rowBackground,
-                }),
-              }}
-              className={`dg-cell ${densityStyle.cell} ${
-                pivotRow ? "dg-cell--pivot" : "dg-cell--body"
-              } ${
-                isPivotMeasure
-                  ? "dg-cell--numeric dg-cell--strong"
-                  : columnConfig
-                    ? getCellClasses(columnConfig, cell.getValue(), sourceRow as TData)
-                    : "dg-cell--text dg-cell--strong"
-              } ${isCellRangeSelected ? "dg-cell--selected" : ""} ${
-                currentSelectedColumnIds.includes(cell.column.id) ? "dg-cell--column-selected" : ""
-              } ${
-                cellSelectionEnabled ? "dg-cell--selection-enabled" : ""
-              } ${
-                isEditingCell ? "dg-cell--editing" : ""
-              } ${
-                hasCellOverlay
-                  ? "dg-cell--effect"
-                  : fillHandleEnabled && isFillHandleCell
-                    ? "dg-cell--fill-target"
-                    : ""
-              } ${
-                isFillPreviewCell ? "dg-cell--fill-preview" : ""
-              }`}
-            >
-              {barGeometry ? (
-                <DataBarFill
-                  geometry={barGeometry}
-                  color={columnConfig?.dataBar?.color}
-                  negativeColor={columnConfig?.dataBar?.negativeColor}
-                />
-              ) : null}
-              {flashEntry ? (
-                <FlashOverlay
-                  key={flashEntry.token}
-                  direction={flashEntry.direction}
-                  className={flashEntry.className}
-                  duration={flashEntry.duration}
-                />
-              ) : null}
-              {isEditingCell && columnConfig ? (
-                <CellEditor<TData>
-                  column={columnConfig as unknown as EditCellColumn<TData>}
-                  value={cell.getValue()}
-                  row={sourceRow as TData}
-                  statusOptions={statusEditOptions(cell.column.id)}
-                  onCommit={(value, advance) => commitEdit(row, cell.column.id, value, advance)}
-                  onCancel={() => cancelEdit(row.id, cell.column.id)}
-                />
-              ) : hasCellOverlay ? (
-                <span
-                  className={`dg-cell-effect-value ${
-                    columnConfig?.dataBar?.showValue === false ? "dg-cell-effect-value--hidden" : ""
-                  }`}
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </span>
-              ) : (
-                flexRender(cell.column.columnDef.cell, cell.getContext())
-              )}
-              {fillHandleEnabled && isFillHandleCell ? (
-                <span
-                  data-fill-handle
-                  aria-hidden="true"
-                  className="dg-fill-handle"
-                  onMouseDown={onFillHandleMouseDown}
-                />
-              ) : null}
-            </td>
-          );
-        })}
+              key={`dg-cell-spacer-${entry.side}`}
+              aria-hidden="true"
+              style={{ padding: 0, border: 0 }}
+            />
+          ),
+        )}
       </tr>
     );
   };
@@ -2559,9 +2579,22 @@ export function DataGrid<TData extends object>({
                 widths authoritative so getSize() matches what renders (pinned
                 offsets are computed from getSize() sums). */}
             <colgroup>
-              {visibleLeafColumns.map((column) => (
-                <col key={column.id} style={{ width: column.getSize() }} />
-              ))}
+              {columnWindow
+                ? windowLeafCells({
+                    items: visibleLeafColumns,
+                    getId: (column) => column.id,
+                    getPinned: (column) => column.getIsPinned(),
+                    window: columnWindow,
+                  }).map((entry) =>
+                    entry.kind === "cell" ? (
+                      <col key={entry.item.id} style={{ width: entry.item.getSize() }} />
+                    ) : (
+                      <col key={`dg-col-spacer-${entry.side}`} style={{ width: entry.width }} />
+                    ),
+                  )
+                : visibleLeafColumns.map((column) => (
+                    <col key={column.id} style={{ width: column.getSize() }} />
+                  ))}
             </colgroup>
             <DataGridHeader
               table={table}

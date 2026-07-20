@@ -1,6 +1,6 @@
 // Pure column-windowing math for virtualizeColumns. Structural typing (id /
-// pinned / size accessors passed in) keeps these testable without TanStack
-// objects, mirroring gridHelpers.ts. The engine adapts Column instances.
+// pinned accessors passed in) keeps these testable without TanStack objects,
+// mirroring gridHelpers.ts. The engine adapts Column instances.
 
 export type ColumnPartition<TCol> = {
   left: TCol[];
@@ -33,6 +33,11 @@ export type ColumnWindow = {
 
 type VirtualItemLike = { index: number; start: number; end: number };
 
+/** Contract: `virtualItems` must be sorted by `index` and contiguous — the
+ *  fixed spacer ordering in the assembly helpers (windowLeafCells,
+ *  windowHeaderRow) depends on that contiguity, since they read only the
+ *  first/last item's start/end to size the two spacers. `index` values index
+ *  directly into `centerColumns`. */
 export function computeColumnWindow<TCol>(options: {
   virtualItems: VirtualItemLike[];
   centerColumns: TCol[];
