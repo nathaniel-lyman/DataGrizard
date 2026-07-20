@@ -232,8 +232,8 @@ export function Demo({ data }: { data: Product[] }) {
 `getRowId` is strongly recommended — stable IDs keep row selection and the
 active detail row correct across data updates. `tableLabel` supplies the
 table's accessible name. The container should provide a useful height when row
-virtualization, or a bounded width when column virtualization, or a scrolling
-workspace is desired.
+virtualization or a scrolling workspace is desired, and a bounded width when
+column virtualization is.
 
 ## Pivot layout
 

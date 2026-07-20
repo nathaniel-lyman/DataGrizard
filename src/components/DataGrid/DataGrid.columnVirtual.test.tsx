@@ -192,7 +192,11 @@ describe("DataGrid column virtualization", () => {
       />,
     );
     // 40 region buckets × 1 measure (+ row label + totals) — the window
-    // renders a strict subset of leaf header cells.
+    // renders a strict subset of leaf header cells. Anchor the full leaf
+    // count first so a pivot-materialization regression that shrinks bucket
+    // generation can't make the subset assertion pass vacuously
+    // (aria-colcount reports the full leaf count regardless of windowing).
+    expect(document.querySelector("table")).toHaveAttribute("aria-colcount", "42");
     const headerRows = [...document.querySelectorAll("thead tr")];
     const leafHeaderRow = headerRows[headerRows.length - 1];
     expect(leafHeaderRow).toBeDefined();
