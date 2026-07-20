@@ -1622,23 +1622,39 @@ export function DataGrid<TData extends object>({
     overscan: 4,
     enabled: virtualizeColumnsEnabled,
   });
-  // Re-measure when widths / order / visibility change so drag-resize,
-  // autosize, and column chooser keep offsets true.
+  // Re-measure when widths / order / visibility / pinning change so
+  // drag-resize, autosize, column chooser, and pin toggles keep offsets true
+  // (pinning can move columns between the pinned and center partitions
+  // without changing the visible leaf count, which would otherwise leave
+  // stale per-index offsets behind). `currentColumnPinning` is rebuilt into a
+  // new object on every render by `normalizeColumnPinning` (useGridState.ts),
+  // so it can't be a dependency directly — that would re-fire this effect,
+  // and thus `measure()`'s internal notify/re-render, every render forever.
+  // Depend on a stable primitive key derived from its contents instead.
+  const columnPinningKey = `${currentColumnPinning.left?.join(",") ?? ""}|${
+    currentColumnPinning.right?.join(",") ?? ""
+  }`;
   useEffect(() => {
     if (virtualizeColumnsEnabled) {
       columnVirtualizer.measure();
     }
-  }, [virtualizeColumnsEnabled, currentColumnSizing, currentColumnOrder, currentColumnVisibility, columnVirtualizer]);
-  const totalCenterWidth = columnPartition.center.reduce(
-    (sum, column) => sum + column.getSize(),
-    0,
-  );
+  }, [
+    virtualizeColumnsEnabled,
+    currentColumnSizing,
+    currentColumnOrder,
+    currentColumnVisibility,
+    columnPinningKey,
+    columnVirtualizer,
+  ]);
   const columnWindow: ColumnWindow | null = virtualizeColumnsEnabled
     ? computeColumnWindow({
         virtualItems: columnVirtualizer.getVirtualItems(),
         centerColumns: columnPartition.center,
         getId: (column) => column.id,
-        totalCenterWidth,
+        totalCenterWidth: columnPartition.center.reduce(
+          (sum, column) => sum + column.getSize(),
+          0,
+        ),
         pinnedLeafIds: [...columnPartition.left, ...columnPartition.right].map((c) => c.id),
       })
     : null;
@@ -2282,25 +2298,24 @@ export function DataGrid<TData extends object>({
         }}
         className={rowClassName}
       >
-        {(columnWindow
+        {columnWindow
           ? windowLeafCells({
               items: row.getVisibleCells(),
               getId: (cell) => cell.column.id,
               getPinned: (cell) => cell.column.getIsPinned(),
               window: columnWindow,
-            })
-          : row.getVisibleCells().map((cell) => ({ kind: "cell" as const, item: cell }))
-        ).map((entry) =>
-          entry.kind === "cell" ? (
-            renderBodyCell(entry.item)
-          ) : (
-            <td
-              key={`dg-cell-spacer-${entry.side}`}
-              aria-hidden="true"
-              style={{ padding: 0, border: 0 }}
-            />
-          ),
-        )}
+            }).map((entry) =>
+              entry.kind === "cell" ? (
+                renderBodyCell(entry.item)
+              ) : (
+                <td
+                  key={`dg-cell-spacer-${entry.side}`}
+                  aria-hidden="true"
+                  className="dg-cell-spacer"
+                />
+              ),
+            )
+          : row.getVisibleCells().map(renderBodyCell)}
       </tr>
     );
   };
@@ -2606,6 +2621,7 @@ export function DataGrid<TData extends object>({
               currentSorting={currentSorting}
               selectedColumnIds={currentSelectedColumnIds}
               headerFilterById={headerFilterById}
+              columnWindow={columnWindow}
               getColumnControlLabel={getColumnControlLabel}
               getHeaderResizeLabel={getHeaderResizeLabel}
               getPinnedColumnStyle={getPinnedColumnStyle}

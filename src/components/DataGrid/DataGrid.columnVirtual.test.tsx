@@ -50,10 +50,7 @@ afterEach(() => {
 });
 
 describe("DataGrid column virtualization", () => {
-  // Header windowing lands in Task 5 (DataGridHeader.tsx is out of scope for
-  // this chunk) — headers still render in full until then. Un-skip once
-  // DataGridHeader consumes columnWindow.
-  it.skip("renders far fewer header cells than columns when virtualizeColumns is on", () => {
+  it("renders far fewer header cells than columns when virtualizeColumns is on", () => {
     render(
       <DataGrid
         data={makeWideRows(5)}
@@ -90,6 +87,9 @@ describe("DataGrid column virtualization", () => {
     const widthOf = (el: Element) =>
       Number.parseFloat((el as HTMLElement).style.width || "0");
     const totalColWidth = [...cols].reduce((sum, c) => sum + widthOf(c), 0);
+    // cols[0] is a real (non-spacer) column here only because nothing is
+    // pinned and the scroll offset is 0 in this fixture — otherwise it could
+    // be the left spacer <col>, which has a different width.
     const perColumn = widthOf(cols[0]);
     expect(totalColWidth).toBeCloseTo(perColumn * COL_COUNT, 0);
   });
@@ -131,5 +131,34 @@ describe("DataGrid column virtualization", () => {
     );
     expect(screen.getByText("Col 0")).toBeInTheDocument();
     expect(screen.getByText("Col 39")).toBeInTheDocument();
+  });
+
+  it("clips grouped-header band colSpan to rendered leaves", () => {
+    render(
+      <DataGrid
+        data={makeWideRows(2)}
+        columns={wideColumns}
+        getRowId={(r) => r.id}
+        virtualizeColumns
+        columnGroups={[
+          { groupId: "g-early", header: "Early", children: ["c0", "c1", "c2", "c3"] },
+          { groupId: "g-late", header: "Late", children: ["c36", "c37", "c38", "c39"] },
+        ]}
+        features={{ pagination: false, rowSelection: false }}
+      />,
+    );
+    // Early band renders, clipped to its rendered leaves (window starts at c0).
+    const early = screen.getByText("Early").closest("th");
+    expect(early).not.toBeNull();
+    const colSpan = Number(early?.getAttribute("colspan") ?? "1");
+    expect(colSpan).toBeGreaterThanOrEqual(1);
+    expect(colSpan).toBeLessThanOrEqual(4);
+    // Late band's leaves are all outside the initial window: band dropped.
+    expect(screen.queryByText("Late")).not.toBeInTheDocument();
+    // Band row and leaf row must consume identical total column slots:
+    const [bandRow, leafRow] = document.querySelectorAll("thead tr");
+    const slots = (tr: Element) =>
+      [...tr.children].reduce((sum, cell) => sum + Number(cell.getAttribute("colspan") ?? "1"), 0);
+    expect(slots(bandRow)).toBe(slots(leafRow));
   });
 });

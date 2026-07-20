@@ -178,6 +178,7 @@
 .dg-checkbox { width: 0.875rem; height: 0.875rem; border: 1px solid var(--dg-border-strong); border-radius: var(--dg-radius-sm); accent-color: var(--dg-accent); }
 .dg-checkbox:focus-visible { outline: 2px solid var(--dg-ring-strong); outline-offset: 1px; }
 .dg-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+.dg-cell-spacer { padding: 0; border: 0; }
 .dg-density-header--compact, .dg-density-cell--compact { padding: 0.25rem 0.5rem; }
 .dg-density-header--standard, .dg-density-cell--standard { padding: 0.5rem 0.75rem; }
 .dg-density-header--comfortable, .dg-density-cell--comfortable { padding: 0.75rem; }
