@@ -74,3 +74,80 @@ describe("computeColumnWindow", () => {
     expect(w.rightSpacerWidth).toBe(0);
   });
 });
+
+describe("windowLeafCells", () => {
+  const cols = [col("sel", "left"), col("a"), col("b"), col("c"), col("act", "right")];
+  const window = {
+    renderedLeafIds: new Set(["sel", "b", "act"]),
+    leftSpacerWidth: 100,
+    rightSpacerWidth: 100,
+  };
+
+  it("emits left pinned, left spacer, windowed center, right spacer, right pinned", () => {
+    const out = windowLeafCells({ items: cols, getId, getPinned, window });
+    expect(
+      out.map((e) => (e.kind === "cell" ? getId(e.item) : `spacer:${e.width}`)),
+    ).toEqual(["sel", "spacer:100", "b", "spacer:100", "act"]);
+  });
+
+  it("omits zero-width spacers", () => {
+    const out = windowLeafCells({
+      items: cols,
+      getId,
+      getPinned,
+      window: { renderedLeafIds: new Set(["sel", "a", "b", "c", "act"]), leftSpacerWidth: 0, rightSpacerWidth: 0 },
+    });
+    expect(out.every((e) => e.kind === "cell")).toBe(true);
+    expect(out).toHaveLength(5);
+  });
+});
+
+describe("windowHeaderRow", () => {
+  // Band row over leaves: sel | [a b c] band | act. Window renders sel, b, act.
+  // Each header instance lives wholly in one pin region (TanStack splits
+  // groups whose leaves are pinned into separate header instances).
+  const headers = [
+    { id: "h-sel", leafIds: ["sel"], pinned: "left" as const },
+    { id: "h-band", leafIds: ["a", "b", "c"], pinned: false as const },
+    { id: "h-act", leafIds: ["act"], pinned: "right" as const },
+  ];
+  type HeaderLike = (typeof headers)[number];
+  const getLeafIds = (h: HeaderLike) => h.leafIds;
+  const getHeaderPinned = (h: HeaderLike) => h.pinned;
+  const window = {
+    renderedLeafIds: new Set(["sel", "b", "act"]),
+    leftSpacerWidth: 100,
+    rightSpacerWidth: 100,
+  };
+
+  it("clips band colSpan to rendered leaves and positions spacers by leaf order", () => {
+    const out = windowHeaderRow({ headers, getLeafIds, getPinned: getHeaderPinned, window });
+    expect(
+      out.map((e) =>
+        e.kind === "header" ? `${e.item.id}:${e.colSpan}` : `spacer:${e.width}`,
+      ),
+    ).toEqual(["h-sel:1", "spacer:100", "h-band:1", "spacer:100", "h-act:1"]);
+  });
+
+  it("drops bands with zero rendered leaves", () => {
+    const out = windowHeaderRow({
+      headers,
+      getLeafIds,
+      getPinned: getHeaderPinned,
+      window: { renderedLeafIds: new Set(["sel", "act"]), leftSpacerWidth: 300, rightSpacerWidth: 0 },
+    });
+    expect(
+      out.map((e) => (e.kind === "header" ? e.item.id : `spacer:${e.width}`)),
+    ).toEqual(["h-sel", "spacer:300", "h-act"]);
+  });
+
+  it("passes every header through untouched when all leaves render", () => {
+    const out = windowHeaderRow({
+      headers,
+      getLeafIds,
+      getPinned: getHeaderPinned,
+      window: { renderedLeafIds: new Set(["sel", "a", "b", "c", "act"]), leftSpacerWidth: 0, rightSpacerWidth: 0 },
+    });
+    expect(out.map((e) => (e.kind === "header" ? e.colSpan : -1))).toEqual([1, 3, 1]);
+  });
+});
