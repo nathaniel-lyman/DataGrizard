@@ -8,7 +8,11 @@ delivered as a reusable React data grid built on
 [![Reliability benchmark](https://github.com/nathaniel-lyman/DataGrizard/actions/workflows/reliability-benchmark.yml/badge.svg)](https://github.com/nathaniel-lyman/DataGrizard/actions/workflows/reliability-benchmark.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![DataGrizard grid with grouped analytical rows and column bands](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/datagrizard-grid-ux-2026-06-26/02-grid-default-wide-with-column-groups.png)
+![DataGrizard grid with column bands, summary tiles, sales heatmap, unit data bars, and margin progress bars](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/02-everyday-grid.png)
+
+Every screenshot in this README is captured from the live demo showcase —
+run `npm run dev` and open http://127.0.0.1:5173/ to explore the same grids
+interactively.
 
 One component supports a standard grid, Excel-style pivot tables, and an
 opt-in responsive card layout. It includes type-aware filtering and formatting,
@@ -168,6 +172,8 @@ the design tokens in CSS loaded after the package stylesheet:
 
 ### Dark preset
 
+![The full grid — toolbar, summary tiles, heatmap, data bars, and progress bars — in the dark theme preset](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/09-dark-grid.png)
+
 Opt into the built-in dark preset by placing `dg-theme-dark` on an ancestor of
 the grid. It reassigns the same token contract; no `theme` prop or automatic
 color-scheme switch is involved.
@@ -229,6 +235,8 @@ virtualization or a scrolling workspace is desired.
 
 ## Pivot layout
 
+![Pivot layout with a Department and Category hierarchy, subtotal rows, and drill-through source rows](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/04-pivot.png)
+
 ```tsx
 <DataGrid
   data={data}
@@ -271,6 +279,11 @@ Total column group. Measures can choose `totalBehavior: "aggregate"`,
 compatibility adapter, but new consumers should use `pivot.measures`.
 
 ## Responsive card layout
+
+<p>
+  <img alt="Card layout in a narrow container with search, sort, filters, summary chips, and metric tiles" src="https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/07-cards.png" width="49%" />
+  <img alt="The same card layout rendered with the built-in dark theme preset" src="https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/08-cards-dark.png" width="49%" />
+</p>
 
 Card layout is opt-in and container-driven, so a grid can respond to the width
 of a dashboard tile or split pane instead of the browser viewport:
@@ -378,6 +391,21 @@ boolean labels are parsed. Paste uses the browser's native `paste` event, so it
 does not require async Clipboard API read permission. The status bar reports how
 many cells were copied, pasted, or skipped.
 
+Copy output is configurable. Ctrl/Cmd-Shift-C copies the selection with a
+header row, and two props change what plain Ctrl/Cmd-C produces:
+
+```tsx
+<DataGrid
+  clipboardIncludeHeaders   // plain copy always includes the header row
+  clipboardValueMode="raw"  // copy underlying values instead of formatted text
+/>
+```
+
+`clipboardValueMode="raw"` copies machine-readable values — fraction percents,
+plain unformatted numbers, ISO dates, and raw status codes — ignoring
+`formatValue`, so pasted data round-trips into spreadsheets and scripts. The
+default (`"formatted"`) copies the text users see on screen.
+
 Every pasted value still passes through the column's `parseValue` and `validate`
 contracts. A custom `parseValue` receives the original clipboard text; otherwise
 the built-in numeric/boolean normalization runs first. Read-only, invalid, and
@@ -403,6 +431,8 @@ to use `onCellEdit`:
 ```
 
 ## Filters
+
+![A numeric range filter popover open over the grid, with operator selection and min/max inputs](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/03-filter-popover.png)
 
 ```ts
 filters={[
@@ -563,6 +593,8 @@ boundary; the synchronous methods remain local-only.
 
 ## Agent toolkit
 
+![The live grid agent demo: a prompt box and example prompts above a policy-governed grid](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/05-agent.png)
+
 `createDataGridAgentToolkit()` provides provider-neutral JSON schemas plus one
 executor. Its schemas are generated from the mounted grid—not from a static
 catalog. They reflect source column IDs and types, semantic metadata, resolved
@@ -632,6 +664,8 @@ Presentation is included in snapshots, scoped persistence, commands, and saved
 views.
 
 ## Server data
+
+![Server-mode grid showing a 50-row loaded page against an explicit 500-row backend total](https://raw.githubusercontent.com/nathaniel-lyman/DataGrizard/main/screenshots/readme-2026-07-20/06-server.png)
 
 For the common server-backed table, pass `dataSource`. The grid owns sorting,
 search, column filters, and pagination, calls your adapter with those slices, and
