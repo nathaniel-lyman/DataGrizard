@@ -474,7 +474,7 @@ git commit -m "feat(datagrid): virtualizeColumns prop and horizontal virtualizer
 
 - [ ] **Step 1: Write failing integration tests**
 
-Create `src/components/DataGrid/DataGrid.columnVirtual.test.tsx`, mirroring `DataGrid.virtual.test.tsx`'s no-mock jsdom idiom (zero-size scroll element ⇒ the virtualizer yields a small overscan-sized default window; assert a strict subset renders and far columns are unmounted):
+Create `src/components/DataGrid/DataGrid.columnVirtual.test.tsx`. **Execution finding (supersedes the spec's jsdom bullet):** jsdom has no layout, so `@tanstack/virtual-core` measures 0 everywhere and the window is genuinely *empty*, not "a small overscan default" (the row-virtual test is silently masked by only asserting upper bounds/absence). Stub `HTMLElement.prototype.offsetWidth` to 800 in `beforeAll`/`afterAll` so the horizontal virtualizer computes a real window. Also: the two header-`<th>` assertions below cannot pass until Task 5 windows `DataGridHeader` — the header-count test is `it.skip` until Task 5 (which un-skips it), and the pinned test asserts **body cells** instead:
 
 ```tsx
 import "@testing-library/jest-dom/vitest";
@@ -717,6 +717,7 @@ Expected: FAIL (band row renders all headers; `Late` present).
 2. In the `headerGroup.headers.map(...)` render (~line 57): when `columnWindow` is set, replace the direct map with `windowHeaderRow({ headers: headerGroup.headers, getLeafIds: (h) => h.getLeafHeaders().map((leaf) => leaf.column.id), getPinned: (h) => h.getLeafHeaders()[0]?.column.getIsPinned() ?? false, window: columnWindow })` — note TanStack's `Header` has `getLeafHeaders()`, **not** `getLeafColumns()` (that only exists on `Column`); every leaf of a header instance shares one pin region, so the first leaf's pin state stands for the header and map entries: `kind === "header"` → the existing `<th>` JSX with `colSpan={entry.colSpan}` instead of `header.colSpan` (extract the current `<th>` body into a local `renderHeaderCell(header, colSpan)` so the JSX is not duplicated); `kind === "spacer"` → `<th key={…} aria-hidden="true" style={{ padding: 0, border: 0 }} />`.
 3. Floating-filter row (~line 237): same treatment via `windowLeafCells` over `table.getVisibleLeafColumns()`, spacer `<td aria-hidden style={{ padding: 0, border: 0 }} />`.
 4. `DataGrid.tsx`: pass `columnWindow={columnWindow}` to `<DataGridHeader …>` (~line 2518).
+5. Un-skip the deferred header-count test in `DataGrid.columnVirtual.test.tsx` (`it.skip("renders far fewer header cells…")` → `it`) — it goes green once `DataGridHeader` consumes `columnWindow`.
 
 - [ ] **Step 4: Run the file, then full suite**
 
