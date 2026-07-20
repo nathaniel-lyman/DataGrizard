@@ -163,4 +163,39 @@ describe("DataGrid column virtualization", () => {
       [...tr.children].reduce((sum, cell) => sum + Number(cell.getAttribute("colspan") ?? "1"), 0);
     expect(slots(bandRow)).toBe(slots(leafRow));
   });
+
+  it("windows generated pivot measure columns", () => {
+    type PivotSource = { id: string; segment: string; region: string; revenue: number };
+    const rows: PivotSource[] = Array.from({ length: 200 }, (_, i) => ({
+      id: String(i),
+      segment: `Segment ${i % 5}`,
+      region: `Region ${i % 40}`,
+      revenue: i,
+    }));
+    render(
+      <DataGrid<PivotSource>
+        data={rows}
+        columns={[
+          { accessorKey: "segment", header: "Segment", dataType: "text" },
+          { accessorKey: "region", header: "Region", dataType: "text" },
+          { accessorKey: "revenue", header: "Revenue", dataType: "currency" },
+        ]}
+        layoutMode="pivot"
+        getRowId={(r) => r.id}
+        virtualizeColumns
+        features={{ pagination: false, rowSelection: false }}
+        pivot={{
+          rows: ["segment"],
+          columns: [{ columnId: "region" }],
+          measures: [{ id: "revenue", label: "Revenue", columnId: "revenue", aggregation: "sum" }],
+        }}
+      />,
+    );
+    // 40 region buckets × 1 measure (+ row label + totals) — the window
+    // renders a strict subset of leaf header cells.
+    const headerRows = [...document.querySelectorAll("thead tr")];
+    const leafHeaderRow = headerRows[headerRows.length - 1];
+    expect(leafHeaderRow).toBeDefined();
+    expect(leafHeaderRow.querySelectorAll("th").length).toBeLessThan(40);
+  });
 });

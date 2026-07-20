@@ -273,6 +273,7 @@ function Playground() {
             rowLimit={500}
             storageKey={`playground-${recipe}`}
             tableLabel={`${active.label} playground`}
+            virtualizeColumns={recipe === "analyst" || recipe === "agent"}
             virtualizeRows={recipe === "analyst" || recipe === "agent"}
           />
         </div>

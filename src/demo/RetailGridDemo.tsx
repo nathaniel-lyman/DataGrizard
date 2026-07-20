@@ -51,6 +51,7 @@ type RetailGridDemoProps = {
   rowLimit?: number;
   storageKey: string;
   tableLabel: string;
+  virtualizeColumns?: boolean;
   virtualizeRows?: boolean;
 };
 
@@ -64,6 +65,7 @@ export function RetailGridDemo({
   rowLimit = 48,
   storageKey,
   tableLabel,
+  virtualizeColumns = false,
   virtualizeRows = false,
 }: RetailGridDemoProps) {
   const [rows, setRows] = useState(() =>
@@ -188,6 +190,7 @@ export function RetailGridDemo({
             onSelect: () => updateStatus(row, "rejected"),
           },
         ]}
+        virtualizeColumns={virtualizeColumns}
         virtualizeRows={virtualizeRows}
       />
     </div>

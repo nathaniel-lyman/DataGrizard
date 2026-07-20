@@ -17,7 +17,8 @@ interactively.
 One component supports a standard grid, Excel-style pivot tables, and an
 opt-in responsive card layout. It includes type-aware filtering and formatting,
 grouping, saved views, summaries, editing, range selection, column management,
-virtualization, server-backed data, and a fully controllable state surface.
+row and column virtualization, server-backed data, and a fully controllable
+state surface.
 The same mounted grid also exposes bounded reads and transactional commands for
 assistants and application automation.
 
@@ -231,7 +232,8 @@ export function Demo({ data }: { data: Product[] }) {
 `getRowId` is strongly recommended — stable IDs keep row selection and the
 active detail row correct across data updates. `tableLabel` supplies the
 table's accessible name. The container should provide a useful height when row
-virtualization or a scrolling workspace is desired.
+virtualization, or a bounded width when column virtualization, or a scrolling
+workspace is desired.
 
 ## Pivot layout
 
@@ -258,7 +260,7 @@ Pivot mode materializes grouped pivot rows and generated measure columns, then
 renders them through the same TanStack Table path as grid mode:
 `table.getHeaderGroups()`, `row.getVisibleCells()`, and `flexRender(...)`.
 Generated pivot columns participate in sorting, resizing, visibility, ordering,
-pinning, saved views, pagination, and virtualization.
+pinning, saved views, pagination, and row/column virtualization.
 
 `pivot.rows` defines the row axis. `pivot.columns` optionally defines a column
 axis and produces nested TanStack header groups such as Week → Revenue / Units,
@@ -834,7 +836,9 @@ suites.
   window of rows is in the DOM, yet each rendered row keeps its **true index
   within the full row set** and `aria-rowcount` reports that full total, so
   assistive tech announces "row N of total" correctly. The off-screen spacer
-  rows are `aria-hidden`.
+  rows are `aria-hidden`. Column virtualization (`virtualizeColumns`) behaves
+  the same way on the horizontal axis: only a window of columns is in the DOM,
+  pinned columns always render, and spacer cells are `aria-hidden`.
 - Expanding a group inserts its rows into the cell grid in visual order and
   renumbers `aria-rowindex` over the new order — rows below shift down, with no
   stale or duplicated indices.
