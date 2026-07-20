@@ -183,7 +183,10 @@ describe("DataGrid accessibility", () => {
   it("derives aria-rowindex from the global row position, unaffected by virtualization", () => {
     const visibleRows = ["a", "b", "c", "d"].map((id) => ({ id, getIsGrouped: () => false }));
     const table = {
-      getVisibleLeafColumns: () => [{ id: "name" }, { id: "revenue" }],
+      getVisibleLeafColumns: () => [
+        { id: "name", getIsPinned: () => false },
+        { id: "revenue", getIsPinned: () => false },
+      ],
       getHeaderGroups: () => [{ id: "h" }],
     };
     const rowVirtualizer = { scrollToIndex: () => {} };
@@ -209,7 +212,7 @@ describe("DataGrid accessibility", () => {
     expect(virtual.result.current.headerRowCount).toBe(1);
   });
 
-  it("scrolls an off-window column into view via the column virtualizer and defers focus", () => {
+  it("scrolls an off-window column into view via the column virtualizer", () => {
     const scrolled: number[] = [];
     const visibleRows = [{ id: "a", getIsGrouped: () => false }];
     const table = {

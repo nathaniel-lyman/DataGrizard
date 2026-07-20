@@ -8,6 +8,7 @@ import type { Row, Table } from "@tanstack/react-table";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { PivotRow } from "./pivot";
 import type { DataGridFocusedCell } from "./dataGridTypes";
+import { partitionLeafColumns } from "./columnVirtual";
 
 type UseCellFocusOptions<TData extends object> = {
   visibleRows: Row<TData | PivotRow<TData>>[];
@@ -52,23 +53,18 @@ export function useCellFocus<TData extends object>({
     () => new Map(visibleRows.map((row, index) => [row.id, index])),
     [visibleRows],
   );
-  // Unpinned visible leaves only, in center-window order — mirrors the
-  // partition the column virtualizer itself windows over. Tolerant
-  // `getIsPinned?.()` keeps the older stub-based renderHook test (whose table
-  // stub predates virtualizeColumns) passing without a getIsPinned mock.
-  // Deps: `visibleRows` proxies "table state changed", same rationale as the
-  // navColumnIds recompute above (table is a stable TanStack instance).
-  const centerColumnIndexById = useMemo(() => {
-    const map = new Map<string, number>();
-    let index = 0;
-    for (const column of table.getVisibleLeafColumns()) {
-      if (!(column.getIsPinned?.() ?? false)) {
-        map.set(column.id, index);
-        index += 1;
-      }
-    }
-    return map;
-  }, [table, visibleRows]);
+  // Unpinned visible leaves, in the same center-window order the column
+  // virtualizer indexes over. Built from the shared partitionLeafColumns
+  // helper — the same partition DataGrid.tsx uses to build columnVirtualizer
+  // / columnWindow — so "center" stays in lockstep with the virtualizer's
+  // index space by construction. Not memoized: column state (visibility /
+  // order / pinning) doesn't reliably rebuild `visibleRows`, so recomputed
+  // every render, same as navColumnIds above.
+  const centerColumnIndexById = new Map(
+    partitionLeafColumns(table.getVisibleLeafColumns(), (column) =>
+      column.getIsPinned(),
+    ).center.map((column, index) => [column.id, index]),
+  );
   const headerRowCount =
     table.getHeaderGroups().length + (floatingFiltersEnabled && !isPivotLayout ? 1 : 0);
   const cellKey = (rowId: string, columnId: string) => `${rowId}\u0000${columnId}`;
@@ -91,6 +87,11 @@ export function useCellFocus<TData extends object>({
     const key = cellKey(rowId, columnId);
     const existing = cellRefs.current.get(key);
     if (existing) {
+      // Clear any stale deferred target: this cell mounted via ordinary
+      // scrolling (not a pending scroll-into-view from this call), so a
+      // leftover key from an earlier, still-unmounted target must not steal
+      // focus later once that target's cell mounts too.
+      pendingFocusKey.current = null;
       existing.focus();
       return;
     }
