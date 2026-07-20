@@ -230,12 +230,16 @@ describe("windowLeafCells", () => {
 
 describe("windowHeaderRow", () => {
   // Band row over leaves: sel | [a b c] band | act. Window renders sel, b, act.
+  // Each header instance lives wholly in one pin region (TanStack splits
+  // groups whose leaves are pinned into separate header instances).
   const headers = [
-    { id: "h-sel", leafIds: ["sel"] },
-    { id: "h-band", leafIds: ["a", "b", "c"] },
-    { id: "h-act", leafIds: ["act"] },
+    { id: "h-sel", leafIds: ["sel"], pinned: "left" as const },
+    { id: "h-band", leafIds: ["a", "b", "c"], pinned: false as const },
+    { id: "h-act", leafIds: ["act"], pinned: "right" as const },
   ];
-  const getLeafIds = (h: { leafIds: string[] }) => h.leafIds;
+  type HeaderLike = (typeof headers)[number];
+  const getLeafIds = (h: HeaderLike) => h.leafIds;
+  const getHeaderPinned = (h: HeaderLike) => h.pinned;
   const window = {
     renderedLeafIds: new Set(["sel", "b", "act"]),
     leftSpacerWidth: 100,
@@ -243,7 +247,7 @@ describe("windowHeaderRow", () => {
   };
 
   it("clips band colSpan to rendered leaves and positions spacers by leaf order", () => {
-    const out = windowHeaderRow({ headers, getLeafIds, window });
+    const out = windowHeaderRow({ headers, getLeafIds, getPinned: getHeaderPinned, window });
     expect(
       out.map((e) =>
         e.kind === "header" ? `${e.item.id}:${e.colSpan}` : `spacer:${e.width}`,
@@ -255,6 +259,7 @@ describe("windowHeaderRow", () => {
     const out = windowHeaderRow({
       headers,
       getLeafIds,
+      getPinned: getHeaderPinned,
       window: { renderedLeafIds: new Set(["sel", "act"]), leftSpacerWidth: 300, rightSpacerWidth: 0 },
     });
     expect(
@@ -266,6 +271,7 @@ describe("windowHeaderRow", () => {
     const out = windowHeaderRow({
       headers,
       getLeafIds,
+      getPinned: getHeaderPinned,
       window: { renderedLeafIds: new Set(["sel", "a", "b", "c", "act"]), leftSpacerWidth: 0, rightSpacerWidth: 0 },
     });
     expect(out.map((e) => (e.kind === "header" ? e.colSpan : -1))).toEqual([1, 3, 1]);
@@ -318,67 +324,48 @@ export type WindowedHeaderEntry<T> =
   | { kind: "header"; item: T; colSpan: number }
   | { kind: "spacer"; side: "left" | "right"; width: number };
 
-/** Assemble one header row: each header's colSpan is clipped to its rendered
- *  leaves; headers with zero rendered leaves drop out; spacers are emitted at
- *  the leaf positions where the skipped center prefix / suffix runs occur, so
- *  every header row consumes the spacer <col>s under table-layout: fixed. */
+/** Assemble one header row. Each TanStack header instance lives wholly in one
+ *  pin region (groups whose leaves are pinned are split into separate header
+ *  instances per region), so the row is built exactly like windowLeafCells —
+ *  partition headers by region, then: left → left spacer → clipped center →
+ *  right spacer → right. Headers clip their colSpan to rendered leaves and
+ *  drop out at zero, so every header row consumes the same column slots as
+ *  the leaf rows under table-layout: fixed. */
 export function windowHeaderRow<T>(options: {
   headers: T[];
   getLeafIds: (header: T) => string[];
+  getPinned: (header: T) => false | "left" | "right";
   window: ColumnWindow;
 }): WindowedHeaderEntry<T>[] {
-  const { headers, getLeafIds, window } = options;
+  const { headers, getLeafIds, getPinned, window } = options;
+  const partition = partitionLeafColumns(headers, getPinned);
   const out: WindowedHeaderEntry<T>[] = [];
-  let leftSpacerEmitted = window.leftSpacerWidth <= 0;
-  let rightSpacerEmitted = window.rightSpacerWidth <= 0;
-  const lastRenderedIndex = (() => {
-    for (let i = headers.length - 1; i >= 0; i--) {
-      if (getLeafIds(headers[i]).some((id) => window.renderedLeafIds.has(id))) return i;
-    }
-    return -1;
-  })();
-  headers.forEach((header, index) => {
-    const leafIds = getLeafIds(header);
-    const colSpan = leafIds.filter((id) => window.renderedLeafIds.has(id)).length;
-    const hasSkipped = colSpan < leafIds.length;
-    // The skipped center prefix ends at the first header with any rendered
-    // leaf that also has (or follows) skipped leaves — emit the left spacer
-    // before the first header that renders after any skipping began.
-    if (!leftSpacerEmitted && (hasSkipped || colSpan === 0 || out.some((e) => e.kind === "header"))) {
-      // Emit once we've passed fully-rendered leading headers (pinned-left):
-      // the first header that is skipped or partially rendered marks the gap.
-      if (hasSkipped || colSpan === 0) {
-        out.push({ kind: "spacer", side: "left", width: window.leftSpacerWidth });
-        leftSpacerEmitted = true;
-      }
-    }
+  const pushClipped = (header: T) => {
+    const colSpan = getLeafIds(header).filter((id) => window.renderedLeafIds.has(id)).length;
     if (colSpan > 0) {
       out.push({ kind: "header", item: header, colSpan });
     }
-    if (!rightSpacerEmitted && index === lastRenderedIndex) {
-      out.push({ kind: "spacer", side: "right", width: window.rightSpacerWidth });
-      rightSpacerEmitted = true;
-    }
-  });
-  if (!leftSpacerEmitted) {
-    out.unshift({ kind: "spacer", side: "left", width: window.leftSpacerWidth });
+  };
+  partition.left.forEach(pushClipped);
+  if (window.leftSpacerWidth > 0) {
+    out.push({ kind: "spacer", side: "left", width: window.leftSpacerWidth });
   }
-  if (!rightSpacerEmitted) {
+  partition.center.forEach(pushClipped);
+  if (window.rightSpacerWidth > 0) {
     out.push({ kind: "spacer", side: "right", width: window.rightSpacerWidth });
   }
+  partition.right.forEach(pushClipped);
   return out;
 }
 ```
 
-**Note on the left-spacer rule:** the tests in Step 1 are the contract. If the
-implementation above emits the left spacer in the wrong slot for the
-`h-sel / h-band / h-act` case (spacer must land *between* `h-sel` and the
-clipped band), simplify rather than patch: walk headers keeping a running leaf
-cursor over the full leaf order, and emit the left spacer at the first leaf
-position that is a skipped **center** leaf, the right spacer at the position
-after the last rendered center leaf. Correctness bar: for a leaf-level row
-(every header has exactly one leaf), `windowHeaderRow` must produce the same
-sequence as `windowLeafCells`.
+**Why this is correct by construction:** it is the same partition + emit-order
+as `windowLeafCells`, generalized with colSpan clipping — for a leaf-level row
+(every header exactly one leaf) it degenerates to the identical sequence. The
+one structural assumption — a header instance never spans two pin regions —
+is TanStack's own pinned-header model (pinned leaves are pulled into separate
+header instances with placeholders). Hand-trace the three Step 1 tests to
+confirm before running.
 
 - [ ] **Step 4: Run tests, verify pass**
 
@@ -463,9 +450,9 @@ Immediately after the `rowVirtualizer` block (~line 1597), add:
     : null;
 ```
 
-Imports: add `partitionLeafColumns, computeColumnWindow, windowLeafCells, type ColumnWindow` from `./columnVirtual` (the `windowLeafCells` import is used in Task 4 — add it there instead if the intermediate commit must be warning-free; there is no lint, but `tsc` flags unused imports only under `noUnusedLocals` — check `tsconfig.app.json` and add imports per-task if it is on).
+Imports: add `partitionLeafColumns, computeColumnWindow, windowLeafCells, type ColumnWindow` from `./columnVirtual`. (`noUnusedLocals` is confirmed OFF in `tsconfig.app.json`, so adding all four here — with `windowLeafCells` first used in Task 4 — compiles cleanly.)
 
-If the repo does not have an eslint pragma convention (it has no ESLint), drop the `eslint-disable` comment line entirely.
+The repo has no ESLint — drop the `eslint-disable` comment line from the snippet entirely.
 
 - [ ] **Step 3: Type-check + full-suite sanity**
 
@@ -594,9 +581,7 @@ describe("DataGrid column virtualization", () => {
 });
 ```
 
-**Before running:** check the real prop name for default pinning (`defaultColumnPinning` is used above — verify against `dataGridTypes.ts`; the CLAUDE.md pinning bullet and `normalizeColumnPinning` in `gridHelpers.ts` are the source of truth; adjust the test to the actual public prop, e.g. `columnPinning` inside `initialState` or a `defaultColumnPinning` prop — whichever exists).
-
-Also verify the exact default column width behavior: if `getSize()` defaults per-column (TanStack default 150), the `perColumn * COL_COUNT` invariant holds; if the grid assigns per-dataType widths, compute `fullWidth` as the sum over 40 columns of the actual sizes instead (read them from the colgroup of the *non-virtualized* regression-guard render).
+**Verified against the codebase:** `defaultColumnPinning` is the real public prop (`DataGrid.tsx:315`), and the test's columns (no `width` set) all fall back uniformly to TanStack's 150px default (`size: column.width` at `DataGrid.tsx:683` is the only width source), so the `perColumn * COL_COUNT` colgroup invariant holds as written.
 
 - [ ] **Step 2: Run new tests, verify the virtualized ones fail**
 
@@ -628,7 +613,7 @@ Colgroup (~line 2513) — replace the plain map:
             </colgroup>
 ```
 
-Body rows — in `renderVisibleRow` (~line 2058), replace `row.getVisibleCells().map((cell) => { … })` with a windowed list, keeping the existing cell-render callback **byte-for-byte identical** (extract it to a local `renderBodyCell = (cell: Cell<…>) => { …existing body… }` and map over the windowed entries):
+Body rows — in `renderGridLeafRow` (defined ~line 2008; the cell loop is at ~line 2058 — note `renderVisibleRow` at ~2240 is a separate dispatcher, not the place to edit), replace `row.getVisibleCells().map((cell) => { … })` with a windowed list, keeping the existing cell-render callback **byte-for-byte identical** (extract it to a local `renderBodyCell` taking the cell; `Cell` is not currently imported by name in `DataGrid.tsx` — either import the type from `@tanstack/react-table` or let inference type the parameter):
 
 ```tsx
         {(columnWindow
@@ -696,8 +681,8 @@ Append to `DataGrid.columnVirtual.test.tsx`:
         getRowId={(r) => r.id}
         virtualizeColumns
         columnGroups={[
-          { id: "g-early", header: "Early", columns: ["c0", "c1", "c2", "c3"] },
-          { id: "g-late", header: "Late", columns: ["c36", "c37", "c38", "c39"] },
+          { groupId: "g-early", header: "Early", children: ["c0", "c1", "c2", "c3"] },
+          { groupId: "g-late", header: "Late", children: ["c36", "c37", "c38", "c39"] },
         ]}
         features={{ pagination: false, rowSelection: false }}
       />,
@@ -718,7 +703,7 @@ Append to `DataGrid.columnVirtual.test.tsx`:
   });
 ```
 
-**Verify the `columnGroups` prop shape** against `columnGroups.ts` (`DataGridColumnGroup`) before running — adjust `id`/`header`/`columns` field names to the real type.
+(`DataGridColumnGroup` shape verified against `columnGroups.ts:8-12`: `{ groupId, header, children }`, matching real usage in `RetailGridDemo.tsx:30-42`.)
 
 - [ ] **Step 2: Run, verify failure**
 
@@ -729,7 +714,7 @@ Expected: FAIL (band row renders all headers; `Late` present).
 
 `DataGridHeader.tsx`:
 1. Add prop `columnWindow: ColumnWindow | null` (import type from `./columnVirtual`).
-2. In the `headerGroup.headers.map(...)` render (~line 57): when `columnWindow` is set, replace the direct map with `windowHeaderRow({ headers: headerGroup.headers, getLeafIds: (h) => h.getLeafColumns().map((c) => c.id), window: columnWindow })` and map entries: `kind === "header"` → the existing `<th>` JSX with `colSpan={entry.colSpan}` instead of `header.colSpan` (extract the current `<th>` body into a local `renderHeaderCell(header, colSpan)` so the JSX is not duplicated); `kind === "spacer"` → `<th key={…} aria-hidden="true" style={{ padding: 0, border: 0 }} />`.
+2. In the `headerGroup.headers.map(...)` render (~line 57): when `columnWindow` is set, replace the direct map with `windowHeaderRow({ headers: headerGroup.headers, getLeafIds: (h) => h.getLeafHeaders().map((leaf) => leaf.column.id), getPinned: (h) => h.getLeafHeaders()[0]?.column.getIsPinned() ?? false, window: columnWindow })` — note TanStack's `Header` has `getLeafHeaders()`, **not** `getLeafColumns()` (that only exists on `Column`); every leaf of a header instance shares one pin region, so the first leaf's pin state stands for the header and map entries: `kind === "header"` → the existing `<th>` JSX with `colSpan={entry.colSpan}` instead of `header.colSpan` (extract the current `<th>` body into a local `renderHeaderCell(header, colSpan)` so the JSX is not duplicated); `kind === "spacer"` → `<th key={…} aria-hidden="true" style={{ padding: 0, border: 0 }} />`.
 3. Floating-filter row (~line 237): same treatment via `windowLeafCells` over `table.getVisibleLeafColumns()`, spacer `<td aria-hidden style={{ padding: 0, border: 0 }} />`.
 4. `DataGrid.tsx`: pass `columnWindow={columnWindow}` to `<DataGridHeader …>` (~line 2518).
 
@@ -839,10 +824,12 @@ The existing pending-focus effect already completes the deferred focus once the 
 
 4. `DataGrid.tsx`: pass `virtualizeColumns: virtualizeColumnsEnabled, columnVirtualizer` at the `useCellFocus` call site.
 
+5. Update the pre-existing `useCellFocus` renderHook test's options builder in `DataGrid.a11y.test.tsx` (~line 190) to include the two new keys (`virtualizeColumns: false`, `columnVirtualizer: { scrollToIndex: () => {} }`). Note: that builder is typed `any`, so the suite would pass without this — do it anyway so the stub mirrors the real contract.
+
 - [ ] **Step 4: Run the a11y file, then full suite**
 
 Run: `npx vitest run src/components/DataGrid/DataGrid.a11y.test.tsx && npx tsc -b && npm test`
-Expected: PASS / clean. The pre-existing `useCellFocus` renderHook test must still pass (its options object lacks the new keys — make them optional with defaults `virtualizeColumns = false`, `columnVirtualizer = { scrollToIndex: () => {} }`… **no**: prefer required options and update that older test's builder to include the two new keys; required options keep the DataGrid call site honest).
+Expected: PASS / clean, including the pre-existing renderHook test (its builder was updated in Step 3 sub-step 5). Keep the new options **required** on `UseCellFocusOptions` — that keeps the DataGrid call site honest.
 
 - [ ] **Step 5: Commit**
 
@@ -883,7 +870,7 @@ git commit -m "feat(datagrid): keyboard focus scrolls off-window columns into vi
         features={{ pagination: false, rowSelection: false }}
         pivot={{
           rows: ["segment"],
-          columns: ["region"],
+          columns: [{ columnId: "region" }],
           measures: [{ id: "revenue", label: "Revenue", columnId: "revenue", aggregation: "sum" }],
         }}
       />,
@@ -896,7 +883,7 @@ git commit -m "feat(datagrid): keyboard focus scrolls off-window columns into vi
   });
 ```
 
-**Verify the `pivot` prop field names** (`rows` / `columns` / `measures`) against `dataGridTypes.ts` and the pivot test in `DataGrid.test.tsx` before running; adjust to reality.
+(Pivot config shape verified: `columns` takes `DataGridPivotColumnAxis[]` — `{ columnId, order? }` objects, per `pivot.tsx:30-33` and usage in `DataGrid.test.tsx`.)
 
 Run: `npx vitest run src/components/DataGrid/DataGrid.columnVirtual.test.tsx`
 Expected: PASS with no production-code change (windowing operates on the post-reconciliation leaf set). If it fails, debug via superpowers:systematic-debugging before touching pivot code — the spec expects zero pivot special-casing.
