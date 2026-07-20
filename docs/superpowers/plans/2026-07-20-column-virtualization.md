@@ -899,6 +899,7 @@ Run: `npm run dev` and eyeball http://127.0.0.1:5173/ in grid + pivot layouts (h
 
 - `CLAUDE.md` — extend the "Grouping, expansion & row windowing" bullet's last sentence with column windowing, e.g.: "When `virtualizeColumns` is set, unpinned center columns are likewise windowed via a horizontal virtualizer (`columnVirtual.ts` holds the pure partition/window/row-assembly helpers); pinned columns always render, header-band `colSpan`s are clipped to rendered leaves, and spacer `<col>`/`<th>`/`<td>`s preserve fixed-table geometry. Card layout ignores it." Also add `columnVirtual.ts` to the "State & helper hooks" sibling list sentence where `gridHelpers.ts` is enumerated.
 - `README.md` — wherever row virtualization is featured (lines ~20/234/261/833), mention column virtualization in the same breath (one clause each; follow existing prose style).
+- `CLAUDE.md` (same edit pass): add one sentence to the column-header-groups bullet noting consumers should not split a single `columnGroups` band across pinned and unpinned columns — TanStack's unified `getHeaderGroups()` can fuse adjacent same-group headers across the pin boundary (pre-existing TanStack behavior; the plan reviewer traced it in `buildHeaderGroups`), and `windowHeaderRow` assumes one pin region per header instance.
 
 - [ ] **Step 4: Full verification**
 
